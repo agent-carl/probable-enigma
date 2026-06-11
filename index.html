@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="description" content="SubTrack — трекер подписок. Узнайте, сколько вы тратите на подписки каждый месяц, и не пропустите следующее списание.">
+  <meta name="theme-color" content="#0f1117">
+  <title>SubTrack — трекер подписок</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="header">
+    <div class="header-inner">
+      <div class="logo">
+        <span class="logo-mark">S</span>
+        <span class="logo-text">SubTrack</span>
+      </div>
+      <button class="btn btn-primary" id="addBtn">+ Подписка</button>
+    </div>
+  </header>
+
+  <main class="container">
+    <!-- Сводка -->
+    <section class="summary" id="summary">
+      <div class="summary-card summary-main">
+        <div class="summary-label">В месяц</div>
+        <div class="summary-value" id="monthlyTotal">0 ₽</div>
+        <div class="summary-sub" id="yearlyTotal">0 ₽ в год</div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-label">Подписок</div>
+        <div class="summary-value" id="subsCount">0</div>
+        <div class="summary-sub" id="activeNote">активных</div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-label">Ближайшее списание</div>
+        <div class="summary-value summary-value-sm" id="nextPayment">—</div>
+        <div class="summary-sub" id="nextPaymentName"></div>
+      </div>
+    </section>
+
+    <!-- Фильтры -->
+    <section class="toolbar">
+      <input type="search" class="search" id="searchInput" placeholder="Поиск…">
+      <select class="select" id="categoryFilter">
+        <option value="">Все категории</option>
+      </select>
+      <select class="select" id="sortSelect">
+        <option value="date">По дате списания</option>
+        <option value="price">По цене</option>
+        <option value="name">По названию</option>
+      </select>
+    </section>
+
+    <!-- Список подписок -->
+    <section class="subs-list" id="subsList"></section>
+
+    <!-- Пустое состояние -->
+    <section class="empty" id="emptyState">
+      <div class="empty-icon">💳</div>
+      <h2>Пока нет подписок</h2>
+      <p>Добавьте первую подписку и узнайте,<br>сколько вы на самом деле тратите каждый месяц.</p>
+      <button class="btn btn-primary" id="emptyAddBtn">Добавить подписку</button>
+    </section>
+
+    <!-- Экспорт / импорт -->
+    <section class="footer-actions">
+      <button class="btn btn-ghost" id="exportBtn">Экспорт</button>
+      <button class="btn btn-ghost" id="importBtn">Импорт</button>
+      <input type="file" id="importFile" accept="application/json" hidden>
+    </section>
+  </main>
+
+  <!-- Модалка добавления/редактирования -->
+  <div class="modal-overlay" id="modalOverlay" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <h2 id="modalTitle">Новая подписка</h2>
+      <form id="subForm">
+        <input type="hidden" id="subId">
+        <label class="field">
+          <span>Название</span>
+          <input type="text" id="subName" required maxlength="60" placeholder="Например: Яндекс Плюс" list="presetList">
+          <datalist id="presetList"></datalist>
+        </label>
+        <div class="field-row">
+          <label class="field">
+            <span>Цена</span>
+            <input type="number" id="subPrice" required min="0" step="0.01" inputmode="decimal" placeholder="299">
+          </label>
+          <label class="field">
+            <span>Валюта</span>
+            <select id="subCurrency">
+              <option value="₽">₽</option>
+              <option value="$">$</option>
+              <option value="€">€</option>
+              <option value="₸">₸</option>
+            </select>
+          </label>
+        </div>
+        <div class="field-row">
+          <label class="field">
+            <span>Период</span>
+            <select id="subPeriod">
+              <option value="month">Каждый месяц</option>
+              <option value="year">Каждый год</option>
+              <option value="week">Каждую неделю</option>
+              <option value="quarter">Каждый квартал</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Следующее списание</span>
+            <input type="date" id="subDate" required>
+          </label>
+        </div>
+        <label class="field">
+          <span>Категория</span>
+          <select id="subCategory">
+            <option value="Развлечения">Развлечения</option>
+            <option value="Музыка">Музыка</option>
+            <option value="Работа">Работа</option>
+            <option value="Облако">Облако</option>
+            <option value="Спорт и здоровье">Спорт и здоровье</option>
+            <option value="Образование">Образование</option>
+            <option value="Связь">Связь</option>
+            <option value="Другое">Другое</option>
+          </select>
+        </label>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-ghost" id="cancelBtn">Отмена</button>
+          <button type="submit" class="btn btn-primary" id="saveBtn">Сохранить</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" hidden></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
