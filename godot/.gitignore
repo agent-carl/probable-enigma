@@ -1,0 +1,10 @@
+# Служебная папка Godot (генерируется при открытии проекта)
+.godot/
+
+# Экспортированные сборки
+export.cfg
+export_presets.cfg
+*.exe
+*.pck
+*.zip
+build/
