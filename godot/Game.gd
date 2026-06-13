@@ -56,6 +56,7 @@ const ENEMY_BASE := {
 	"shooter": { "w": 26, "h": 30, "hp": 42, "spd": 0.0, "dmg": 9, "score": 20, "cd": 105, "fly": false },
 	"flyer":   { "w": 24, "h": 20, "hp": 22, "spd": 1.7, "dmg": 10, "score": 15, "cd": 0, "fly": true },
 	"tank":    { "w": 36, "h": 38, "hp": 130, "spd": 0.55, "dmg": 11, "score": 45, "cd": 135, "fly": false },
+	"boss":    { "w": 70, "h": 74, "hp": 900, "spd": 0.9, "dmg": 18, "score": 300, "cd": 70, "fly": false },
 }
 
 # ============================== Состояние ==============================
@@ -74,6 +75,10 @@ var intro_text := ""
 var low_ammo_t := 0
 var offer := []
 var best := 0
+var combo := 0           # серия убийств
+var combo_t := 0         # таймер сброса серии
+var boss_alive := false  # на уровне есть живой босс
+var hitstop := 0         # короткая заморозка при крупных событиях
 
 var level := {}        # текущая карта
 var P := {}            # игрок
@@ -90,12 +95,14 @@ var hill_far := PackedVector2Array()
 var hill_near := PackedVector2Array()
 var sky0 := Color.BLACK
 var sky1 := Color.BLACK
+var sky_tex: GradientTexture2D = null   # кэш градиента неба
+var afterimages := []  # следы рывка [{x,y,life}]
 
 # Ввод текущего кадра (заполняется gather_input или тестом)
 var input := {
 	"move": 0, "down": false, "jump_pressed": false, "jump_held": false,
 	"shoot_held": false, "shoot_clicked": false, "aim": Vector2.ZERO,
-	"switch_to": -1, "wheel": 0,
+	"switch_to": -1, "wheel": 0, "dash": false,
 }
 var _prev_keys := {}
 var _prev_mouse := false
@@ -136,6 +143,13 @@ func _ready() -> void:
 		audio_enabled = false
 		RenderingServer.frame_post_draw.connect(_on_post_draw)
 		start_run(12345, "DEMO")
+		if "--boss" in OS.get_cmdline_args():
+			# прыжок на боссовый уровень с прокачкой — для проверки рендера босса
+			lvl = 5
+			P.weapons.append({ "id": "rifle", "ammo": 999 })
+			P.wi = 1
+			P.stats.dmg_mul = 3.0
+			start_level()
 	queue_redraw()
 
 func _physics_process(_delta: float) -> void:
@@ -150,6 +164,11 @@ func _physics_process(_delta: float) -> void:
 
 func _demo_step() -> void:
 	# Самоиграющий бот для скриншотов/проверки отрисовки.
+	if demo_frame == 60 and "--boss" in OS.get_cmdline_args() and state == "play":
+		for en in enemies:
+			if en.get("boss", false):
+				P.x = en.x - 120
+				P.y = en.y
 	if state == "play":
 		input.move = 1
 		input.jump_pressed = (demo_frame % 26 == 0)
@@ -166,6 +185,7 @@ func _demo_step() -> void:
 		input.aim = aim
 		input.shoot_held = true
 		input.shoot_clicked = (demo_frame % 6 == 0)
+		input.dash = (demo_frame % 40 == 20)
 		input.switch_to = -1
 	sim_step()
 	if state == "upgrade":
@@ -194,6 +214,7 @@ func gather_input() -> void:
 	var k_down := Input.is_key_pressed(KEY_S) or Input.is_key_pressed(KEY_DOWN)
 	var jump_now := Input.is_key_pressed(KEY_W) or Input.is_key_pressed(KEY_UP) or Input.is_key_pressed(KEY_SPACE)
 	var shoot_now := Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)
+	var dash_now := Input.is_key_pressed(KEY_SHIFT) or Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT)
 
 	input.move = (1 if k_right else 0) - (1 if k_left else 0)
 	input.down = k_down
@@ -201,6 +222,7 @@ func gather_input() -> void:
 	input.jump_pressed = jump_now and not _prev_keys.get("jump", false)
 	input.shoot_held = shoot_now
 	input.shoot_clicked = shoot_now and not _prev_mouse
+	input.dash = dash_now and not _prev_keys.get("dash", false)
 	input.aim = get_local_mouse_position() + cam
 	input.switch_to = -1
 	for i in range(4):
@@ -208,6 +230,7 @@ func gather_input() -> void:
 			input.switch_to = i
 
 	_prev_keys["jump"] = jump_now
+	_prev_keys["dash"] = dash_now
 	for i in range(4):
 		_prev_keys["d%d" % i] = Input.is_key_pressed(KEY_1 + i)
 	_prev_mouse = shoot_now
@@ -447,11 +470,13 @@ func generate_level(seed_val: int, level_num: int) -> Dictionary:
 			"on_ground": false, "hit_wall": false, "drop": 0, "dead": false,
 		})
 
+	var is_boss_level := level_num % 5 == 0
+	var crowd := 0.5 if is_boss_level else 1.0   # на боссах меньше рядовых
 	var counts := {
-		"walker": mini(4 + level_num, 12),
-		"shooter": mini(1 + int(level_num * 0.8), 8),
-		"flyer": (mini(1 + level_num, 9) if level_num >= 2 else 0),
-		"tank": (mini(level_num - 2, 5) if level_num >= 3 else 0),
+		"walker": int(mini(4 + level_num, 12) * crowd),
+		"shooter": int(mini(1 + int(level_num * 0.8), 8) * crowd),
+		"flyer": int((mini(1 + level_num, 9) if level_num >= 2 else 0) * crowd),
+		"tank": int((mini(level_num - 2, 5) if level_num >= 3 else 0) * crowd),
 	}
 	for type in counts.keys():
 		for _i in range(counts[type]):
@@ -473,6 +498,35 @@ func generate_level(seed_val: int, level_num: int) -> Dictionary:
 				if sx < 0:
 					continue
 				add_enemy.call(type, sx * TILE + (span * TILE - b.w) / 2.0, ground_y[sx] * TILE - b.h - 1)
+
+	# --- босс на каждом 5-м уровне ---
+	if is_boss_level:
+		var bb: Dictionary = ENEMY_BASE["boss"]
+		var bspan := 3
+		var bx := -1
+		# ровная площадка ближе к выходу
+		for cand in range(W - 16, 14, -1):
+			var flat := true
+			for j in range(bspan):
+				if spike_cols.has(cand + j) or ground_y[cand + j] != ground_y[cand]:
+					flat = false
+					break
+			if flat:
+				bx = cand
+				break
+		if bx < 0:
+			bx = W - 20
+		var boss_hp := 500 + 90 * level_num
+		enemy_list.append({
+			"type": "boss", "boss": true,
+			"x": bx * TILE, "y": ground_y[bx] * TILE - bb.h - 1, "w": bb.w, "h": bb.h,
+			"hp": boss_hp, "maxhp": boss_hp,
+			"vx": 0.0, "vy": 0.0, "dir": -1,
+			"spd": bb.spd, "dmg": bb.dmg + dmg_add, "score": bb.score,
+			"fly": false, "cd": 90, "cd_max": bb.cd,
+			"hurt_t": 0, "phase": 0.0, "atk": 0, "atk_t": 120,
+			"on_ground": false, "hit_wall": false, "drop": 0, "dead": false,
+		})
 
 	# --- подбираемое ---
 	var pickup_list := []
@@ -503,6 +557,16 @@ func generate_level(seed_val: int, level_num: int) -> Dictionary:
 		var s = spot.call()
 		if s != null:
 			add_pick.call("ammo", s, {})
+	# на боссовых уровнях — дополнительные аптечки и патроны
+	if is_boss_level:
+		for _i in range(2):
+			var s = spot.call()
+			if s != null:
+				add_pick.call("med", s, { "heal": 30 })
+		for _i in range(2):
+			var s = spot.call()
+			if s != null:
+				add_pick.call("ammo", s, {})
 
 	return {
 		"W": W, "H": H, "grid": grid, "ground_y": ground_y,
@@ -510,6 +574,7 @@ func generate_level(seed_val: int, level_num: int) -> Dictionary:
 		"px_w": W * TILE, "px_h": H * TILE,
 		"spawn": Vector2(2 * TILE + 6, ground_y[2] * TILE - 31),
 		"exit_px": exit_px, "enemies": enemy_list, "pickups": pickup_list,
+		"has_boss": is_boss_level,
 	}
 
 # ============================== Доступ к карте (рантайм) ==============================
@@ -622,6 +687,7 @@ func make_player() -> Dictionary:
 		"on_ground": false, "hit_wall": false,
 		"coyote": 0, "buffer": 0, "air_jumps": 0, "drop": 0,
 		"inv": 0, "cd": 0, "face": 1, "aim": 0.0,
+		"dash_cd": 0, "dash_t": 0, "dash_dir": 1.0,
 		"weapons": [{ "id": "pistol", "ammo": INF }], "wi": 0,
 		"stats": { "dmg_mul": 1.0, "cd_mul": 1.0, "spd_mul": 1.0, "jumps": 1, "lifesteal": 0, "armor_mul": 1.0, "crit": 0.0, "jump_mul": 1.0 },
 	}
@@ -648,6 +714,7 @@ func start_level() -> void:
 	bullets = []
 	parts = []
 	texts = []
+	afterimages = []
 	P.x = level.spawn.x
 	P.y = level.spawn.y
 	P.vx = 0.0
@@ -655,11 +722,20 @@ func start_level() -> void:
 	P.cd = 0
 	P.inv = 90
 	P.drop = 0
+	P.dash_t = 0
+	P.dash_cd = 0
+	combo = 0
+	combo_t = 0
+	hitstop = 0
+	boss_alive = level.get("has_boss", false)
 	cam.x = clampf(P.x - VW / 2.0, 0, max(0, level.px_w - VW))
 	cam.y = clampf(P.y - VH / 2.0, 0, max(0, level.px_h - VH))
 	shake = 0.0
 	intro = 150
-	intro_text = "Уровень %d — %s" % [lvl, level.theme.name]
+	if boss_alive:
+		intro_text = "Уровень %d — БОСС" % lvl
+	else:
+		intro_text = "Уровень %d — %s" % [lvl, level.theme.name]
 	_build_background(level_seed)
 
 func _set_state(s: String) -> void:
@@ -742,13 +818,34 @@ func hurt_enemy(en: Dictionary, dmg: int, crit: bool) -> void:
 	if en.hp <= 0:
 		en.dead = true
 		kills += 1
-		score += en.score
+		# серия убийств наращивает множитель очков
+		combo += 1
+		combo_t = 150
+		var mult := combo_mult()
+		var gained: int = int(round(en.score * mult))
+		score += gained
 		if P.stats.lifesteal > 0:
 			P.hp = min(P.maxhp, P.hp + P.stats.lifesteal)
 		burst(en.x + en.w / 2.0, en.y + en.h / 2.0, 16, Color("#ff9d6b"))
-		add_text(en.x + en.w / 2.0, en.y - 14, "+%d" % en.score, Color("#9be8ff"))
+		var label := "+%d" % gained
+		if mult > 1.0:
+			label += " x%.1f" % mult
+		add_text(en.x + en.w / 2.0, en.y - 14, label, Color("#9be8ff"))
 		play_sfx("kill")
-		drop_loot(en)
+		if en.get("boss", false):
+			boss_alive = false
+			score += 500
+			hitstop = 24
+			shake = 16.0
+			burst(en.x + en.w / 2.0, en.y + en.h / 2.0, 60, Color("#ffd86b"))
+			add_text(en.x + en.w / 2.0, en.y - 30, "БОСС ПОВЕРЖЕН! +500", Color("#ffd86b"))
+			play_sfx("portal")
+		else:
+			drop_loot(en)
+
+func combo_mult() -> float:
+	# x1.0 при серии 0–2, далее растёт до x4.0
+	return clampf(1.0 + max(0, combo - 2) * 0.25, 1.0, 4.0)
 
 func drop_loot(en: Dictionary) -> void:
 	var rv := rng.randf()
@@ -856,6 +953,10 @@ func add_text(x: float, y: float, s: String, color: Color) -> void:
 func sim_step() -> void:
 	tick += 1
 	if state == "play":
+		if hitstop > 0:
+			hitstop -= 1
+			update_effects()
+			return
 		update_player()
 		if state == "play":
 			update_enemies()
@@ -863,6 +964,11 @@ func sim_step() -> void:
 			update_pickups()
 		update_effects()
 		update_camera()
+		# затухание серии убийств
+		if combo_t > 0:
+			combo_t -= 1
+			if combo_t == 0:
+				combo = 0
 		if intro > 0:
 			intro -= 1
 
@@ -904,6 +1010,23 @@ func update_player() -> void:
 	if P.drop > 0:
 		P.drop -= 1
 
+	# рывок: быстрый рывок с i-кадрами и следами
+	if P.dash_cd > 0:
+		P.dash_cd -= 1
+	if P.dash_t > 0:
+		P.dash_t -= 1
+		P.vx = P.dash_dir * 9.5
+		P.vy = 0.0
+		P.inv = max(P.inv, 2)
+		afterimages.append({ "x": P.x, "y": P.y, "life": 12.0 })
+	elif input.dash and P.dash_cd <= 0:
+		P.dash_t = 11
+		P.dash_cd = 55
+		P.dash_dir = float(input.move) if input.move != 0 else float(P.face)
+		P.inv = max(P.inv, 12)
+		play_sfx("dash")
+		afterimages.append({ "x": P.x, "y": P.y, "life": 12.0 })
+
 	collide_entity(P)
 
 	P.aim = (input.aim - Vector2(P.x + P.w / 2.0, P.y + P.h / 2.0)).angle()
@@ -914,8 +1037,12 @@ func update_player() -> void:
 		P.vy = -9.0
 		hurt_player(15, 0)
 	if overlaps_tile(P, T_EXIT):
-		level_clear()
-		return
+		if boss_alive:
+			if tick % 45 == 0:
+				add_text(P.x + P.w / 2.0, P.y - 12, "Сначала победите босса!", Color("#ff6b5e"))
+		else:
+			level_clear()
+			return
 
 	if P.inv > 0:
 		P.inv -= 1
@@ -935,6 +1062,13 @@ func do_jump() -> void:
 	P.buffer = 0
 	play_sfx("jump")
 	burst(P.x + P.w / 2.0, P.y + P.h, 4, Color("#aab8d8"))
+
+func _eshot(x: float, y: float, a: float, spd: float, dmg: int, color: String) -> void:
+	bullets.append({
+		"x": x + cos(a) * 8, "y": y + sin(a) * 8,
+		"vx": cos(a) * spd, "vy": sin(a) * spd,
+		"dmg": dmg, "crit": false, "from": "e", "life": 320, "color": color,
+	})
 
 func update_enemies() -> void:
 	var pcx: float = P.x + P.w / 2.0
@@ -1013,6 +1147,43 @@ func update_enemies() -> void:
 			if en.vy == 0 and pvy != 0:
 				en.vy = -pvy * 0.5
 			en.dir = 1 if pcx > ecx else -1
+		elif en.type == "boss":
+			en.vy = min(en.vy + GRAV, MAX_FALL)
+			en.dir = 1 if pcx > ecx else -1
+			en.phase += 0.05
+			# медленное преследование по земле
+			if en.on_ground and dist > 100:
+				en.vx = en.dir * en.spd
+			else:
+				en.vx = lerp(en.vx, 0.0, 0.2)
+			# смена фазы атаки
+			en.atk_t -= 1
+			if en.atk_t <= 0:
+				en.atk = (en.atk + 1) % 3
+				en.atk_t = 160
+				if en.atk == 2 and en.on_ground:
+					en.vy = -11.5   # рывок-прыжок к игроку
+					en.vx = en.dir * 5.0
+			collide_entity(en)
+			en.cd -= 1
+			if en.cd <= 0:
+				if line_of_sight(ecx, ecy, pcx, pcy):
+					var base_a := (Vector2(pcx, pcy) - Vector2(ecx, ecy)).angle()
+					if en.atk == 0:
+						en.cd = 18
+						for k in range(-1, 2):
+							_eshot(ecx, ecy, base_a + k * 0.10, 6.8, en.dmg, "#ff5ec4")
+					elif en.atk == 1:
+						en.cd = 60
+						for k in range(12):
+							_eshot(ecx, ecy, k * TAU / 12.0 + en.phase, 4.6, en.dmg, "#ff5ec4")
+						shake = max(shake, 5.0)
+					else:
+						en.cd = 42
+						for k in range(-2, 3):
+							_eshot(ecx, ecy, base_a + k * 0.18, 5.6, en.dmg, "#ff7a6b")
+				else:
+					en.cd = 20
 
 		if en.hurt_t > 0:
 			en.hurt_t -= 1
@@ -1125,12 +1296,20 @@ func update_effects() -> void:
 		t.y += t.vy
 		ta.append(t)
 	texts = ta
+	var ai := []
+	for a in afterimages:
+		a.life -= 1
+		if a.life > 0:
+			ai.append(a)
+	afterimages = ai
 
 func update_camera() -> void:
-	var tx := clampf(P.x + P.w / 2.0 - VW / 2.0 + P.face * 40, 0, max(0, level.px_w - VW))
-	var ty := clampf(P.y + P.h / 2.0 - VH / 2.0, 0, max(0, level.px_h - VH))
-	cam.x = lerp(cam.x, tx, 0.12)
-	cam.y = lerp(cam.y, ty, 0.14)
+	# лёгкий look-ahead в сторону прицела
+	var look := clampf(cos(P.aim) * 90.0, -90, 90)
+	var tx := clampf(P.x + P.w / 2.0 - VW / 2.0 + look, 0, max(0, level.px_w - VW))
+	var ty := clampf(P.y + P.h / 2.0 - VH / 2.0 + clampf(sin(P.aim) * 40.0, -40, 40), 0, max(0, level.px_h - VH))
+	cam.x = lerp(cam.x, tx, 0.10)
+	cam.y = lerp(cam.y, ty, 0.12)
 	shake *= 0.86
 	if shake < 0.3:
 		shake = 0.0
@@ -1147,6 +1326,16 @@ func _build_background(seed_val: int) -> void:
 	}
 	sky0 = _col(level.theme.sky0)
 	sky1 = _col(level.theme.sky1)
+	# градиент неба кэшируем в текстуру — один вызов отрисовки вместо десятков
+	var grad := Gradient.new()
+	grad.set_color(0, sky0)
+	grad.set_color(1, sky1)
+	sky_tex = GradientTexture2D.new()
+	sky_tex.gradient = grad
+	sky_tex.width = 1
+	sky_tex.height = VH
+	sky_tex.fill_from = Vector2(0, 0)
+	sky_tex.fill_to = Vector2(0, 1)
 	stars = []
 	for _i in range(70):
 		stars.append(Vector3(r.randf() * VW, r.randf() * VH * 0.7, 0.4 + r.randf() * 1.2))
@@ -1197,10 +1386,8 @@ func _draw() -> void:
 	_draw_overlays()
 
 func _draw_sky() -> void:
-	var bands := 36
-	for i in range(bands):
-		var t := float(i) / (bands - 1)
-		draw_rect(Rect2(0, i * VH / float(bands), VW, VH / float(bands) + 1), sky0.lerp(sky1, t))
+	if sky_tex:
+		draw_texture_rect(sky_tex, Rect2(0, 0, VW, VH), false)
 	for sv in stars:
 		draw_rect(Rect2(sv.x, sv.y, sv.z, sv.z), Color(1, 1, 1, 0.5))
 
@@ -1209,12 +1396,11 @@ func _draw_hills(pts: PackedVector2Array, color: Color, c: Vector2, par: float) 
 		return
 	var ox: float = -fmod(c.x * par, 1920.0)
 	var oy: float = -c.y * 0.12 - 120
+	# смещаем через трансформ, не пересобирая массив точек каждый кадр
 	for k in [-1, 0, 1]:
-		var off := Vector2(ox + k * 1920, oy)
-		var shifted := PackedVector2Array()
-		for p in pts:
-			shifted.append(p + off)
-		draw_colored_polygon(shifted, color)
+		draw_set_transform(Vector2(ox + k * 1920, oy))
+		draw_colored_polygon(pts, color)
+	draw_set_transform(Vector2.ZERO)
 
 func _draw_tiles(c: Vector2) -> void:
 	var x0 := maxi(0, int(floor(c.x / TILE)))
@@ -1301,8 +1487,20 @@ func _draw_enemies() -> void:
 			draw_rect(Rect2(en.x, en.y + 8, en.w, en.h - 8), Color.WHITE if flash else Color("#c8893a"))
 			draw_circle(Vector2(en.x + en.w / 2.0, en.y + 12), en.w / 2.0 - 4, Color.WHITE if flash else Color("#9c6a28"))
 			draw_rect(Rect2(en.x + en.w / 2.0 + (6 if en.dir > 0 else -22), en.y + en.h / 2.0, 16, 5), Color("#3a2810"))
+		elif en.type == "boss":
+			var ecb := Vector2(en.x + en.w / 2.0, en.y + en.h / 2.0)
+			# аура по фазе атаки
+			var aura: Color = [Color(1, 0.37, 0.77, 0.18), Color(1, 0.5, 0.3, 0.18), Color(0.6, 0.4, 1.0, 0.18)][en.atk]
+			draw_circle(ecb, en.w * 0.75 + sin(tick * 0.1) * 4, aura)
+			draw_rect(Rect2(en.x, en.y + 10, en.w, en.h - 10), Color.WHITE if flash else Color("#7a2e6e"))
+			draw_circle(Vector2(ecb.x, en.y + 16), en.w / 2.0 - 6, Color.WHITE if flash else Color("#9c3a8c"))
+			# глаза
+			draw_rect(Rect2(ecb.x + en.dir * 8 - 10, en.y + 22, 8, 8), Color("#ffe14d"))
+			draw_rect(Rect2(ecb.x + en.dir * 8 + 2, en.y + 22, 8, 8), Color("#ffe14d"))
+			# пушки
+			draw_rect(Rect2(en.x - 6, ecb.y + 6, en.w + 12, 8), Color("#3a2440"))
 
-		if en.hurt_t > 0 and en.hp < en.maxhp:
+		if en.type != "boss" and en.hurt_t > 0 and en.hp < en.maxhp:
 			var bw: float = en.w + 8
 			draw_rect(Rect2(en.x - 4, en.y - 9, bw, 4), Color(0, 0, 0, 0.55))
 			draw_rect(Rect2(en.x - 4, en.y - 9, bw * clampf(float(en.hp) / en.maxhp, 0, 1), 4), Color("#ff5e57"))
@@ -1310,6 +1508,10 @@ func _draw_enemies() -> void:
 func _draw_player() -> void:
 	if state == "dead":
 		return
+	# следы рывка
+	for a in afterimages:
+		var al := clampf(a.life / 12.0, 0, 1) * 0.5
+		draw_rect(Rect2(a.x, a.y + 4, P.w, P.h - 4), Color(0.4, 0.95, 0.8, al))
 	if P.inv > 0 and (tick & 4) != 0:
 		return
 	draw_rect(Rect2(P.x, P.y + 4, P.w, P.h - 4), Color("#3ec6a8"))
@@ -1368,8 +1570,43 @@ func _draw_hud() -> void:
 	draw_rect(Rect2(14, 14, hpw * frac, 16), hpcol)
 	_text(Vector2(20, 27), "%d / %d" % [ceili(P.hp), int(P.maxhp)], 12, Color("#eaf0ff"))
 
+	# индикатор рывка
+	var dy := 38.0
+	draw_rect(Rect2(12, dy, 120, 8), Color(0, 0, 0, 0.45))
+	var dfrac := 1.0 - clampf(float(P.dash_cd) / 55.0, 0, 1)
+	draw_rect(Rect2(13, dy + 1, 118 * dfrac, 6), Color("#7fdcff") if dfrac >= 1.0 else Color("#3a6c8c"))
+	_text(Vector2(136, dy + 8), "рывок (Shift/ПКМ)", 10, Color("#8d97bd"))
+
+	# серия убийств
+	if combo >= 3:
+		var m := combo_mult()
+		var alpha := clampf(combo_t / 40.0, 0.35, 1.0)
+		_text(Vector2(VW / 2.0, 70), "СЕРИЯ x%d  (очки x%.1f)" % [combo, m], 18, Color(1, 0.85, 0.42, alpha), true)
+
 	# уровень/тема
-	_text(Vector2(VW / 2.0, 24), "Уровень %d · %s" % [lvl, level.theme.name], 14, Color("#dfe5ff"), true)
+	var title := "Уровень %d · %s" % [lvl, level.theme.name]
+	if boss_alive:
+		title = "Уровень %d · БОСС" % lvl
+	_text(Vector2(VW / 2.0, 24), title, 14, Color("#dfe5ff"), true)
+
+	# полоса здоровья босса
+	if boss_alive:
+		var boss = null
+		for en in enemies:
+			if en.get("boss", false) and not en.dead:
+				boss = en
+				break
+		if boss != null:
+			var bw := 520.0
+			var bx := VW / 2.0 - bw / 2.0
+			draw_rect(Rect2(bx - 3, VH - 86, bw + 6, 22), Color(0, 0, 0, 0.55))
+			var bfrac := clampf(float(boss.hp) / boss.maxhp, 0, 1)
+			draw_rect(Rect2(bx, VH - 83, bw * bfrac, 16), Color("#ff4db0"))
+			_text(Vector2(VW / 2.0, VH - 70), "БОСС", 12, Color("#ffe9b0"), true)
+			_draw_offscreen_arrow(Vector2(boss.x + boss.w / 2.0, boss.y + boss.h / 2.0), Color("#ff4db0"))
+	else:
+		# указатель на портал, если он за краем экрана
+		_draw_offscreen_arrow(Vector2(level.exit_px.x, level.exit_px.y + TILE / 2.0), Color("#9be8ff"))
 
 	# очки
 	var score_str := str(score)
@@ -1406,6 +1643,17 @@ func _draw_hud() -> void:
 		draw_arc(m, 7, 0, TAU, 20, Color(1, 1, 1, 0.9), 1.5)
 		draw_rect(Rect2(m.x - 1, m.y - 1, 2, 2), Color(1, 1, 1, 0.9))
 
+func _draw_offscreen_arrow(world_pos: Vector2, color: Color) -> void:
+	var sp := world_pos - cam
+	var margin := 28.0
+	if sp.x > margin and sp.x < VW - margin and sp.y > margin and sp.y < VH - margin:
+		return  # цель на экране — стрелка не нужна
+	var pos := Vector2(clampf(sp.x, margin, VW - margin), clampf(sp.y, margin, VH - margin))
+	var ang := (sp - pos).angle()
+	draw_set_transform(pos, ang)
+	draw_colored_polygon(PackedVector2Array([Vector2(12, 0), Vector2(-7, -8), Vector2(-7, 8)]), color)
+	draw_set_transform(Vector2.ZERO)
+
 func _btn(rect: Rect2, label: String, key: String, primary := true) -> void:
 	var bg := Color("#ffc24d") if primary else Color(1, 1, 1, 0.10)
 	draw_rect(rect, bg)
@@ -1424,8 +1672,9 @@ func _draw_overlays() -> void:
 			_text(Vector2(cx, 190), "Платформер-рогалик: каждый забег — новая карта", 16, Color("#aab3d6"), true)
 			_text(Vector2(cx, 250), "A/D — бег · W/Пробел — прыжок · S+прыжок — вниз", 14, Color("#8d97bd"), true)
 			_text(Vector2(cx, 274), "Мышь — прицел · ЛКМ — огонь · 1–4/колесо — оружие", 14, Color("#8d97bd"), true)
-			_text(Vector2(cx, 298), "Esc — пауза · M — звук", 14, Color("#8d97bd"), true)
-			_btn(Rect2(cx - 90, 330, 180, 52), "Играть", "play")
+			_text(Vector2(cx, 298), "Shift / ПКМ — рывок · Esc — пауза · M — звук", 14, Color("#8d97bd"), true)
+			_text(Vector2(cx, 322), "Каждый 5-й уровень — БОСС", 13, Color("#ff8fc4"), true)
+			_btn(Rect2(cx - 90, 346, 180, 52), "Играть", "play")
 			var bl := "Рекорд: %d очков" % best if best > 0 else "Удачного первого забега!"
 			_text(Vector2(cx, 420), bl, 14, Color("#6f7aa3"), true)
 			_text(Vector2(cx, 450), "Enter / Пробел / клик — старт", 13, Color("#6f7aa3"), true)
@@ -1492,6 +1741,7 @@ func _setup_audio() -> void:
 		"pickup": _tone(520, 880, 0.12, "square", 0.30),
 		"portal": _tone(330, 760, 0.30, "sine", 0.40),
 		"select": _tone(600, 900, 0.08, "square", 0.24),
+		"dash": _tone(180, 520, 0.16, "sine", 0.30),
 		"die": _noise(0.4, 0.55, true),
 	}
 

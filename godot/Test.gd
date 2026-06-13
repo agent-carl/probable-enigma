@@ -102,6 +102,72 @@ func _init() -> void:
 	game.choose_upgrade({ "id": "djump" })
 	_ok(game.P.stats.jumps == 2, "double jump applied")
 
+	# ---------- 5. Боссы ----------
+	var L5: Dictionary = game.generate_level(555, 5)
+	_ok(L5.has_boss, "level 5 has boss flag")
+	var bosses := 0
+	for en in L5.enemies:
+		if en.get("boss", false):
+			bosses += 1
+			_ok(en.hp > 0, "boss hp > 0")
+	_ok(bosses == 1, "exactly one boss on level 5 (got %d)" % bosses)
+	var L4: Dictionary = game.generate_level(444, 4)
+	_ok(not L4.has_boss, "level 4 has no boss")
+	var L10: Dictionary = game.generate_level(101010, 10)
+	_ok(L10.has_boss, "level 10 has boss flag")
+
+	# гейтинг портала и убийство босса
+	game.start_run(7, "7")
+	game.lvl = 5
+	game.start_level()
+	_ok(game.boss_alive, "boss_alive on boss level")
+	game.input.move = 0
+	game.input.shoot_held = false
+	game.input.shoot_clicked = false
+	game.input.jump_pressed = false
+	game.input.dash = false
+	game.P.x = game.level.exit_px.x - 8
+	game.P.y = game.level.exit_px.y
+	game.sim_step()
+	_ok(game.state == "play", "portal gated while boss alive")
+	var boss = null
+	for en in game.enemies:
+		if en.get("boss", false):
+			boss = en
+			break
+	_ok(boss != null, "boss present in enemies")
+	if boss != null:
+		var sc_before: int = game.score
+		game.hurt_enemy(boss, 99999, false)
+		_ok(not game.boss_alive, "boss death clears gate")
+		_ok(game.score > sc_before, "boss kill grants score")
+	for _i in range(30):
+		game.sim_step()  # переждать hitstop
+	game.P.x = game.level.exit_px.x - 8
+	game.P.y = game.level.exit_px.y
+	game.sim_step()
+	_ok(game.state == "upgrade", "portal opens after boss dead")
+	game.choose_upgrade(game.offer[0])
+
+	# ---------- 6. Серия убийств (комбо) ----------
+	game.start_run(8, "8")
+	game.combo = 0
+	game.combo_t = 0
+	for _i in range(4):
+		var e := { "type": "walker", "x": 100.0, "y": 100.0, "w": 20, "h": 20, "hp": 1, "maxhp": 10, "score": 10, "dead": false, "hurt_t": 0 }
+		game.enemies.append(e)
+		game.hurt_enemy(e, 50, false)
+	_ok(game.combo == 4, "combo increments per kill (got %d)" % game.combo)
+	_ok(game.combo_mult() > 1.0, "combo multiplier rises above 1")
+
+	# ---------- 7. Рывок ----------
+	game.start_run(9, "9")
+	game.input.move = 1
+	game.input.dash = true
+	game.sim_step()
+	_ok(game.P.dash_t > 0, "dash activates (dash_t > 0)")
+	_ok(game.P.dash_cd > 0, "dash sets cooldown")
+
 	if failures == 0:
 		print("\nALL TESTS PASSED")
 	else:
@@ -121,8 +187,9 @@ func simulate(game, seed_v: int, max_steps: int) -> Dictionary:
 			game.input.aim = Vector2(game.P.x + 200, game.P.y)
 			game.input.shoot_held = true
 			game.input.shoot_clicked = (i % 7 == 0)
+			game.input.dash = (i % 50 == 0)
 			game.input.switch_to = -1
-			if i > 0 and i % 600 == 0:
+			if i > 0 and i % 600 == 0 and not game.boss_alive:
 				game.P.x = game.level.exit_px.x - 8
 				game.P.y = game.level.exit_px.y
 		game.sim_step()
