@@ -1,4 +1,4 @@
-; Godot 4.3 project — GUNFALL (платформер-рогалик)
+; Godot 4.6 project — GUNFALL (платформер-рогалик)
 config_version=5
 
 [application]
@@ -6,7 +6,7 @@ config_version=5
 config/name="GUNFALL"
 config/description="Платформер-рогалик с процедурной генерацией уровней и огнестрельным оружием."
 run/main_scene="res://Main.tscn"
-config/features=PackedStringArray("4.3", "Forward Plus")
+config/features=PackedStringArray("4.6", "Forward Plus")
 config/icon="res://icon.svg"
 
 [display]
