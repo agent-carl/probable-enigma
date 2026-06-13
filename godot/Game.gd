@@ -36,8 +36,10 @@ const WEAPONS := {
 	"smg":     { "name": "ПП «Оса»", "dmg": 8, "cd": 6, "spd": 13.0, "spread": 0.10, "pellets": 1, "auto": true, "ammo": 150, "color": "#9be8ff", "kick": 1.6, "len": 17 },
 	"shotgun": { "name": "Дробовик", "dmg": 9, "cd": 44, "spd": 11.0, "spread": 0.24, "pellets": 6, "auto": false, "ammo": 32, "color": "#ffb077", "kick": 5.0, "len": 19 },
 	"rifle":   { "name": "Винтовка", "dmg": 36, "cd": 34, "spd": 18.0, "spread": 0.012, "pellets": 1, "auto": false, "ammo": 30, "color": "#d3a4ff", "kick": 3.2, "len": 23 },
+	"grenade": { "name": "Гранатомёт", "dmg": 34, "cd": 52, "spd": 9.5, "spread": 0.02, "pellets": 1, "auto": false, "ammo": 18, "color": "#9ef07f", "kick": 4.0, "len": 20, "gren": true, "radius": 80, "fuse": 80 },
+	"railgun": { "name": "Рельса", "dmg": 55, "cd": 50, "spd": 22.0, "spread": 0.0, "pellets": 1, "auto": false, "ammo": 20, "color": "#7fd4ff", "kick": 3.6, "len": 25, "pierce": true },
 }
-const WEAPON_DROPS := ["smg", "shotgun", "rifle"]
+const WEAPON_DROPS := ["smg", "shotgun", "rifle", "grenade", "railgun"]
 
 const UPGRADES := [
 	{ "id": "hp", "icon": "♥", "name": "Живучесть", "desc": "+25 к максимуму здоровья и лечение на 25" },
@@ -56,6 +58,7 @@ const ENEMY_BASE := {
 	"shooter": { "w": 26, "h": 30, "hp": 42, "spd": 0.0, "dmg": 9, "score": 20, "cd": 105, "fly": false },
 	"flyer":   { "w": 24, "h": 20, "hp": 22, "spd": 1.7, "dmg": 10, "score": 15, "cd": 0, "fly": true },
 	"tank":    { "w": 36, "h": 38, "hp": 130, "spd": 0.55, "dmg": 11, "score": 45, "cd": 135, "fly": false },
+	"exploder": { "w": 22, "h": 24, "hp": 18, "spd": 1.9, "dmg": 24, "score": 18, "cd": 0, "fly": false, "radius": 62 },
 	"boss":    { "w": 70, "h": 74, "hp": 900, "spd": 0.9, "dmg": 18, "score": 300, "cd": 70, "fly": false },
 }
 
@@ -150,6 +153,12 @@ func _ready() -> void:
 			P.wi = 1
 			P.stats.dmg_mul = 3.0
 			start_level()
+		elif "--guns" in OS.get_cmdline_args():
+			# все стволы и уровень с камикадзе — для проверки рендера оружия
+			lvl = 4
+			for wid in ["smg", "shotgun", "rifle", "grenade", "railgun"]:
+				P.weapons.append({ "id": wid, "ammo": 999 })
+			start_level()
 	queue_redraw()
 
 func _physics_process(_delta: float) -> void:
@@ -187,6 +196,8 @@ func _demo_step() -> void:
 		input.shoot_clicked = (demo_frame % 6 == 0)
 		input.dash = (demo_frame % 40 == 20)
 		input.switch_to = -1
+		if "--guns" in OS.get_cmdline_args() and demo_frame % 35 == 0:
+			input.switch_to = (P.wi + 1) % P.weapons.size()
 	sim_step()
 	if state == "upgrade":
 		choose_upgrade(offer[0])
@@ -477,6 +488,7 @@ func generate_level(seed_val: int, level_num: int) -> Dictionary:
 		"shooter": int(mini(1 + int(level_num * 0.8), 8) * crowd),
 		"flyer": int((mini(1 + level_num, 9) if level_num >= 2 else 0) * crowd),
 		"tank": int((mini(level_num - 2, 5) if level_num >= 3 else 0) * crowd),
+		"exploder": int((mini(1 + int((level_num - 1) / 2.0), 5) if level_num >= 2 else 0) * crowd),
 	}
 	for type in counts.keys():
 		for _i in range(counts[type]):
@@ -567,6 +579,10 @@ func generate_level(seed_val: int, level_num: int) -> Dictionary:
 			var s = spot.call()
 			if s != null:
 				add_pick.call("ammo", s, {})
+
+	# уникальные id врагов — для дедупликации попаданий пробивающего оружия
+	for i in range(enemy_list.size()):
+		enemy_list[i]["eid"] = i
 
 	return {
 		"W": W, "H": H, "grid": grid, "ground_y": ground_y,
@@ -840,8 +856,26 @@ func hurt_enemy(en: Dictionary, dmg: int, crit: bool) -> void:
 			burst(en.x + en.w / 2.0, en.y + en.h / 2.0, 60, Color("#ffd86b"))
 			add_text(en.x + en.w / 2.0, en.y - 30, "БОСС ПОВЕРЖЕН! +500", Color("#ffd86b"))
 			play_sfx("portal")
+		elif en.get("type", "") == "exploder":
+			explode(en.x + en.w / 2.0, en.y + en.h / 2.0, en.get("radius", 62), int(round(en.dmg * 0.8)), "e")
 		else:
 			drop_loot(en)
+
+func explode(x: float, y: float, radius: float, dmg: int, from: String) -> void:
+	burst(x, y, 26, Color("#ffd06b"))
+	burst(x, y, 14, Color("#ff7a4d"))
+	shake = min(20.0, shake + 9.0)
+	play_sfx("boom")
+	var c := Vector2(x, y)
+	if from == "p":
+		for en in enemies:
+			if en.dead:
+				continue
+			if Vector2(en.x + en.w / 2.0, en.y + en.h / 2.0).distance_to(c) <= radius:
+				hurt_enemy(en, dmg, false)
+	else:
+		if P.inv <= 0 and state == "play" and Vector2(P.x + P.w / 2.0, P.y + P.h / 2.0).distance_to(c) <= radius:
+			hurt_player(dmg, 1 if P.x + P.w / 2.0 > x else -1)
 
 func combo_mult() -> float:
 	# x1.0 при серии 0–2, далее растёт до x4.0
@@ -886,21 +920,31 @@ func try_shoot() -> void:
 	var angle: float = (input.aim - Vector2(cx, cy)).angle()
 	P.aim = angle
 	aim_angle = angle
+	var is_gren: bool = w.get("gren", false)
+	var is_pierce: bool = w.get("pierce", false)
 	for _i in range(w.pellets):
 		var a: float = angle + (rng.randf() - 0.5) * 2.0 * w.spread
 		var crit: bool = rng.randf() < P.stats.crit
 		var dmg: int = max(1, roundi(w.dmg * P.stats.dmg_mul * (2.0 if crit else 1.0)))
-		bullets.append({
+		var b := {
 			"x": cx + cos(a) * 16, "y": cy + sin(a) * 16,
 			"vx": cos(a) * w.spd, "vy": sin(a) * w.spd,
 			"dmg": dmg, "crit": crit, "from": "p", "life": 90, "color": w.color,
-		})
+		}
+		if is_gren:
+			b["grenade"] = true
+			b["radius"] = w.radius
+			b["life"] = w.fuse
+		if is_pierce:
+			b["pierce"] = true
+			b["hit_ids"] = []
+		bullets.append(b)
 	P.vx = clampf(P.vx - cos(angle) * w.kick * 0.35, -9, 9)
 	shake = min(12.0, shake + w.kick * 0.55)
 	burst(cx + cos(angle) * 18, cy + sin(angle) * 18, 3, Color("#fff2b0"))
-	if slot.id == "shotgun":
+	if slot.id == "shotgun" or is_gren:
 		play_sfx("shotgun")
-	elif slot.id == "rifle":
+	elif slot.id == "rifle" or is_pierce:
 		play_sfx("rifle")
 	else:
 		play_sfx("shoot")
@@ -1097,6 +1141,30 @@ func update_enemies() -> void:
 				var at_feet := tile_at(foot_tx, foot_ty - 1)
 				if (below != T_SOLID and below != T_PLAT) or at_feet == T_SPIKE:
 					en.dir *= -1
+		elif en.type == "exploder":
+			en.vy = min(en.vy + GRAV, MAX_FALL)
+			var chase: bool = dist < 360 and line_of_sight(ecx, ecy, pcx, pcy)
+			if chase:
+				en.dir = 1 if pcx > ecx else -1
+			en.vx = en.dir * en.spd * (1.0 if chase else 0.6)
+			# мигание-телеграф учащается с близостью
+			en.phase += 0.2 + clampf((200.0 - dist) / 200.0, 0.0, 1.0) * 0.5
+			collide_entity(en)
+			if en.hit_wall:
+				en.dir *= -1
+			elif en.on_ground:
+				var ahead_x: float = en.x + en.w + 2 if en.dir > 0 else en.x - 2
+				var foot_tx := int(floor(ahead_x / TILE))
+				var foot_ty := int(floor((en.y + en.h + 4) / TILE))
+				var below := tile_at(foot_tx, foot_ty)
+				if below != T_SOLID and below != T_PLAT:
+					en.dir *= -1
+			# подрыв при касании игрока
+			if not en.dead and dist < 34 and P.inv <= 0:
+				en.dead = true
+				kills += 1
+				score += en.score
+				explode(ecx, ecy, en.get("radius", 62), en.dmg, "e")
 		elif en.type == "shooter" or en.type == "tank":
 			en.vy = min(en.vy + GRAV, MAX_FALL)
 			en.vx = 0.0
@@ -1188,7 +1256,7 @@ func update_enemies() -> void:
 		if en.hurt_t > 0:
 			en.hurt_t -= 1
 
-		if P.inv <= 0 and aabb(en, P):
+		if P.inv <= 0 and not en.dead and en.type != "exploder" and aabb(en, P):
 			hurt_player(en.dmg, 1 if P.x + P.w / 2.0 > ecx else -1)
 
 	var alive := []
@@ -1200,6 +1268,10 @@ func update_enemies() -> void:
 func update_bullets() -> void:
 	var alive := []
 	for b in bullets:
+		var is_gren: bool = b.get("grenade", false)
+		var is_pierce: bool = b.get("pierce", false)
+		if is_gren:
+			b.vy = min(b.vy + 0.32, MAX_FALL)  # граната летит по дуге
 		b.life -= 1
 		var hit: bool = b.life <= 0
 		var steps := 2
@@ -1208,7 +1280,8 @@ func update_bullets() -> void:
 			b.x += b.vx / steps
 			b.y += b.vy / steps
 			if solid_px(b.x, b.y):
-				burst(b.x, b.y, 3, Color("#cdd6f0"))
+				if not is_gren:
+					burst(b.x, b.y, 3, Color("#cdd6f0"))
 				hit = true
 				break
 			if b.from == "p":
@@ -1216,9 +1289,18 @@ func update_bullets() -> void:
 					if en.dead:
 						continue
 					if b.x > en.x - 2 and b.x < en.x + en.w + 2 and b.y > en.y - 2 and b.y < en.y + en.h + 2:
-						hurt_enemy(en, b.dmg, b.crit)
-						hit = true
-						break
+						if is_gren:
+							hit = true  # граната подрывается, урон от взрыва
+							break
+						if is_pierce:
+							if not (en.eid in b.hit_ids):
+								hurt_enemy(en, b.dmg, b.crit)
+								b.hit_ids.append(en.eid)
+							# рельса проходит насквозь — не останавливаемся
+						else:
+							hurt_enemy(en, b.dmg, b.crit)
+							hit = true
+							break
 			elif P.inv <= 0 and state == "play" \
 					and b.x > P.x - 2 and b.x < P.x + P.w + 2 and b.y > P.y - 2 and b.y < P.y + P.h + 2:
 				hurt_player(b.dmg, 1 if b.vx > 0 else -1)
@@ -1226,6 +1308,8 @@ func update_bullets() -> void:
 			if b.y < -200 or b.y > level.px_h + 200 or b.x < -200 or b.x > level.px_w + 200:
 				hit = true
 			s += 1
+		if hit and is_gren:
+			explode(b.x, b.y, b.radius, b.dmg, b.from)
 		if not hit:
 			alive.append(b)
 	bullets = alive
@@ -1487,6 +1571,15 @@ func _draw_enemies() -> void:
 			draw_rect(Rect2(en.x, en.y + 8, en.w, en.h - 8), Color.WHITE if flash else Color("#c8893a"))
 			draw_circle(Vector2(en.x + en.w / 2.0, en.y + 12), en.w / 2.0 - 4, Color.WHITE if flash else Color("#9c6a28"))
 			draw_rect(Rect2(en.x + en.w / 2.0 + (6 if en.dir > 0 else -22), en.y + en.h / 2.0, 16, 5), Color("#3a2810"))
+		elif en.type == "exploder":
+			# пульсирующий телеграф подрыва
+			var blink := (sin(en.phase) * 0.5 + 0.5)
+			var body := Color("#ff7a3d").lerp(Color("#fff0b0"), blink)
+			draw_circle(Vector2(en.x + en.w / 2.0, en.y + en.h / 2.0), en.w / 2.0 + 1, Color(1, 0.5, 0.2, 0.18 + blink * 0.2))
+			draw_rect(Rect2(en.x, en.y, en.w, en.h), Color.WHITE if flash else body)
+			draw_rect(Rect2(en.x + en.w / 2.0 - 2, en.y - 4, 4, 4), Color("#ffe14d"))  # фитиль
+			draw_rect(Rect2(en.x + 4, en.y + 8, 4, 4), Color("#2a0f0e"))
+			draw_rect(Rect2(en.x + en.w - 8, en.y + 8, 4, 4), Color("#2a0f0e"))
 		elif en.type == "boss":
 			var ecb := Vector2(en.x + en.w / 2.0, en.y + en.h / 2.0)
 			# аура по фазе атаки
@@ -1530,8 +1623,19 @@ func _draw_player() -> void:
 func _draw_bullets() -> void:
 	for b in bullets:
 		var col := _col(b.color)
-		var from := Vector2(b.x - b.vx * 1.4, b.y - b.vy * 1.4)
-		draw_line(from, Vector2(b.x, b.y), col, 3.5 if b.crit else 2.5)
+		if b.get("grenade", false):
+			# граната — вращающийся снаряд со светящимся следом
+			draw_circle(Vector2(b.x, b.y), 6, col)
+			draw_circle(Vector2(b.x, b.y), 3, Color(1, 1, 1, 0.6))
+			draw_circle(Vector2(b.x - b.vx * 0.6, b.y - b.vy * 0.6), 3, Color(col.r, col.g, col.b, 0.35))
+		elif b.get("pierce", false):
+			# рельса — толстый яркий луч
+			var from := Vector2(b.x - b.vx * 1.8, b.y - b.vy * 1.8)
+			draw_line(from, Vector2(b.x, b.y), Color(1, 1, 1, 0.5), 5.0)
+			draw_line(from, Vector2(b.x, b.y), col, 3.0)
+		else:
+			var from := Vector2(b.x - b.vx * 1.4, b.y - b.vy * 1.4)
+			draw_line(from, Vector2(b.x, b.y), col, 3.5 if b.crit else 2.5)
 
 func _draw_particles() -> void:
 	for p in parts:
@@ -1742,6 +1846,7 @@ func _setup_audio() -> void:
 		"portal": _tone(330, 760, 0.30, "sine", 0.40),
 		"select": _tone(600, 900, 0.08, "square", 0.24),
 		"dash": _tone(180, 520, 0.16, "sine", 0.30),
+		"boom": _noise(0.35, 0.6, true),
 		"die": _noise(0.4, 0.55, true),
 	}
 

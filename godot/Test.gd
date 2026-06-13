@@ -168,6 +168,78 @@ func _init() -> void:
 	_ok(game.P.dash_t > 0, "dash activates (dash_t > 0)")
 	_ok(game.P.dash_cd > 0, "dash sets cooldown")
 
+	# ---------- 8. Взрыв бьёт по площади ----------
+	game.start_run(11, "11")
+	game.enemies.clear()
+	var targets := []
+	for k in range(3):
+		var e := { "type": "walker", "x": 200.0 + k * 20, "y": 200.0, "w": 20, "h": 20, "hp": 30, "maxhp": 30, "score": 10, "dead": false, "hurt_t": 0, "eid": 1000 + k }
+		game.enemies.append(e)
+		targets.append(e)
+	game.explode(210, 210, 80, 40, "p")
+	var dead_count := 0
+	for e in targets:
+		if e.dead:
+			dead_count += 1
+	_ok(dead_count == 3, "explosion hits all enemies in radius (got %d)" % dead_count)
+	# враг вне радиуса не задет
+	var far := { "type": "walker", "x": 900.0, "y": 200.0, "w": 20, "h": 20, "hp": 30, "maxhp": 30, "score": 10, "dead": false, "hurt_t": 0, "eid": 2000 }
+	game.enemies.append(far)
+	game.explode(210, 210, 80, 40, "p")
+	_ok(not far.dead, "explosion spares enemies out of radius")
+
+	# ---------- 9. Граната подрывается ----------
+	game.start_run(12, "12")
+	game.bullets.clear()
+	game.enemies.clear()
+	var ge := { "type": "walker", "x": 300.0, "y": 200.0, "w": 24, "h": 24, "hp": 30, "maxhp": 30, "score": 10, "dead": false, "hurt_t": 0, "eid": 5 }
+	game.enemies.append(ge)
+	# граната летит прямо в цель
+	game.bullets.append({ "x": 280.0, "y": 210.0, "vx": 8.0, "vy": 0.0, "dmg": 34, "crit": false, "from": "p", "life": 80, "color": "#9ef07f", "grenade": true, "radius": 80 })
+	for _i in range(20):
+		game.update_bullets()
+		if ge.dead:
+			break
+	_ok(ge.dead, "grenade detonates and kills nearby enemy")
+
+	# ---------- 10. Рельса пробивает несколько целей ----------
+	game.bullets.clear()
+	game.enemies.clear()
+	var line := []
+	for k in range(3):
+		var e := { "type": "walker", "x": 400.0 + k * 30, "y": 200.0, "w": 20, "h": 30, "hp": 40, "maxhp": 40, "score": 10, "dead": false, "hurt_t": 0, "eid": 700 + k }
+		game.enemies.append(e)
+		line.append(e)
+	game.bullets.append({ "x": 395.0, "y": 210.0, "vx": 22.0, "vy": 0.0, "dmg": 55, "crit": false, "from": "p", "life": 60, "color": "#7fd4ff", "pierce": true, "hit_ids": [] })
+	for _i in range(30):
+		game.update_bullets()
+	var pierced := 0
+	for e in line:
+		if e.dead:
+			pierced += 1
+	_ok(pierced == 3, "railgun pierces multiple enemies (got %d)" % pierced)
+
+	# ---------- 11. Камикадзе подрывается при гибели и бьёт по игроку ----------
+	game.start_run(13, "13")
+	game.enemies.clear()
+	var bomber := { "type": "exploder", "x": 500.0, "y": 200.0, "w": 22, "h": 24, "hp": 18, "maxhp": 18, "score": 18, "dmg": 24, "radius": 62, "dead": false, "hurt_t": 0, "eid": 9 }
+	game.P.x = 500.0
+	game.P.y = 200.0
+	game.P.inv = 0
+	var hp0: float = game.P.hp
+	game.enemies.append(bomber)
+	game.hurt_enemy(bomber, 999, false)
+	_ok(bomber.dead, "exploder dies")
+	_ok(game.P.hp < hp0, "exploder death explosion damages nearby player")
+
+	# в боссовой генерации появляются камикадзе на поздних уровнях
+	var has_exploder := false
+	var L7: Dictionary = game.generate_level(7777, 7)
+	for en in L7.enemies:
+		if en.type == "exploder":
+			has_exploder = true
+	_ok(has_exploder, "exploders spawn on level 7")
+
 	if failures == 0:
 		print("\nALL TESTS PASSED")
 	else:
