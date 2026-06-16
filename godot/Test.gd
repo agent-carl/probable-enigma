@@ -116,6 +116,23 @@ func _init() -> void:
 	var L10: Dictionary = game.generate_level(101010, 10)
 	_ok(L10.has_boss, "level 10 has boss flag")
 
+	# варианты боссов чередуются: ур.5 — наземный, ур.10 — летающий
+	var b5 = null
+	for en in L5.enemies:
+		if en.get("boss", false):
+			b5 = en
+	var b10 = null
+	for en in L10.enemies:
+		if en.get("boss", false):
+			b10 = en
+	_ok(b5 != null and b5.variant == "ground", "level 5 boss is ground variant")
+	_ok(b10 != null and b10.variant == "air", "level 10 boss is air variant")
+	# летающий босс заспавнен в воздухе (над землёй)
+	var gy10: Array = L10.ground_y
+	var b10_col := int((b10.x + b10.w / 2.0) / 32)
+	b10_col = clampi(b10_col, 0, L10.W - 1)
+	_ok(b10.y + b10.h < gy10[b10_col] * 32, "air boss spawns above the ground")
+
 	# гейтинг портала и убийство босса
 	game.start_run(7, "7")
 	game.lvl = 5
@@ -148,6 +165,30 @@ func _init() -> void:
 	game.sim_step()
 	_ok(game.state == "upgrade", "portal opens after boss dead")
 	game.choose_upgrade(game.offer[0])
+
+	# летающий босс: стабильная симуляция (без падений/NaN, в пределах карты)
+	game.start_run(70, "70")
+	game.lvl = 10
+	game.start_level()
+	_ok(game.boss_alive, "air boss level active")
+	for i in range(400):
+		game.input.move = (1 if (i / 40) % 2 == 0 else -1)
+		game.input.jump_pressed = (i % 30 == 0)
+		game.input.jump_held = true
+		game.input.aim = Vector2(game.P.x + 100, game.P.y)
+		game.input.shoot_held = true
+		game.input.shoot_clicked = (i % 8 == 0)
+		game.sim_step()
+		var air = null
+		for en in game.enemies:
+			if en.get("boss", false):
+				air = en
+		if air != null:
+			_ok(is_finite(air.x) and is_finite(air.y) and is_finite(air.vx) and is_finite(air.vy), "air boss state finite at step %d" % i)
+			_ok(air.x >= -64 and air.x <= game.level.px_w + 64, "air boss x in bounds at step %d" % i)
+			_ok(air.y >= -64 and air.y <= game.level.px_h + 64, "air boss y in bounds at step %d" % i)
+		if game.state != "play":
+			break
 
 	# ---------- 6. Серия убийств (комбо) ----------
 	game.start_run(8, "8")

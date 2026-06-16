@@ -99,6 +99,7 @@ var combo := 0           # серия убийств
 var combo_t := 0         # таймер сброса серии
 var max_combo := 0       # лучшая серия за забег
 var boss_alive := false  # на уровне есть живой босс
+var boss_name := ""      # имя текущего босса
 var hitstop := 0         # короткая заморозка при крупных событиях
 var volume := 0.8        # громкость (0..1), сохраняется
 
@@ -176,9 +177,9 @@ func _ready() -> void:
 		audio_enabled = false
 		RenderingServer.frame_post_draw.connect(_on_post_draw)
 		start_run(12345, "DEMO")
-		if "--boss" in OS.get_cmdline_args():
+		if "--boss" in OS.get_cmdline_args() or "--airboss" in OS.get_cmdline_args():
 			# прыжок на боссовый уровень с прокачкой — для проверки рендера босса
-			lvl = 5
+			lvl = 10 if "--airboss" in OS.get_cmdline_args() else 5
 			P.weapons.append({ "id": "rifle", "ammo": 999 })
 			P.wi = 1
 			P.stats.dmg_mul = 3.0
@@ -210,7 +211,7 @@ func _demo_step() -> void:
 		max_combo = 7
 		P.inv = 0
 		hurt_player(99999, 0)
-	if demo_frame == 60 and "--boss" in OS.get_cmdline_args() and state == "play":
+	if demo_frame == 60 and ("--boss" in OS.get_cmdline_args() or "--airboss" in OS.get_cmdline_args()) and state == "play":
 		for en in enemies:
 			if en.get("boss", false):
 				P.x = en.x - 120
@@ -567,9 +568,10 @@ func generate_level(seed_val: int, level_num: int) -> Dictionary:
 					continue
 				add_enemy.call(type, sx * TILE + (span * TILE - b.w) / 2.0, ground_y[sx] * TILE - b.h - 1)
 
-	# --- босс на каждом 5-м уровне ---
+	# --- босс на каждом 5-м уровне (чередуем наземного и летающего) ---
 	if is_boss_level:
 		var bb: Dictionary = ENEMY_BASE["boss"]
+		var boss_variant := "air" if (int(level_num / 5) % 2 == 0) else "ground"
 		var bspan := 3
 		var bx := -1
 		# ровная площадка ближе к выходу
@@ -585,13 +587,17 @@ func generate_level(seed_val: int, level_num: int) -> Dictionary:
 		if bx < 0:
 			bx = W - 20
 		var boss_hp := 500 + 90 * level_num
+		var by: float = ground_y[bx] * TILE - bb.h - 1
+		if boss_variant == "air":
+			# летающий босс парит над землёй
+			by = max(2 * TILE, ground_y[bx] * TILE - 7 * TILE)
 		enemy_list.append({
-			"type": "boss", "boss": true,
-			"x": bx * TILE, "y": ground_y[bx] * TILE - bb.h - 1, "w": bb.w, "h": bb.h,
+			"type": "boss", "boss": true, "variant": boss_variant,
+			"x": bx * TILE, "y": by, "w": bb.w, "h": bb.h,
 			"hp": boss_hp, "maxhp": boss_hp,
 			"vx": 0.0, "vy": 0.0, "dir": -1,
 			"spd": bb.spd, "dmg": bb.dmg + dmg_add, "score": bb.score,
-			"fly": false, "cd": 90, "cd_max": bb.cd,
+			"fly": boss_variant == "air", "cd": 90, "cd_max": bb.cd,
 			"hurt_t": 0, "phase": 0.0, "atk": 0, "atk_t": 120,
 			"on_ground": false, "hit_wall": false, "drop": 0, "dead": false,
 		})
@@ -822,12 +828,18 @@ func start_level() -> void:
 	combo_t = 0
 	hitstop = 0
 	boss_alive = level.get("has_boss", false)
+	boss_name = ""
+	if boss_alive:
+		for en in enemies:
+			if en.get("boss", false):
+				boss_name = "НЕБЕСНЫЙ СТРАЖ" if en.get("variant", "ground") == "air" else "СТРАЖ ЗЕМЛИ"
+				break
 	cam.x = clampf(P.x - VW / 2.0, 0, max(0, level.px_w - VW))
 	cam.y = clampf(P.y - VH / 2.0, 0, max(0, level.px_h - VH))
 	shake = 0.0
 	intro = 150
 	if boss_alive:
-		intro_text = "Уровень %d — БОСС" % lvl
+		intro_text = "Уровень %d — %s" % [lvl, boss_name]
 	else:
 		intro_text = "Уровень %d — %s" % [lvl, level.theme.name]
 	_build_background(level_seed)
@@ -1367,6 +1379,41 @@ func update_enemies() -> void:
 			if en.vy == 0 and pvy != 0:
 				en.vy = -pvy * 0.5
 			en.dir = 1 if pcx > ecx else -1
+		elif en.type == "boss" and en.get("variant", "ground") == "air":
+			# летающий босс: парит над игроком, залпы и пикирование
+			en.phase += 0.05
+			en.dir = 1 if pcx > ecx else -1
+			en.atk_t -= 1
+			if en.atk_t <= 0:
+				en.atk = (en.atk + 1) % 3
+				en.atk_t = 150
+			if en.atk == 2:
+				# пикирование к игроку
+				en.vx += clampf(pcx - ecx, -1, 1) * 0.5
+				en.vy += clampf(pcy - ecy, -1, 1) * 0.5
+			else:
+				# парение к точке над игроком
+				var hover_y := clampf(pcy - 130, 2 * TILE, level.px_h - 5 * TILE)
+				en.vx += clampf(pcx - ecx, -1, 1) * 0.18
+				en.vy += clampf(hover_y - ecy, -1, 1) * 0.18 + sin(en.phase * 2.0) * 0.06
+			var maxsp := 7.0 if en.atk == 2 else 3.2
+			var sp := Vector2(en.vx, en.vy).length()
+			if sp > maxsp:
+				en.vx *= maxsp / sp
+				en.vy *= maxsp / sp
+			collide_entity(en)
+			en.cd -= 1
+			if en.cd <= 0 and en.atk != 2 and line_of_sight(ecx, ecy, pcx, pcy):
+				var base_a := (Vector2(pcx, pcy) - Vector2(ecx, ecy)).angle()
+				if en.atk == 0:
+					en.cd = 22
+					for k in range(-1, 2):
+						_eshot(ecx, ecy, base_a + k * 0.13, 6.2, en.dmg, "#7fd4ff")
+				else:
+					en.cd = 66
+					for k in range(14):
+						_eshot(ecx, ecy, k * TAU / 14.0 + en.phase, 4.4, en.dmg, "#7fd4ff")
+					shake = max(shake, 5.0)
 		elif en.type == "boss":
 			en.vy = min(en.vy + GRAV, MAX_FALL)
 			en.dir = 1 if pcx > ecx else -1
@@ -1774,6 +1821,21 @@ func _draw_enemies() -> void:
 			draw_rect(Rect2(en.x + en.w / 2.0 - 2, en.y - 4, 4, 4), Color("#ffe14d"))  # фитиль
 			draw_rect(Rect2(en.x + 4, en.y + 8, 4, 4), Color("#2a0f0e"))
 			draw_rect(Rect2(en.x + en.w - 8, en.y + 8, 4, 4), Color("#2a0f0e"))
+		elif en.type == "boss" and en.get("variant", "ground") == "air":
+			var ecb := Vector2(en.x + en.w / 2.0, en.y + en.h / 2.0)
+			var aura: Color = [Color(0.5, 0.83, 1.0, 0.18), Color(0.5, 0.83, 1.0, 0.18), Color(1.0, 0.5, 0.4, 0.22)][en.atk]
+			draw_circle(ecb, en.w * 0.8 + sin(tick * 0.12) * 5, aura)
+			# крылья
+			var flap := sin(tick * 0.25 + en.phase) * 8
+			var wing := Color.WHITE if flash else Color("#3f7fb0")
+			draw_colored_polygon(PackedVector2Array([
+				Vector2(en.x + 6, ecb.y), Vector2(en.x - 22, ecb.y - 14 + flap), Vector2(en.x + 8, ecb.y + 12)]), wing)
+			draw_colored_polygon(PackedVector2Array([
+				Vector2(en.x + en.w - 6, ecb.y), Vector2(en.x + en.w + 22, ecb.y - 14 + flap), Vector2(en.x + en.w - 8, ecb.y + 12)]), wing)
+			# ядро-глаз
+			draw_circle(ecb, en.w / 2.0, Color.WHITE if flash else Color("#2c5f8a"))
+			draw_circle(ecb, en.w / 2.0 - 6, Color.WHITE if flash else Color("#7fd4ff"))
+			draw_circle(Vector2(ecb.x + en.dir * 6, ecb.y), 7, Color("#11314a"))
 		elif en.type == "boss":
 			var ecb := Vector2(en.x + en.w / 2.0, en.y + en.h / 2.0)
 			# аура по фазе атаки
@@ -1894,7 +1956,7 @@ func _draw_hud() -> void:
 	# уровень/тема
 	var title := "Уровень %d · %s" % [lvl, level.theme.name]
 	if boss_alive:
-		title = "Уровень %d · БОСС" % lvl
+		title = "Уровень %d · %s" % [lvl, boss_name if boss_name != "" else "БОСС"]
 	_text(Vector2(VW / 2.0, 24), title, 14, Color("#dfe5ff"), true)
 
 	# полоса здоровья босса
@@ -1910,7 +1972,7 @@ func _draw_hud() -> void:
 			draw_rect(Rect2(bx - 3, VH - 86, bw + 6, 22), Color(0, 0, 0, 0.55))
 			var bfrac := clampf(float(boss.hp) / boss.maxhp, 0, 1)
 			draw_rect(Rect2(bx, VH - 83, bw * bfrac, 16), Color("#ff4db0"))
-			_text(Vector2(VW / 2.0, VH - 70), "БОСС", 12, Color("#ffe9b0"), true)
+			_text(Vector2(VW / 2.0, VH - 70), boss_name if boss_name != "" else "БОСС", 12, Color("#ffe9b0"), true)
 			_draw_offscreen_arrow(Vector2(boss.x + boss.w / 2.0, boss.y + boss.h / 2.0), Color("#ff4db0"))
 	else:
 		# указатель на портал, если он за краем экрана
