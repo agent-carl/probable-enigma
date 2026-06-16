@@ -51,6 +51,22 @@ const UPGRADES := [
 	{ "id": "armor", "icon": "▣", "name": "Бронежилет", "desc": "Получаемый урон снижен на 15%" },
 	{ "id": "crit", "icon": "◎", "name": "Крит. патроны", "desc": "+10% шанс двойного урона" },
 	{ "id": "jump", "icon": "↑", "name": "Пружины", "desc": "+8% к высоте прыжка" },
+	{ "id": "shieldup", "icon": "▢", "name": "Энергощит", "desc": "+30 к запасу щита и медленное восстановление щита" },
+	{ "id": "dashcd", "icon": "⟫", "name": "Реактивный рывок", "desc": "Перезарядка рывка быстрее на 30%" },
+	{ "id": "blast", "icon": "✺", "name": "Сапёр", "desc": "+40% к радиусу и урону ваших взрывов" },
+	{ "id": "magnet", "icon": "◈", "name": "Магнит", "desc": "Притягивает монеты и предметы с большего расстояния" },
+	{ "id": "berserk", "icon": "⚡", "name": "Берсерк", "desc": "Чем длиннее серия убийств, тем выше урон" },
+]
+
+const ACHIEVEMENTS := [
+	{ "id": "first_blood", "name": "Первая кровь", "desc": "Убить первого врага" },
+	{ "id": "combo_master", "name": "Мастер серий", "desc": "Серия из 10 убийств" },
+	{ "id": "boss_slayer", "name": "Победитель боссов", "desc": "Одолеть босса" },
+	{ "id": "arsenal", "name": "Арсенал", "desc": "Носить 4 оружия одновременно" },
+	{ "id": "deep_diver", "name": "Глубоко", "desc": "Дойти до 10-го уровня" },
+	{ "id": "sharpshooter", "name": "Снайпер", "desc": "Точность 90%+ за забег (30+ выстрелов)" },
+	{ "id": "high_score", "name": "Богач", "desc": "Набрать 1000 очков за забег" },
+	{ "id": "survivor", "name": "Живучий", "desc": "Прожить 3 минуты за один забег" },
 ]
 
 const ENEMY_BASE := {
@@ -90,6 +106,10 @@ var run_ticks := 0       # прожитые кадры (время)
 var shots_fired := 0
 var shots_hit := 0
 var damage_dealt := 0
+
+# достижения
+var unlocked := {}       # id -> true (сохраняется)
+var toasts := []         # всплывающие уведомления [{text, life}]
 
 var level := {}        # текущая карта
 var P := {}            # игрок
@@ -731,7 +751,11 @@ func make_player() -> Dictionary:
 		"dash_cd": 0, "dash_t": 0, "dash_dir": 1.0,
 		"shield": 0.0, "max_shield": 0.0,
 		"weapons": [{ "id": "pistol", "ammo": INF }], "wi": 0,
-		"stats": { "dmg_mul": 1.0, "cd_mul": 1.0, "spd_mul": 1.0, "jumps": 1, "lifesteal": 0, "armor_mul": 1.0, "crit": 0.0, "jump_mul": 1.0 },
+		"stats": {
+			"dmg_mul": 1.0, "cd_mul": 1.0, "spd_mul": 1.0, "jumps": 1, "lifesteal": 0,
+			"armor_mul": 1.0, "crit": 0.0, "jump_mul": 1.0,
+			"shield_regen": 0.0, "dash_cd_mul": 1.0, "blast_mul": 1.0, "magnet_range": 90.0, "berserk": 0.0,
+		},
 	}
 
 func start_from_menu() -> void:
@@ -823,6 +847,14 @@ func choose_upgrade(u: Dictionary) -> void:
 		"armor": st.armor_mul *= 0.85
 		"crit": st.crit = min(0.6, st.crit + 0.10)
 		"jump": st.jump_mul *= 1.08
+		"shieldup":
+			P.max_shield += 30
+			P.shield = min(P.max_shield, P.shield + 30)
+			st.shield_regen += 0.06
+		"dashcd": st.dash_cd_mul *= 0.7
+		"blast": st.blast_mul *= 1.4
+		"magnet": st.magnet_range += 90.0
+		"berserk": st.berserk += 0.5
 	play_sfx("select")
 	lvl += 1
 	start_level()
@@ -862,6 +894,7 @@ func hurt_player(dmg: float, from_dir: float) -> void:
 func die() -> void:
 	burst(P.x + P.w / 2.0, P.y + P.h / 2.0, 30, Color("#ff6b5e"))
 	play_sfx("die")
+	check_achievements()  # финальная проверка (точность/время/очки)
 	if score > best:
 		best = score
 		_save_best(best)
@@ -900,12 +933,17 @@ func hurt_enemy(en: Dictionary, dmg: int, crit: bool) -> void:
 			burst(en.x + en.w / 2.0, en.y + en.h / 2.0, 60, Color("#ffd86b"))
 			add_text(en.x + en.w / 2.0, en.y - 30, "БОСС ПОВЕРЖЕН! +500", Color("#ffd86b"))
 			play_sfx("portal")
+			unlock("boss_slayer")
 		elif en.get("type", "") == "exploder":
 			explode(en.x + en.w / 2.0, en.y + en.h / 2.0, en.get("radius", 62), int(round(en.dmg * 0.8)), "e")
 		else:
 			drop_loot(en)
 
 func explode(x: float, y: float, radius: float, dmg: int, from: String) -> void:
+	# улучшение «Сапёр» усиливает взрывы игрока
+	if from == "p" and not P.is_empty():
+		radius *= P.stats.blast_mul
+		dmg = int(round(dmg * P.stats.blast_mul))
 	burst(x, y, 26, Color("#ffd06b"))
 	burst(x, y, 14, Color("#ff7a4d"))
 	shake = min(20.0, shake + 9.0)
@@ -968,10 +1006,12 @@ func try_shoot() -> void:
 	aim_angle = angle
 	var is_gren: bool = w.get("gren", false)
 	var is_pierce: bool = w.get("pierce", false)
+	# «Берсерк»: бонус к урону растёт с серией убийств (до +40% при серии 20)
+	var berserk_bonus: float = 1.0 + P.stats.berserk * mini(combo, 20) * 0.02
 	for _i in range(w.pellets):
 		var a: float = angle + (rng.randf() - 0.5) * 2.0 * w.spread
 		var crit: bool = rng.randf() < P.stats.crit
-		var dmg: int = max(1, roundi(w.dmg * P.stats.dmg_mul * (2.0 if crit else 1.0)))
+		var dmg: int = max(1, roundi(w.dmg * P.stats.dmg_mul * berserk_bonus * (2.0 if crit else 1.0)))
 		var b := {
 			"x": cx + cos(a) * 16, "y": cy + sin(a) * 16,
 			"vx": cos(a) * w.spd, "vy": sin(a) * w.spd,
@@ -1063,6 +1103,8 @@ func sim_step() -> void:
 				combo = 0
 		if intro > 0:
 			intro -= 1
+		if state == "play":
+			check_achievements()
 
 func update_player() -> void:
 	var st: Dictionary = P.stats
@@ -1113,11 +1155,15 @@ func update_player() -> void:
 		afterimages.append({ "x": P.x, "y": P.y, "life": 12.0 })
 	elif input.dash and P.dash_cd <= 0:
 		P.dash_t = 11
-		P.dash_cd = 55
+		P.dash_cd = int(round(55 * st.dash_cd_mul))
 		P.dash_dir = float(input.move) if input.move != 0 else float(P.face)
 		P.inv = max(P.inv, 12)
 		play_sfx("dash")
 		afterimages.append({ "x": P.x, "y": P.y, "life": 12.0 })
+
+	# восстановление щита (если есть улучшение)
+	if st.shield_regen > 0 and P.max_shield > 0 and P.shield < P.max_shield:
+		P.shield = min(P.max_shield, P.shield + st.shield_regen)
 
 	collide_entity(P)
 
@@ -1388,11 +1434,13 @@ func update_pickups() -> void:
 		else:
 			pk.y = ny
 
-		if pk.kind == "coin":
+		# магнит: монеты всегда, прочие предметы — с улучшением «Магнит»
+		var mrange: float = P.stats.magnet_range
+		if pk.kind == "coin" or mrange > 90.0:
 			var dx: float = P.x + P.w / 2.0 - (pk.x + pk.w / 2.0)
 			var dy: float = P.y + P.h / 2.0 - (pk.y + pk.h / 2.0)
 			var d := Vector2(dx, dy).length()
-			if d < 90 and d > 1:
+			if d < mrange and d > 1:
 				pk.x += dx / d * 3.4
 				pk.y += dy / d * 3.4
 
@@ -1441,6 +1489,12 @@ func update_effects() -> void:
 		if a.life > 0:
 			ai.append(a)
 	afterimages = ai
+	var to := []
+	for t in toasts:
+		t.life -= 1
+		if t.life > 0:
+			to.append(t)
+	toasts = to
 
 func update_camera() -> void:
 	# лёгкий look-ahead в сторону прицела
@@ -1820,11 +1874,24 @@ func _draw_hud() -> void:
 		_text(Vector2(VW / 2.0, VH / 2.0 - 60), intro_text, 30, Color(1, 0.91, 0.69, a), true)
 		_text(Vector2(VW / 2.0, VH / 2.0 - 30), "Доберитесь до портала →", 15, Color(0.67, 0.70, 0.84, a), true)
 
+	_draw_toasts()
+
 	# прицел
 	if state == "play":
 		var m := get_local_mouse_position()
 		draw_arc(m, 7, 0, TAU, 20, Color(1, 1, 1, 0.9), 1.5)
 		draw_rect(Rect2(m.x - 1, m.y - 1, 2, 2), Color(1, 1, 1, 0.9))
+
+func _draw_toasts() -> void:
+	var ty := 100.0
+	for t in toasts:
+		var a := clampf(t.life / 40.0, 0, 1)
+		var tw := font.get_string_size(t.text, HORIZONTAL_ALIGNMENT_LEFT, -1, 15).x + 28
+		var tx := VW / 2.0 - tw / 2.0
+		draw_rect(Rect2(tx, ty, tw, 26), Color(0.1, 0.12, 0.2, 0.85 * a))
+		draw_rect(Rect2(tx, ty, 4, 26), Color(1, 0.85, 0.42, a))
+		_text(Vector2(VW / 2.0, ty + 18), t.text, 15, Color(1, 0.92, 0.7, a), true)
+		ty += 32
 
 func _fmt_time(ticks: int) -> String:
 	var sec := int(ticks / 60.0)
@@ -1895,9 +1962,9 @@ func _draw_overlays() -> void:
 			_text(Vector2(cx, 322), "Каждый 5-й уровень — БОСС", 13, Color("#ff8fc4"), true)
 			_btn(Rect2(cx - 90, 344, 180, 50), "Играть", "play")
 			var bl := "Рекорд: %d очков" % best if best > 0 else "Удачного первого забега!"
-			_text(Vector2(cx, 414), bl, 14, Color("#6f7aa3"), true)
-			_text(Vector2(cx, 436), "Enter / Пробел / клик — старт", 13, Color("#6f7aa3"), true)
-			_draw_volume(cx, 462)
+			_text(Vector2(cx, 410), bl, 14, Color("#6f7aa3"), true)
+			_text(Vector2(cx, 430), "Достижения: %d / %d  ·  Enter / клик — старт" % [unlocked.size(), ACHIEVEMENTS.size()], 13, Color("#6f7aa3"), true)
+			_draw_volume(cx, 458)
 		"pause":
 			_text(Vector2(cx, 180), "Пауза", 40, Color("#eaf0ff"), true)
 			_btn(Rect2(cx - 90, 230, 180, 50), "Продолжить", "resume")
@@ -2065,6 +2132,10 @@ func _load_settings() -> void:
 	if cfg.load(_cfg_path()) == OK:
 		best = int(cfg.get_value("progress", "best", 0))
 		volume = clampf(float(cfg.get_value("settings", "volume", 0.8)), 0.0, 1.0)
+		unlocked.clear()
+		if cfg.has_section("achievements"):
+			for k in cfg.get_section_keys("achievements"):
+				unlocked[k] = true
 	else:
 		# совместимость со старым форматом рекорда
 		var old := "user://gunfall_best.save"
@@ -2078,7 +2149,41 @@ func _save_settings() -> void:
 	var cfg := ConfigFile.new()
 	cfg.set_value("progress", "best", best)
 	cfg.set_value("settings", "volume", volume)
+	for id in unlocked.keys():
+		cfg.set_value("achievements", id, true)
 	cfg.save(_cfg_path())
+
+# ============================== Достижения ==============================
+
+func _ach_name(id: String) -> String:
+	for a in ACHIEVEMENTS:
+		if a.id == id:
+			return a.name
+	return id
+
+func unlock(id: String) -> void:
+	if unlocked.has(id):
+		return
+	unlocked[id] = true
+	toasts.append({ "text": "Достижение: " + _ach_name(id), "life": 200.0 })
+	play_sfx("portal")
+	_save_settings()
+
+func check_achievements() -> void:
+	if kills >= 1:
+		unlock("first_blood")
+	if max_combo >= 10:
+		unlock("combo_master")
+	if P.weapons.size() >= 4:
+		unlock("arsenal")
+	if lvl >= 10:
+		unlock("deep_diver")
+	if score >= 1000:
+		unlock("high_score")
+	if run_ticks >= 60 * 180:
+		unlock("survivor")
+	if shots_fired >= 30 and accuracy() >= 0.9:
+		unlock("sharpshooter")
 
 func _save_best(v: int) -> void:
 	best = v

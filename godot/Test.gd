@@ -287,6 +287,104 @@ func _init() -> void:
 	_ok(abs(game.volume - 0.3) < 1e-6, "volume persists across save/load (got %s)" % str(game.volume))
 	_ok(game.best == 4242, "best persists across save/load")
 
+	# ---------- 15. Новые улучшения ----------
+	# Энергощит: запас + регенерация
+	game.start_run(31, "31")
+	game.choose_upgrade({ "id": "shieldup" })
+	_ok(game.P.max_shield >= 30, "shieldup grants max shield")
+	_ok(game.P.stats.shield_regen > 0, "shieldup enables regen")
+	game.P.shield = 5.0
+	game.input.move = 0
+	game.input.dash = false
+	game.sim_step()
+	_ok(game.P.shield > 5.0 and game.P.shield <= game.P.max_shield, "shield regenerates over time")
+
+	# Реактивный рывок: меньше кулдаун
+	game.start_run(32, "32")
+	game.choose_upgrade({ "id": "dashcd" })
+	game.input.move = 1
+	game.input.dash = true
+	game.sim_step()
+	_ok(game.P.dash_cd == int(round(55 * 0.7)), "dashcd shortens dash cooldown (got %d)" % game.P.dash_cd)
+
+	# Сапёр: больший радиус взрыва
+	game.start_run(33, "33")
+	game.choose_upgrade({ "id": "blast" })
+	game.enemies.clear()
+	var near_e := { "type": "walker", "x": 490.0, "y": 290.0, "w": 20, "h": 20, "hp": 30, "maxhp": 30, "score": 10, "dead": false, "hurt_t": 0, "eid": 1 }
+	var far_e := { "type": "walker", "x": 525.0, "y": 290.0, "w": 20, "h": 20, "hp": 30, "maxhp": 30, "score": 10, "dead": false, "hurt_t": 0, "eid": 2 }
+	game.enemies.append(near_e)
+	game.enemies.append(far_e)
+	game.explode(400, 300, 80, 40, "p")  # базовый радиус 80 -> 112 с x1.4
+	_ok(near_e.dead, "blast upgrade extends radius to hit enemy at 100px")
+	_ok(not far_e.dead, "enemy beyond extended radius survives")
+
+	# Магнит: притягивает не-монеты
+	game.start_run(34, "34")
+	game.choose_upgrade({ "id": "magnet" })
+	_ok(game.P.stats.magnet_range >= 180, "magnet increases range")
+	game.P.x = 100.0
+	game.P.y = 300.0
+	var med_pk := { "kind": "med", "x": 240.0, "y": 300.0, "w": 22, "h": 18, "vy": 0.0, "t": 0.0, "heal": 30 }
+	game.pickups = [med_pk]
+	var px0: float = med_pk.x
+	game.update_pickups()
+	_ok(med_pk.x < px0, "magnet pulls non-coin pickup toward player")
+
+	# Берсерк: урон растёт с серией
+	game.start_run(35, "35")
+	game.choose_upgrade({ "id": "berserk" })
+	game.P.weapons = [{ "id": "pistol", "ammo": INF }]
+	game.P.wi = 0
+	game.P.stats.crit = 0.0
+	game.input.shoot_held = true
+	game.input.shoot_clicked = true
+	game.input.aim = Vector2(game.P.x + 100, game.P.y)
+	game.combo = 20
+	game.P.cd = 0
+	game.bullets.clear()
+	game.try_shoot()
+	var d_hi: int = game.bullets[0].dmg
+	game.combo = 0
+	game.P.cd = 0
+	game.bullets.clear()
+	game.input.shoot_clicked = true
+	game.try_shoot()
+	var d_lo: int = game.bullets[0].dmg
+	_ok(d_hi > d_lo, "berserk raises damage with combo (%d vs %d)" % [d_hi, d_lo])
+
+	# ---------- 16. Достижения ----------
+	game.unlocked.clear()
+	game.toasts.clear()
+	game.unlock("first_blood")
+	_ok(game.unlocked.has("first_blood"), "unlock registers achievement")
+	_ok(game.toasts.size() == 1, "unlock shows a toast")
+	game.unlock("first_blood")
+	_ok(game.toasts.size() == 1, "re-unlock is idempotent (no extra toast)")
+
+	game.start_run(36, "36")
+	game.unlocked.clear()
+	game.kills = 5
+	game.max_combo = 12
+	game.lvl = 11
+	game.score = 1500
+	game.shots_fired = 40
+	game.shots_hit = 39
+	game.check_achievements()
+	_ok(game.unlocked.has("first_blood"), "achievement: first kill")
+	_ok(game.unlocked.has("combo_master"), "achievement: combo 10")
+	_ok(game.unlocked.has("deep_diver"), "achievement: level 10")
+	_ok(game.unlocked.has("high_score"), "achievement: 1000 score")
+	_ok(game.unlocked.has("sharpshooter"), "achievement: 90% accuracy")
+
+	# достижения сохраняются
+	game.unlocked.clear()
+	game.unlock("boss_slayer")
+	game._save_settings()
+	game.unlocked.clear()
+	game._load_settings()
+	_ok(game.unlocked.has("boss_slayer"), "achievements persist across save/load")
+
 	if failures == 0:
 		print("\nALL TESTS PASSED")
 	else:
