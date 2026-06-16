@@ -17,6 +17,7 @@ const T_SOLID := 1
 const T_PLAT := 2
 const T_SPIKE := 3
 const T_EXIT := 4
+const T_CRATE := 5   # разрушаемый ящик (твёрдый, ломается выстрелами/взрывами)
 
 const THEMES := [
 	{ "name": "Изумрудные пещеры", "sky0": "#0e1830", "sky1": "#1d3250", "hill_far": "#15233c", "hill_near": "#1b2c4a",
@@ -482,6 +483,20 @@ func generate_level(seed_val: int, level_num: int) -> Dictionary:
 	_setc(grid, W, H, ex, egy - 2, T_EXIT)
 	var exit_px := Vector2((ex + 0.5) * TILE, (egy - 1) * TILE)
 
+	# --- разрушаемые ящики на ровной земле ---
+	var crate_hp := {}
+	var crate_tries := 6 + level_num * 2
+	for _i in range(crate_tries):
+		var cxc := _rr(r, 12, W - 12)
+		# не у спавна, не у выхода, не на шипах, ровная клетка над землёй свободна
+		if cxc < 8 or cxc > W - 8 or spike_cols.has(cxc):
+			continue
+		var cyc: int = ground_y[cxc] - 1
+		if cyc < 4 or _cell(grid, W, H, cxc, cyc) != T_EMPTY:
+			continue
+		_setc(grid, W, H, cxc, cyc, T_CRATE)
+		crate_hp[cyc * W + cxc] = 24
+
 	# --- враги ---
 	var hp_mul := 1.0 + 0.25 * (level_num - 1)
 	var dmg_add := 2 * (level_num - 1)
@@ -493,7 +508,8 @@ func generate_level(seed_val: int, level_num: int) -> Dictionary:
 			var sx := _rr(r, 14, W - 12 - span)
 			var ok := true
 			for j in range(span):
-				if spike_cols.has(sx + j) or ground_y[sx + j] != ground_y[sx]:
+				# ровно, без шипов и без ящика над землёй
+				if spike_cols.has(sx + j) or ground_y[sx + j] != ground_y[sx] or _cell(grid, W, H, sx + j, ground_y[sx + j] - 1) == T_CRATE:
 					ok = false
 					break
 			if not ok:
@@ -560,7 +576,7 @@ func generate_level(seed_val: int, level_num: int) -> Dictionary:
 		for cand in range(W - 16, 14, -1):
 			var flat := true
 			for j in range(bspan):
-				if spike_cols.has(cand + j) or ground_y[cand + j] != ground_y[cand]:
+				if spike_cols.has(cand + j) or ground_y[cand + j] != ground_y[cand] or _cell(grid, W, H, cand + j, ground_y[cand + j] - 1) == T_CRATE:
 					flat = false
 					break
 			if flat:
@@ -635,7 +651,7 @@ func generate_level(seed_val: int, level_num: int) -> Dictionary:
 		"px_w": W * TILE, "px_h": H * TILE,
 		"spawn": Vector2(2 * TILE + 6, ground_y[2] * TILE - 31),
 		"exit_px": exit_px, "enemies": enemy_list, "pickups": pickup_list,
-		"has_boss": is_boss_level,
+		"has_boss": is_boss_level, "crate_hp": crate_hp,
 	}
 
 # ============================== Доступ к карте (рантайм) ==============================
@@ -651,8 +667,12 @@ func tile_at(tx: int, ty: int) -> int:
 		return T_EMPTY
 	return level.grid[ty * level.W + tx]
 
+func is_blocking(t: int) -> bool:
+	# твёрдые для движения тайлы: камень и разрушаемый ящик
+	return t == T_SOLID or t == T_CRATE
+
 func solid_px(px: float, py: float) -> bool:
-	return tile_at(int(floor(px / TILE)), int(floor(py / TILE))) == T_SOLID
+	return is_blocking(tile_at(int(floor(px / TILE)), int(floor(py / TILE))))
 
 func line_of_sight(x0: float, y0: float, x1: float, y1: float) -> bool:
 	var d := Vector2(x1 - x0, y1 - y0).length()
@@ -677,7 +697,7 @@ func collide_entity(e: Dictionary) -> void:
 	if e.vx > 0:
 		var tx := int(floor((e.x + e.w - 0.01) / TILE))
 		for ty in range(y0, y1 + 1):
-			if tile_at(tx, ty) == T_SOLID:
+			if is_blocking(tile_at(tx, ty)):
 				e.x = tx * TILE - e.w
 				e.vx = 0.0
 				e.hit_wall = true
@@ -685,7 +705,7 @@ func collide_entity(e: Dictionary) -> void:
 	elif e.vx < 0:
 		var tx := int(floor(e.x / TILE))
 		for ty in range(y0, y1 + 1):
-			if tile_at(tx, ty) == T_SOLID:
+			if is_blocking(tile_at(tx, ty)):
 				e.x = (tx + 1) * TILE
 				e.vx = 0.0
 				e.hit_wall = true
@@ -699,7 +719,7 @@ func collide_entity(e: Dictionary) -> void:
 		var ty := int(floor((e.y + e.h - 0.01) / TILE))
 		for tx in range(x0, x1 + 1):
 			var t := tile_at(tx, ty)
-			if t == T_SOLID or (t == T_PLAT and prev_bottom <= ty * TILE + 0.5 and e.drop <= 0):
+			if is_blocking(t) or (t == T_PLAT and prev_bottom <= ty * TILE + 0.5 and e.drop <= 0):
 				e.y = ty * TILE - e.h
 				e.vy = 0.0
 				e.on_ground = true
@@ -707,7 +727,7 @@ func collide_entity(e: Dictionary) -> void:
 	elif e.vy < 0:
 		var ty := int(floor(e.y / TILE))
 		for tx in range(x0, x1 + 1):
-			if tile_at(tx, ty) == T_SOLID:
+			if is_blocking(tile_at(tx, ty)):
 				e.y = (ty + 1) * TILE
 				e.vy = 0.0
 				break
@@ -733,7 +753,7 @@ func standing_on_platform(e: Dictionary) -> bool:
 	var plat := false
 	for tx in range(x0, x1 + 1):
 		var t := tile_at(tx, ty)
-		if t == T_SOLID:
+		if is_blocking(t):
 			return false
 		if t == T_PLAT:
 			plat = true
@@ -958,6 +978,44 @@ func explode(x: float, y: float, radius: float, dmg: int, from: String) -> void:
 	else:
 		if P.inv <= 0 and state == "play" and Vector2(P.x + P.w / 2.0, P.y + P.h / 2.0).distance_to(c) <= radius:
 			hurt_player(dmg, 1 if P.x + P.w / 2.0 > x else -1)
+	# взрывы крушат ящики в радиусе
+	var crates: Dictionary = level.get("crate_hp", {})
+	if not crates.is_empty():
+		var to_break := []
+		for idx in crates.keys():
+			var ctx: int = idx % level.W
+			var cty: int = idx / level.W
+			var cc := Vector2(ctx * TILE + TILE / 2.0, cty * TILE + TILE / 2.0)
+			if cc.distance_to(c) <= radius + TILE * 0.5:
+				to_break.append(Vector2i(ctx, cty))
+		for cell in to_break:
+			damage_crate(cell.x, cell.y, dmg)
+
+func damage_crate(tx: int, ty: int, dmg: int) -> void:
+	if level.is_empty():
+		return
+	var crates: Dictionary = level.get("crate_hp", {})
+	var idx: int = ty * level.W + tx
+	if not crates.has(idx):
+		return
+	crates[idx] -= dmg
+	var px := tx * TILE + TILE / 2.0
+	var py := ty * TILE + TILE / 2.0
+	burst(px, py, 4, _col(level.theme.top))
+	if crates[idx] <= 0:
+		crates.erase(idx)
+		level.grid[idx] = T_EMPTY
+		burst(px, py, 14, Color("#c79a5b"))
+		burst(px, py, 8, _col(level.theme.top))
+		play_sfx("hit")
+		# из ящика выпадает лут
+		var rv := rng.randf()
+		if rv < 0.4:
+			pickups.append({ "kind": "coin", "x": px - 6, "y": py - 6, "w": 12, "h": 12, "vy": -3.0, "t": 0.0 })
+		elif rv < 0.7:
+			pickups.append({ "kind": "ammo", "x": px - 11, "y": py - 9, "w": 22, "h": 18, "vy": -2.5, "t": 0.0 })
+		elif rv < 0.85:
+			pickups.append({ "kind": "med", "x": px - 11, "y": py - 9, "w": 22, "h": 18, "vy": -2.5, "t": 0.0, "heal": 20 })
 
 func combo_mult() -> float:
 	# x1.0 при серии 0–2, далее растёт до x4.0
@@ -1233,7 +1291,7 @@ func update_enemies() -> void:
 				var foot_ty := int(floor((en.y + en.h + 4) / TILE))
 				var below := tile_at(foot_tx, foot_ty)
 				var at_feet := tile_at(foot_tx, foot_ty - 1)
-				if (below != T_SOLID and below != T_PLAT) or at_feet == T_SPIKE:
+				if (not is_blocking(below) and below != T_PLAT) or at_feet == T_SPIKE:
 					en.dir *= -1
 		elif en.type == "exploder":
 			en.vy = min(en.vy + GRAV, MAX_FALL)
@@ -1251,7 +1309,7 @@ func update_enemies() -> void:
 				var foot_tx := int(floor(ahead_x / TILE))
 				var foot_ty := int(floor((en.y + en.h + 4) / TILE))
 				var below := tile_at(foot_tx, foot_ty)
-				if below != T_SOLID and below != T_PLAT:
+				if not is_blocking(below) and below != T_PLAT:
 					en.dir *= -1
 			# подрыв при касании игрока
 			if not en.dead and dist < 34 and P.inv <= 0:
@@ -1374,6 +1432,11 @@ func update_bullets() -> void:
 			b.x += b.vx / steps
 			b.y += b.vy / steps
 			if solid_px(b.x, b.y):
+				# попадание по разрушаемому ящику — наносим ему урон
+				var htx := int(floor(b.x / TILE))
+				var hty := int(floor(b.y / TILE))
+				if tile_at(htx, hty) == T_CRATE:
+					damage_crate(htx, hty, b.dmg)
 				if not is_gren:
 					burst(b.x, b.y, 3, Color("#cdd6f0"))
 				hit = true
@@ -1621,6 +1684,19 @@ func _draw_tiles(c: Vector2) -> void:
 					Vector2(px + TILE, py + TILE),
 				])
 				draw_colored_polygon(poly, th.spike)
+			elif t == T_CRATE:
+				var idx: int = ty * level.W + tx
+				var chp: float = level.crate_hp.get(idx, 24)
+				var dmgf := 1.0 - clampf(chp / 24.0, 0.0, 1.0)  # больше урона — заметнее трещины
+				draw_rect(Rect2(px + 1, py + 1, TILE - 2, TILE - 2), Color("#8a5a2b"))
+				draw_rect(Rect2(px + 3, py + 3, TILE - 6, TILE - 6), Color("#b07c3e"))
+				# доски-крест
+				draw_line(Vector2(px + 3, py + 3), Vector2(px + TILE - 3, py + TILE - 3), Color("#6b4420"), 2.0)
+				draw_line(Vector2(px + TILE - 3, py + 3), Vector2(px + 3, py + TILE - 3), Color("#6b4420"), 2.0)
+				if dmgf > 0.25:
+					draw_line(Vector2(px + 8, py + 4), Vector2(px + 12, py + TILE - 5), Color(0, 0, 0, 0.45), 1.5)
+				if dmgf > 0.6:
+					draw_line(Vector2(px + TILE - 7, py + 6), Vector2(px + 16, py + TILE - 4), Color(0, 0, 0, 0.5), 1.5)
 
 func _draw_portal() -> void:
 	var e: Vector2 = level.exit_px

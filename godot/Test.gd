@@ -385,6 +385,55 @@ func _init() -> void:
 	game._load_settings()
 	_ok(game.unlocked.has("boss_slayer"), "achievements persist across save/load")
 
+	# ---------- 17. Разрушаемые ящики ----------
+	# генерация размещает ящики
+	var total_crates := 0
+	for s2 in range(1, 31):
+		for lv in range(1, 5):
+			var LL: Dictionary = game.generate_level(s2 * 131 + lv, lv)
+			total_crates += LL.crate_hp.size()
+			# каждый ящик — действительно тайл T_CRATE на сетке
+			for idx in LL.crate_hp.keys():
+				_ok(LL.grid[idx] == 5, "crate tile present at stored index")
+	_ok(total_crates > 0, "crates are generated (total %d)" % total_crates)
+
+	# ящик ломается выстрелом и роняет лут; тайл становится пустым
+	var WC := 6
+	var HC := 6
+	var gridc := PackedByteArray()
+	gridc.resize(WC * HC)
+	var crate_idx := 2 * WC + 2
+	gridc[crate_idx] = 5  # T_CRATE
+	game.level = { "W": WC, "H": HC, "grid": gridc, "px_w": WC * 32, "px_h": HC * 32,
+		"crate_hp": { crate_idx: 24 }, "theme": { "top": "#58c98f" } }
+	game.pickups = []
+	game.damage_crate(2, 2, 10)
+	_ok(game.level.grid[crate_idx] == 5, "crate survives partial damage")
+	game.damage_crate(2, 2, 20)
+	_ok(game.level.grid[crate_idx] == 0, "crate breaks at 0 hp (tile cleared)")
+	_ok(not game.level.crate_hp.has(crate_idx), "crate hp entry removed")
+	_ok(game.pickups.size() >= 1, "broken crate drops loot")
+
+	# взрыв ломает ящик в радиусе
+	var gridc2 := PackedByteArray()
+	gridc2.resize(WC * HC)
+	gridc2[crate_idx] = 5
+	game.level = { "W": WC, "H": HC, "grid": gridc2, "px_w": WC * 32, "px_h": HC * 32,
+		"crate_hp": { crate_idx: 24 }, "theme": { "top": "#58c98f" } }
+	game.enemies = []
+	game.explode(2 * 32 + 16, 2 * 32 + 16, 40, 100, "p")
+	_ok(game.level.grid[crate_idx] == 0, "explosion destroys crate in radius")
+
+	# ящик твёрдый: останавливает движение сущности
+	var gridc3 := PackedByteArray()
+	gridc3.resize(WC * HC)
+	gridc3[crate_idx] = 5
+	game.level = { "W": WC, "H": HC, "grid": gridc3, "px_w": WC * 32, "px_h": HC * 32,
+		"crate_hp": { crate_idx: 24 }, "theme": { "top": "#58c98f" } }
+	var mover := { "x": 44.0, "y": 64.0, "w": 20, "h": 28, "vx": 5.0, "vy": 0.0, "drop": 0, "on_ground": false, "hit_wall": false }
+	game.collide_entity(mover)
+	_ok(mover.hit_wall and mover.vx == 0.0, "crate blocks entity movement (solid)")
+
 	if failures == 0:
 		print("\nALL TESTS PASSED")
 	else:
