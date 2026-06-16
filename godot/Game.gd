@@ -80,8 +80,16 @@ var offer := []
 var best := 0
 var combo := 0           # серия убийств
 var combo_t := 0         # таймер сброса серии
+var max_combo := 0       # лучшая серия за забег
 var boss_alive := false  # на уровне есть живой босс
 var hitstop := 0         # короткая заморозка при крупных событиях
+var volume := 0.8        # громкость (0..1), сохраняется
+
+# статистика забега
+var run_ticks := 0       # прожитые кадры (время)
+var shots_fired := 0
+var shots_hit := 0
+var damage_dealt := 0
 
 var level := {}        # текущая карта
 var P := {}            # игрок
@@ -135,7 +143,8 @@ var _sfx_cache := {}
 func _ready() -> void:
 	rng.randomize()
 	font = ThemeDB.fallback_font
-	best = _load_best()
+	_load_settings()
+	_apply_volume()
 	if not test_mode and DisplayServer.get_name() != "headless":
 		_setup_audio()
 	else:
@@ -173,6 +182,13 @@ func _physics_process(_delta: float) -> void:
 
 func _demo_step() -> void:
 	# Самоиграющий бот для скриншотов/проверки отрисовки.
+	if demo_frame == 100 and "--dead" in OS.get_cmdline_args() and state == "play":
+		shots_fired = 40
+		shots_hit = 29
+		damage_dealt = 1234
+		max_combo = 7
+		P.inv = 0
+		hurt_player(99999, 0)
 	if demo_frame == 60 and "--boss" in OS.get_cmdline_args() and state == "play":
 		for en in enemies:
 			if en.get("boss", false):
@@ -201,7 +217,7 @@ func _demo_step() -> void:
 	sim_step()
 	if state == "upgrade":
 		choose_upgrade(offer[0])
-	if state == "dead":
+	if state == "dead" and not ("--dead" in OS.get_cmdline_args()):
 		start_run(12345 + demo_frame, "DEMO")
 	queue_redraw()
 	demo_frame += 1
@@ -254,6 +270,10 @@ func _unhandled_input(event: InputEvent) -> void:
 				elif state == "pause": _set_state("play")
 			KEY_M:
 				audio_enabled = not audio_enabled
+			KEY_MINUS, KEY_KP_SUBTRACT:
+				set_volume(volume - 0.1)
+			KEY_EQUAL, KEY_KP_ADD:
+				set_volume(volume + 0.1)
 			KEY_ENTER, KEY_KP_ENTER:
 				if state == "menu": start_from_menu()
 				elif state == "dead": start_from_menu()
@@ -569,6 +589,11 @@ func generate_level(seed_val: int, level_num: int) -> Dictionary:
 		var s = spot.call()
 		if s != null:
 			add_pick.call("ammo", s, {})
+	# щит время от времени (чаще на поздних уровнях)
+	if r.randf() < 0.4 + 0.06 * level_num:
+		var s = spot.call()
+		if s != null:
+			add_pick.call("shield", s, { "shield": 20.0, "w": 20, "h": 20 })
 	# на боссовых уровнях — дополнительные аптечки и патроны
 	if is_boss_level:
 		for _i in range(2):
@@ -704,6 +729,7 @@ func make_player() -> Dictionary:
 		"coyote": 0, "buffer": 0, "air_jumps": 0, "drop": 0,
 		"inv": 0, "cd": 0, "face": 1, "aim": 0.0,
 		"dash_cd": 0, "dash_t": 0, "dash_dir": 1.0,
+		"shield": 0.0, "max_shield": 0.0,
 		"weapons": [{ "id": "pistol", "ammo": INF }], "wi": 0,
 		"stats": { "dmg_mul": 1.0, "cd_mul": 1.0, "spd_mul": 1.0, "jumps": 1, "lifesteal": 0, "armor_mul": 1.0, "crit": 0.0, "jump_mul": 1.0 },
 	}
@@ -718,9 +744,17 @@ func start_run(s: int, label: String) -> void:
 	lvl = 1
 	score = 0
 	kills = 0
+	max_combo = 0
+	run_ticks = 0
+	shots_fired = 0
+	shots_hit = 0
+	damage_dealt = 0
 	P = make_player()
 	start_level()
 	_set_state("play")
+
+func accuracy() -> float:
+	return 0.0 if shots_fired == 0 else clampf(float(shots_hit) / shots_fired, 0.0, 1.0)
 
 func start_level() -> void:
 	var level_seed := (run_seed ^ ((lvl * 2654435761) & 0xFFFFFFFF)) & 0xFFFFFFFF
@@ -805,14 +839,22 @@ func hurt_player(dmg: float, from_dir: float) -> void:
 	if P.inv > 0 or state != "play":
 		return
 	var real: int = max(1, roundi(dmg * P.stats.armor_mul))
-	P.hp -= real
 	P.inv = 55
 	P.vx = clampf(P.vx + from_dir * 4.0, -8, 8)
 	P.vy = min(P.vy, -4.0)
 	shake = min(14.0, shake + 7.0)
 	play_sfx("hurt")
-	add_text(P.x + P.w / 2.0, P.y - 6, "-%d" % real, Color("#ff6b5e"))
-	burst(P.x + P.w / 2.0, P.y + P.h / 2.0, 8, Color("#ff6b5e"))
+	# щит поглощает урон первым
+	if P.shield > 0:
+		var absorbed: int = int(min(P.shield, real))
+		P.shield -= absorbed
+		real -= absorbed
+		add_text(P.x + P.w / 2.0, P.y - 14, "щит -%d" % absorbed, Color("#7fd4ff"))
+		burst(P.x + P.w / 2.0, P.y + P.h / 2.0, 8, Color("#7fd4ff"))
+	if real > 0:
+		P.hp -= real
+		add_text(P.x + P.w / 2.0, P.y - 6, "-%d" % real, Color("#ff6b5e"))
+		burst(P.x + P.w / 2.0, P.y + P.h / 2.0, 8, Color("#ff6b5e"))
 	if P.hp <= 0:
 		P.hp = 0
 		die()
@@ -828,6 +870,7 @@ func die() -> void:
 func hurt_enemy(en: Dictionary, dmg: int, crit: bool) -> void:
 	en.hp -= dmg
 	en.hurt_t = 90
+	damage_dealt += dmg
 	add_text(en.x + en.w / 2.0, en.y - 4, str(dmg), Color("#ffd86b") if crit else Color.WHITE)
 	burst(en.x + en.w / 2.0, en.y + en.h / 2.0, 7 if crit else 4, Color("#ffd1a8"))
 	play_sfx("hit")
@@ -837,6 +880,7 @@ func hurt_enemy(en: Dictionary, dmg: int, crit: bool) -> void:
 		# серия убийств наращивает множитель очков
 		combo += 1
 		combo_t = 150
+		max_combo = max(max_combo, combo)
 		var mult := combo_mult()
 		var gained: int = int(round(en.score * mult))
 		score += gained
@@ -891,6 +935,8 @@ func drop_loot(en: Dictionary) -> void:
 		pickups.append({ "kind": "med", "x": cx, "y": cy, "w": 22, "h": 18, "vy": -3.0, "t": 0.0, "heal": 15 })
 	elif rv < 0.46:
 		pickups.append({ "kind": "ammo", "x": cx, "y": cy, "w": 22, "h": 18, "vy": -3.0, "t": 0.0 })
+	elif rv < 0.50:
+		pickups.append({ "kind": "shield", "x": cx, "y": cy, "w": 20, "h": 20, "vy": -3.0, "t": 0.0, "shield": 20.0 })
 
 # ============================== Оружие ==============================
 
@@ -939,6 +985,7 @@ func try_shoot() -> void:
 			b["pierce"] = true
 			b["hit_ids"] = []
 		bullets.append(b)
+		shots_fired += 1
 	P.vx = clampf(P.vx - cos(angle) * w.kick * 0.35, -9, 9)
 	shake = min(12.0, shake + w.kick * 0.55)
 	burst(cx + cos(angle) * 18, cy + sin(angle) * 18, 3, Color("#fff2b0"))
@@ -1001,6 +1048,7 @@ func sim_step() -> void:
 			hitstop -= 1
 			update_effects()
 			return
+		run_ticks += 1
 		update_player()
 		if state == "play":
 			update_enemies()
@@ -1290,15 +1338,18 @@ func update_bullets() -> void:
 						continue
 					if b.x > en.x - 2 and b.x < en.x + en.w + 2 and b.y > en.y - 2 and b.y < en.y + en.h + 2:
 						if is_gren:
+							shots_hit += 1  # прямое попадание гранатой
 							hit = true  # граната подрывается, урон от взрыва
 							break
 						if is_pierce:
 							if not (en.eid in b.hit_ids):
 								hurt_enemy(en, b.dmg, b.crit)
 								b.hit_ids.append(en.eid)
+								shots_hit += 1
 							# рельса проходит насквозь — не останавливаемся
 						else:
 							hurt_enemy(en, b.dmg, b.crit)
+							shots_hit += 1
 							hit = true
 							break
 			elif P.inv <= 0 and state == "play" \
@@ -1353,6 +1404,10 @@ func update_pickups() -> void:
 				add_text(P.x + P.w / 2.0, P.y - 10, "+%d HP" % pk.heal, Color("#7df2a5"))
 			elif pk.kind == "ammo":
 				give_ammo()
+			elif pk.kind == "shield":
+				P.max_shield = max(P.max_shield, pk.shield)
+				P.shield = min(P.max_shield, P.shield + pk.shield)
+				add_text(P.x + P.w / 2.0, P.y - 10, "+%d щит" % int(pk.shield), Color("#7fd4ff"))
 			elif pk.kind == "coin":
 				score += 5
 				add_text(pk.x, pk.y - 6, "+5", Color("#ffd86b"))
@@ -1544,6 +1599,15 @@ func _draw_pickups() -> void:
 		elif pk.kind == "coin":
 			draw_circle(Vector2(x + 6, y + 6), 6, Color("#ffd86b"))
 			draw_circle(Vector2(x + 6, y + 6), 3, Color("#b88f2e"))
+		elif pk.kind == "shield":
+			var sc := Vector2(x + pk.w / 2.0, y + pk.h / 2.0)
+			draw_circle(sc, pk.w / 2.0 + 2, Color(0.5, 0.83, 1.0, 0.18))
+			# щит-герб
+			draw_colored_polygon(PackedVector2Array([
+				Vector2(sc.x, y), Vector2(x + pk.w, y + 4), Vector2(x + pk.w, y + pk.h * 0.6),
+				Vector2(sc.x, y + pk.h), Vector2(x, y + pk.h * 0.6), Vector2(x, y + 4)]), Color("#7fd4ff"))
+			draw_colored_polygon(PackedVector2Array([
+				Vector2(sc.x, y + 4), Vector2(x + pk.w - 4, y + 6), Vector2(sc.x, y + pk.h - 4), Vector2(x + 4, y + 6)]), Color("#2b4a63"))
 
 func _draw_enemies() -> void:
 	for en in enemies:
@@ -1619,6 +1683,12 @@ func _draw_player() -> void:
 	draw_rect(Rect2(2, -3, w.len, 6), Color("#222b3d"))
 	draw_rect(Rect2(w.len - 3, -2, 4, 4), _col(w.color))
 	draw_set_transform(-cam)
+	# кольцо щита
+	if P.shield > 0:
+		var pc := Vector2(P.x + P.w / 2.0, P.y + P.h / 2.0)
+		var sa := clampf(P.shield / max(1.0, P.max_shield), 0.0, 1.0)
+		draw_arc(pc, P.w * 0.9, -PI / 2, -PI / 2 + TAU * sa, 24, Color(0.5, 0.83, 1.0, 0.85), 2.5)
+		draw_circle(pc, P.w * 0.9, Color(0.5, 0.83, 1.0, 0.08))
 
 func _draw_bullets() -> void:
 	for b in bullets:
@@ -1672,6 +1742,10 @@ func _draw_hud() -> void:
 	if frac <= 0.35:
 		hpcol = Color("#ff5e57") if (tick % 30 < 15) else Color("#c93a34")
 	draw_rect(Rect2(14, 14, hpw * frac, 16), hpcol)
+	# полоса щита поверх верхнего края HP
+	if P.shield > 0:
+		var sw := hpw * clampf(P.shield / P.maxhp, 0, 1)
+		draw_rect(Rect2(14, 12, sw, 4), Color("#7fd4ff"))
 	_text(Vector2(20, 27), "%d / %d" % [ceili(P.hp), int(P.maxhp)], 12, Color("#eaf0ff"))
 
 	# индикатор рывка
@@ -1720,6 +1794,11 @@ func _draw_hud() -> void:
 	var subsz := font.get_string_size(sub, HORIZONTAL_ALIGNMENT_LEFT, -1, 11)
 	_text(Vector2(VW - 16 - subsz.x, 44), sub, 11, Color("#8d97bd"))
 
+	# часы забега под заголовком
+	_text(Vector2(VW / 2.0, 40), _fmt_time(run_ticks), 11, Color("#6f7aa3"), true)
+
+	_draw_minimap()
+
 	# оружие
 	var slot: Dictionary = P.weapons[P.wi]
 	var w: Dictionary = WEAPONS[slot.id]
@@ -1746,6 +1825,42 @@ func _draw_hud() -> void:
 		var m := get_local_mouse_position()
 		draw_arc(m, 7, 0, TAU, 20, Color(1, 1, 1, 0.9), 1.5)
 		draw_rect(Rect2(m.x - 1, m.y - 1, 2, 2), Color(1, 1, 1, 0.9))
+
+func _fmt_time(ticks: int) -> String:
+	var sec := int(ticks / 60.0)
+	return "%d:%02d" % [int(sec / 60.0), sec % 60]
+
+func _draw_minimap() -> void:
+	var mw := 168.0
+	var mh := 50.0
+	var ox := VW - 12 - mw
+	var oy := 58.0
+	draw_rect(Rect2(ox - 2, oy - 2, mw + 4, mh + 4), Color(0, 0, 0, 0.5))
+	var sx := mw / float(level.px_w)
+	var sy := mh / float(level.px_h)
+	var W: int = level.W
+	# силуэт рельефа
+	var col_ground: Color = th.ground
+	for i in range(int(mw)):
+		var c := clampi(int(i / mw * W), 0, W - 1)
+		var py: float = level.ground_y[c] * TILE * sy
+		draw_rect(Rect2(ox + i, oy + py, 1, mh - py), Color(col_ground.r, col_ground.g, col_ground.b, 0.75))
+	# портал
+	var ex: Vector2 = level.exit_px
+	draw_rect(Rect2(ox + ex.x * sx - 1, oy + ex.y * sy - 2, 3, 4), Color("#9be8ff"))
+	# враги
+	for en in enemies:
+		if en.dead:
+			continue
+		var ec := Color("#ff6b5e")
+		if en.get("boss", false):
+			ec = Color("#ff4db0")
+		elif en.type == "flyer":
+			ec = Color("#5fb0e8")
+		var sz := 3.0 if en.get("boss", false) else 2.0
+		draw_rect(Rect2(ox + (en.x + en.w / 2.0) * sx - sz / 2, oy + (en.y + en.h / 2.0) * sy - sz / 2, sz, sz), ec)
+	# игрок
+	draw_rect(Rect2(ox + (P.x + P.w / 2.0) * sx - 1.5, oy + (P.y + P.h / 2.0) * sy - 1.5, 3, 3), Color("#3ec6a8"))
 
 func _draw_offscreen_arrow(world_pos: Vector2, color: Color) -> void:
 	var sp := world_pos - cam
@@ -1778,21 +1893,41 @@ func _draw_overlays() -> void:
 			_text(Vector2(cx, 274), "Мышь — прицел · ЛКМ — огонь · 1–4/колесо — оружие", 14, Color("#8d97bd"), true)
 			_text(Vector2(cx, 298), "Shift / ПКМ — рывок · Esc — пауза · M — звук", 14, Color("#8d97bd"), true)
 			_text(Vector2(cx, 322), "Каждый 5-й уровень — БОСС", 13, Color("#ff8fc4"), true)
-			_btn(Rect2(cx - 90, 346, 180, 52), "Играть", "play")
+			_btn(Rect2(cx - 90, 344, 180, 50), "Играть", "play")
 			var bl := "Рекорд: %d очков" % best if best > 0 else "Удачного первого забега!"
-			_text(Vector2(cx, 420), bl, 14, Color("#6f7aa3"), true)
-			_text(Vector2(cx, 450), "Enter / Пробел / клик — старт", 13, Color("#6f7aa3"), true)
+			_text(Vector2(cx, 414), bl, 14, Color("#6f7aa3"), true)
+			_text(Vector2(cx, 436), "Enter / Пробел / клик — старт", 13, Color("#6f7aa3"), true)
+			_draw_volume(cx, 462)
 		"pause":
-			_text(Vector2(cx, 200), "Пауза", 40, Color("#eaf0ff"), true)
-			_btn(Rect2(cx - 90, 250, 180, 50), "Продолжить", "resume")
-			_btn(Rect2(cx - 90, 312, 180, 46), "В меню", "quit", false)
+			_text(Vector2(cx, 180), "Пауза", 40, Color("#eaf0ff"), true)
+			_btn(Rect2(cx - 90, 230, 180, 50), "Продолжить", "resume")
+			_btn(Rect2(cx - 90, 292, 180, 46), "В меню", "quit", false)
+			_draw_volume(cx, 372)
 		"dead":
-			_text(Vector2(cx, 150), "Вы погибли", 44, Color("#ff6b5e"), true)
-			_text(Vector2(cx, 210), "Очки: %d" % score, 20, Color("#cfd6f5"), true)
-			_text(Vector2(cx, 240), "Уровень: %d · Убийств: %d" % [lvl, kills], 16, Color("#cfd6f5"), true)
-			_text(Vector2(cx, 266), "Сид: %s · Рекорд: %d" % [seed_label, best], 16, Color("#cfd6f5"), true)
-			_btn(Rect2(cx - 190, 310, 180, 50), "Новый забег", "retry")
-			_btn(Rect2(cx + 10, 310, 180, 50), "В меню", "menu", false)
+			_text(Vector2(cx, 120), "Вы погибли", 44, Color("#ff6b5e"), true)
+			var is_record := score >= best and score > 0
+			if is_record:
+				_text(Vector2(cx, 156), "★ НОВЫЙ РЕКОРД ★", 16, Color("#ffd86b"), true)
+			_text(Vector2(cx, 196), "Очки: %d" % score, 22, Color("#ffd86b"), true)
+			# таблица статистики забега
+			var rows := [
+				["Уровень", "%d" % lvl],
+				["Убийств", "%d" % kills],
+				["Лучшая серия", "x%d" % max_combo],
+				["Точность", "%d%% (%d/%d)" % [int(round(accuracy() * 100)), shots_hit, shots_fired]],
+				["Урон нанесён", "%d" % damage_dealt],
+				["Время", _fmt_time(run_ticks)],
+				["Рекорд", "%d" % best],
+			]
+			var ry := 226.0
+			for row in rows:
+				var lbl: String = row[0]
+				var lw := font.get_string_size(lbl, HORIZONTAL_ALIGNMENT_LEFT, -1, 14).x
+				_text(Vector2(cx - 14 - lw, ry), lbl, 14, Color("#8d97bd"))
+				_text(Vector2(cx + 14, ry), row[1], 14, Color("#dfe5ff"))
+				ry += 22
+			_btn(Rect2(cx - 190, 420, 180, 50), "Новый забег", "retry")
+			_btn(Rect2(cx + 10, 420, 180, 50), "В меню", "menu", false)
 		"upgrade":
 			_text(Vector2(cx, 110), "Уровень пройден!", 36, Color("#eaf0ff"), true)
 			_text(Vector2(cx, 150), "Выберите улучшение (1 / 2 / 3 или клик):", 16, Color("#aab3d6"), true)
@@ -1811,6 +1946,14 @@ func _draw_overlays() -> void:
 				_text(Vector2(ccx, rect.position.y + 100), u.name, 18, Color("#ffe9b0"), true)
 				_draw_wrapped(u.desc, rect.position.x + 16, rect.position.y + 130, cw - 32, 14, Color("#aab3d6"))
 				_text(Vector2(ccx, rect.position.y + 188), "[%d]" % (i + 1), 14, Color("#8d97bd"), true)
+
+func _draw_volume(cx: float, y: float) -> void:
+	var bw := 160.0
+	var bx := cx - bw / 2.0
+	_text(Vector2(cx, y - 10), "Громкость  ( − / + )", 12, Color("#8d97bd"), true)
+	draw_rect(Rect2(bx, y, bw, 10), Color(0, 0, 0, 0.5))
+	draw_rect(Rect2(bx + 1, y + 1, (bw - 2) * volume, 8), Color("#ffc24d"))
+	_text(Vector2(cx, y + 28), "%d%%" % int(round(volume * 100)), 12, Color("#cfd6f5"), true)
 
 func _draw_wrapped(s: String, x: float, y: float, w: float, size: int, color: Color) -> void:
 	var words := s.split(" ")
@@ -1911,22 +2054,42 @@ func _noise(dur: float, vol: float, low: bool) -> AudioStreamWAV:
 		samples[i] = v * (1.0 - t) * vol
 	return _make_wav(samples)
 
-# ============================== Сохранение рекорда ==============================
+# ============================== Сохранения и настройки ==============================
+# Рекорд и громкость хранятся в ConfigFile (user://gunfall.cfg).
 
-func _save_path() -> String:
-	return "user://gunfall_best.save"
+func _cfg_path() -> String:
+	return "user://gunfall.cfg"
 
-func _load_best() -> int:
-	if FileAccess.file_exists(_save_path()):
-		var f := FileAccess.open(_save_path(), FileAccess.READ)
-		if f:
-			var v := f.get_32()
-			f.close()
-			return v
-	return 0
+func _load_settings() -> void:
+	var cfg := ConfigFile.new()
+	if cfg.load(_cfg_path()) == OK:
+		best = int(cfg.get_value("progress", "best", 0))
+		volume = clampf(float(cfg.get_value("settings", "volume", 0.8)), 0.0, 1.0)
+	else:
+		# совместимость со старым форматом рекорда
+		var old := "user://gunfall_best.save"
+		if FileAccess.file_exists(old):
+			var f := FileAccess.open(old, FileAccess.READ)
+			if f:
+				best = f.get_32()
+				f.close()
+
+func _save_settings() -> void:
+	var cfg := ConfigFile.new()
+	cfg.set_value("progress", "best", best)
+	cfg.set_value("settings", "volume", volume)
+	cfg.save(_cfg_path())
 
 func _save_best(v: int) -> void:
-	var f := FileAccess.open(_save_path(), FileAccess.WRITE)
-	if f:
-		f.store_32(v)
-		f.close()
+	best = v
+	_save_settings()
+
+func set_volume(v: float) -> void:
+	volume = clampf(v, 0.0, 1.0)
+	_apply_volume()
+	_save_settings()
+
+func _apply_volume() -> void:
+	# мастер-шина 0; в headless AudioServer-заглушка просто игнорирует
+	AudioServer.set_bus_volume_db(0, linear_to_db(maxf(volume, 0.0001)))
+	AudioServer.set_bus_mute(0, volume <= 0.0)

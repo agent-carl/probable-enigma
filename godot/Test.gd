@@ -240,6 +240,53 @@ func _init() -> void:
 			has_exploder = true
 	_ok(has_exploder, "exploders spawn on level 7")
 
+	# ---------- 12. Щит поглощает урон раньше HP ----------
+	game.start_run(21, "21")
+	game.P.inv = 0
+	game.P.shield = 30.0
+	game.P.max_shield = 30.0
+	var hp_before: float = game.P.hp
+	game.hurt_player(20, 0)
+	_ok(game.P.shield == 10.0, "shield absorbs damage first (shield=%s)" % str(game.P.shield))
+	_ok(game.P.hp == hp_before, "hp untouched while shield holds")
+	game.P.inv = 0
+	game.hurt_player(25, 0)  # 10 щита + 15 в HP
+	_ok(game.P.shield == 0.0, "shield depleted")
+	_ok(game.P.hp == hp_before - 15, "overflow damage hits hp (hp=%s)" % str(game.P.hp))
+
+	# ---------- 13. Статистика забега ----------
+	game.start_run(22, "22")
+	_ok(game.shots_fired == 0 and game.shots_hit == 0 and game.damage_dealt == 0, "stats reset on run start")
+	game.enemies.clear()
+	var dummy := { "type": "walker", "x": 300.0, "y": 200.0, "w": 20, "h": 30, "hp": 100, "maxhp": 100, "score": 10, "dead": false, "hurt_t": 0, "eid": 1 }
+	game.enemies.append(dummy)
+	game.bullets.clear()
+	game.bullets.append({ "x": 295.0, "y": 210.0, "vx": 18.0, "vy": 0.0, "dmg": 30, "crit": false, "from": "p", "life": 30, "color": "#fff" })
+	for _i in range(5):
+		game.update_bullets()
+	_ok(game.shots_hit >= 1, "hit registered for stats")
+	_ok(game.damage_dealt >= 30, "damage tracked (got %d)" % game.damage_dealt)
+	# точность в разумных пределах
+	game.shots_fired = 10
+	game.shots_hit = 5
+	_ok(abs(game.accuracy() - 0.5) < 1e-6, "accuracy computed correctly")
+
+	# ---------- 14. Громкость: установка, кламп, сохранение ----------
+	game.set_volume(0.5)
+	_ok(abs(game.volume - 0.5) < 1e-6, "volume set")
+	game.set_volume(1.5)
+	_ok(game.volume == 1.0, "volume clamped to 1.0")
+	game.set_volume(-1.0)
+	_ok(game.volume == 0.0, "volume clamped to 0.0")
+	game.set_volume(0.3)
+	game.best = 4242
+	game._save_settings()
+	game.volume = 0.0
+	game.best = 0
+	game._load_settings()
+	_ok(abs(game.volume - 0.3) < 1e-6, "volume persists across save/load (got %s)" % str(game.volume))
+	_ok(game.best == 4242, "best persists across save/load")
+
 	if failures == 0:
 		print("\nALL TESTS PASSED")
 	else:
