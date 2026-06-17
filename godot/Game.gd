@@ -142,6 +142,8 @@ var hill_near := PackedVector2Array()
 var sky0 := Color.BLACK
 var sky1 := Color.BLACK
 var sky_tex: GradientTexture2D = null   # кэш градиента неба
+var vignette_tex: GradientTexture2D = null  # затемнение по краям экрана
+var _cam_draw := Vector2.ZERO   # текущее смещение камеры в кадре (с тряской)
 var afterimages := []  # следы рывка [{x,y,life}]
 var ambient := []      # атмосферные частицы по теме (экранное пространство)
 var weather := "spores"
@@ -185,6 +187,7 @@ var _sfx_cache := {}
 func _ready() -> void:
 	rng.randomize()
 	font = ThemeDB.fallback_font
+	_build_vignette()
 	_load_settings()
 	_apply_volume()
 	if not test_mode and DisplayServer.get_name() != "headless":
@@ -2212,6 +2215,7 @@ func _draw() -> void:
 		draw_rect(Rect2(0, 0, VW, VH), Color("#0d1020"))
 	else:
 		var c := cam + _shake_offset()
+		_cam_draw = c
 
 		_draw_sky()
 		_draw_hills(hill_far, th.hill_far, c, 0.25)
@@ -2230,6 +2234,8 @@ func _draw() -> void:
 		_draw_texts()
 		draw_set_transform(Vector2.ZERO)
 
+		if vignette_tex:
+			draw_texture_rect(vignette_tex, Rect2(0, 0, VW, VH), false)
 		_draw_ambient()
 		_draw_hurt_dirs()
 		_draw_hud()
@@ -2254,6 +2260,37 @@ func _draw_ambient() -> void:
 			draw_rect(Rect2(p.x - p.size / 2.0, p.y - p.size / 2.0, p.size, p.size), col)
 
 	_draw_overlays()
+
+func _build_vignette() -> void:
+	var g := Gradient.new()
+	g.set_offset(0, 0.0)
+	g.set_color(0, Color(0, 0, 0, 0))
+	g.add_point(0.62, Color(0, 0, 0, 0))
+	g.set_offset(g.get_point_count() - 1, 1.0)
+	g.set_color(g.get_point_count() - 1, Color(0, 0, 0, 0.42))
+	vignette_tex = GradientTexture2D.new()
+	vignette_tex.gradient = g
+	vignette_tex.width = 256
+	vignette_tex.height = 144
+	vignette_tex.fill = GradientTexture2D.FILL_RADIAL
+	vignette_tex.fill_from = Vector2(0.5, 0.5)
+	vignette_tex.fill_to = Vector2(1.0, 1.0)
+
+func _glow(c: Vector2, r: float, col: Color) -> void:
+	# мягкое свечение из нескольких полупрозрачных кругов
+	draw_circle(c, r, Color(col.r, col.g, col.b, 0.10))
+	draw_circle(c, r * 0.6, Color(col.r, col.g, col.b, 0.16))
+	draw_circle(c, r * 0.3, Color(col.r, col.g, col.b, 0.22))
+
+func _shadow(cx: float, by: float, w: float) -> void:
+	# контактная тень-эллипс под сущностью (полигон, без смены трансформа)
+	var pts := PackedVector2Array()
+	var rx: float = w * 0.55
+	var ry: float = rx * 0.34
+	for i in range(12):
+		var a := i * TAU / 12.0
+		pts.append(Vector2(cx + cos(a) * rx, by + sin(a) * ry))
+	draw_colored_polygon(pts, Color(0, 0, 0, 0.26))
 
 func _draw_sky() -> void:
 	if sky_tex:
@@ -2358,6 +2395,9 @@ func _draw_pickups() -> void:
 		var bob := sin(pk.t * 2) * 2.5
 		var x: float = pk.x
 		var y: float = pk.y + bob
+		# свечение-ореол по типу предмета
+		var gcol: Color = { "weapon": Color("#ffd86b"), "med": Color("#ff6b7a"), "ammo": Color("#caa64a"), "coin": Color("#ffd86b"), "shield": Color("#7fd4ff") }.get(pk.kind, Color("#ffffff"))
+		_glow(Vector2(x + pk.w / 2.0, y + pk.h / 2.0), 16.0 + sin(pk.t * 3) * 2.0, gcol)
 		if pk.kind == "weapon":
 			var w: Dictionary = WEAPONS[pk.weapon]
 			draw_rect(Rect2(x - 3, y - 3, pk.w + 6, pk.h + 6), Color(1, 1, 1, 0.10))
@@ -2386,6 +2426,9 @@ func _draw_pickups() -> void:
 func _draw_enemies() -> void:
 	for en in enemies:
 		var flash: bool = en.hurt_t > 84
+		# контактная тень для наземных врагов
+		if not en.get("fly", false) and en.type != "boss":
+			_shadow(en.x + en.w / 2.0, en.y + en.h, en.w)
 		# аура элитного врага
 		if en.get("elite", false):
 			var ec := Vector2(en.x + en.w / 2.0, en.y + en.h / 2.0)
@@ -2491,20 +2534,31 @@ func _draw_player() -> void:
 	for a in afterimages:
 		var al := clampf(a.life / 12.0, 0, 1) * 0.5
 		draw_rect(Rect2(a.x, a.y + 4, P.w, P.h - 4), Color(0.4, 0.95, 0.8, al))
+	_shadow(P.x + P.w / 2.0, P.y + P.h, P.w)
 	if P.inv > 0 and (tick & 4) != 0:
 		return
+	var pcx: float = P.x + P.w / 2.0
+	_glow(Vector2(pcx, P.y + P.h / 2.0), P.w * 1.05, Color("#3ec6a8"))
+	# анимированные ноги при беге
+	var moving: bool = P.on_ground and absf(P.vx) > 0.4
+	var ph := tick * 0.45
+	var l1: float = (sin(ph) * 2.5) if moving else 0.0
+	var l2: float = (sin(ph + PI) * 2.5) if moving else 0.0
+	draw_rect(Rect2(P.x + 2 + l1, P.y + P.h - 4, 6, 4), Color("#226b5c"))
+	draw_rect(Rect2(P.x + P.w - 8 + l2, P.y + P.h - 4, 6, 4), Color("#226b5c"))
 	draw_rect(Rect2(P.x, P.y + 4, P.w, P.h - 4), Color("#3ec6a8"))
+	draw_rect(Rect2(P.x + 2, P.y + 5, P.w - 4, 3), Color("#5fe0c2"))  # верхний блик
 	draw_rect(Rect2(P.x, P.y + P.h - 7, P.w, 7), Color("#2c917b"))
 	draw_rect(Rect2(P.x + (8 if P.face > 0 else 2), P.y + 8, 10, 5), Color("#e9f4ff"))
 	draw_rect(Rect2(P.x + (13 if P.face > 0 else 3), P.y + 9, 4, 3), Color("#1c3a4a"))
 	# оружие, повёрнутое к прицелу
 	var w: Dictionary = WEAPONS[P.weapons[P.wi].id]
-	var gx: float = P.x + P.w / 2.0 - cam.x
-	var gy: float = P.y + P.h / 2.0 - 2 - cam.y
+	var gx: float = P.x + P.w / 2.0 - _cam_draw.x
+	var gy: float = P.y + P.h / 2.0 - 2 - _cam_draw.y
 	draw_set_transform(Vector2(gx, gy), P.aim)
 	draw_rect(Rect2(2, -3, w.len, 6), Color("#222b3d"))
 	draw_rect(Rect2(w.len - 3, -2, 4, 4), _col(w.color))
-	draw_set_transform(-cam)
+	draw_set_transform(-_cam_draw)
 	# кольцо щита
 	if P.shield > 0:
 		var pc := Vector2(P.x + P.w / 2.0, P.y + P.h / 2.0)
@@ -2527,7 +2581,10 @@ func _draw_bullets() -> void:
 			draw_line(from, Vector2(b.x, b.y), col, 3.0)
 		else:
 			var from := Vector2(b.x - b.vx * 1.4, b.y - b.vy * 1.4)
+			# мягкое свечение + яркое ядро
+			draw_line(from, Vector2(b.x, b.y), Color(col.r, col.g, col.b, 0.25), (7.0 if b.crit else 5.0))
 			draw_line(from, Vector2(b.x, b.y), col, 3.5 if b.crit else 2.5)
+			draw_circle(Vector2(b.x, b.y), 1.6 if b.crit else 1.2, Color(1, 1, 1, 0.85))
 
 func _draw_particles() -> void:
 	for p in parts:
