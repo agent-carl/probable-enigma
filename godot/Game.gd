@@ -21,15 +21,15 @@ const T_CRATE := 5   # разрушаемый ящик (твёрдый, лома
 
 const THEMES := [
 	{ "name": "Изумрудные пещеры", "sky0": "#0e1830", "sky1": "#1d3250", "hill_far": "#15233c", "hill_near": "#1b2c4a",
-	  "ground": "#2c3a55", "top": "#58c98f", "plat": "#7fdcae", "spike": "#bcd0ff" },
+	  "ground": "#2c3a55", "top": "#58c98f", "plat": "#7fdcae", "spike": "#bcd0ff", "weather": "spores", "wcol": "#9ff0c0" },
 	{ "name": "Багровые руины", "sky0": "#180d1c", "sky1": "#3a1c33", "hill_far": "#241229", "hill_near": "#301a37",
-	  "ground": "#3d2438", "top": "#e0707a", "plat": "#f29a8e", "spike": "#ffd3c0" },
+	  "ground": "#3d2438", "top": "#e0707a", "plat": "#f29a8e", "spike": "#ffd3c0", "weather": "embers", "wcol": "#ff9a5a" },
 	{ "name": "Ледяные шахты", "sky0": "#0b1426", "sky1": "#1d3a55", "hill_far": "#142339", "hill_near": "#1b2f4a",
-	  "ground": "#31415f", "top": "#8fd8f2", "plat": "#b5e8fa", "spike": "#e8f6ff" },
+	  "ground": "#31415f", "top": "#8fd8f2", "plat": "#b5e8fa", "spike": "#e8f6ff", "weather": "snow", "wcol": "#e8f6ff" },
 	{ "name": "Токсичные топи", "sky0": "#0d1612", "sky1": "#1d3328", "hill_far": "#13241b", "hill_near": "#1a3124",
-	  "ground": "#2b3d31", "top": "#a8d65c", "plat": "#c6ec85", "spike": "#e9ffc9" },
+	  "ground": "#2b3d31", "top": "#a8d65c", "plat": "#c6ec85", "spike": "#e9ffc9", "weather": "bubbles", "wcol": "#bff06a" },
 	{ "name": "Пустынный форт", "sky0": "#1a1208", "sky1": "#3d2c14", "hill_far": "#291e0e", "hill_near": "#352813",
-	  "ground": "#4a3a20", "top": "#e6b566", "plat": "#f4ce8d", "spike": "#ffe9c2" },
+	  "ground": "#4a3a20", "top": "#e6b566", "plat": "#f4ce8d", "spike": "#ffe9c2", "weather": "sand", "wcol": "#f0d29a" },
 ]
 
 const WEAPONS := {
@@ -135,6 +135,9 @@ var sky0 := Color.BLACK
 var sky1 := Color.BLACK
 var sky_tex: GradientTexture2D = null   # кэш градиента неба
 var afterimages := []  # следы рывка [{x,y,life}]
+var ambient := []      # атмосферные частицы по теме (экранное пространство)
+var weather := "spores"
+var weather_col := Color.WHITE
 
 # Ввод текущего кадра (заполняется gather_input или тестом)
 var input := {
@@ -1287,6 +1290,7 @@ func sim_step() -> void:
 			update_bullets()
 			update_pickups()
 		update_effects()
+		update_ambient()
 		update_camera()
 		# затухание серии убийств
 		if combo_t > 0:
@@ -1788,6 +1792,73 @@ func _build_background(seed_val: int) -> void:
 		stars.append(Vector3(r.randf() * VW, r.randf() * VH * 0.7, 0.4 + r.randf() * 1.2))
 	hill_far = _make_hills(r, 330, 26)
 	hill_near = _make_hills(r, 420, 34)
+	weather = level.theme.get("weather", "spores")
+	weather_col = _col(level.theme.get("wcol", "#ffffff"))
+	_init_ambient()
+
+# ============================== Атмосфера (погода по теме) ==============================
+
+func _ambient_cap() -> int:
+	return 70
+
+func _new_ambient_particle(at_random_y: bool) -> Dictionary:
+	# частица в экранном пространстве; стартовая кромка зависит от типа погоды
+	var x := rng.randf() * VW
+	var y := rng.randf() * VH
+	match weather:
+		"snow", "sand", "spores":
+			if not at_random_y:
+				y = -8.0  # появляются сверху
+		"embers", "bubbles":
+			if not at_random_y:
+				y = VH + 8.0  # поднимаются снизу
+	var sz := 1.0 + rng.randf() * 2.2
+	var vx := 0.0
+	var vy := 0.0
+	match weather:
+		"snow":
+			vx = (rng.randf() - 0.3) * 0.6
+			vy = 0.5 + rng.randf() * 0.8
+		"sand":
+			vx = 1.6 + rng.randf() * 2.2
+			vy = (rng.randf() - 0.5) * 0.5
+			sz = 1.0 + rng.randf() * 1.6
+		"embers":
+			vx = (rng.randf() - 0.5) * 0.5
+			vy = -(0.6 + rng.randf() * 1.1)
+		"bubbles":
+			vx = (rng.randf() - 0.5) * 0.3
+			vy = -(0.4 + rng.randf() * 0.9)
+			sz = 1.5 + rng.randf() * 2.5
+		_:  # spores — мягкое парение
+			vx = (rng.randf() - 0.5) * 0.5
+			vy = (rng.randf() - 0.5) * 0.4
+	return { "x": x, "y": y, "vx": vx, "vy": vy, "size": sz, "phase": rng.randf() * TAU,
+		"alpha": 0.25 + rng.randf() * 0.45 }
+
+func _init_ambient() -> void:
+	ambient = []
+	for _i in range(_ambient_cap()):
+		ambient.append(_new_ambient_particle(true))
+
+func update_ambient() -> void:
+	for p in ambient:
+		p.phase += 0.03
+		p.x += p.vx + sin(p.phase) * 0.35
+		p.y += p.vy
+		# зацикливание по краям экрана
+		if p.x < -10:
+			p.x = VW + 8
+		elif p.x > VW + 10:
+			p.x = -8
+		if p.y < -10 or p.y > VH + 10:
+			var np := _new_ambient_particle(false)
+			p.x = np.x
+			p.y = np.y
+			p.vx = np.vx
+			p.vy = np.vy
+			p.size = np.size
+			p.alpha = np.alpha
 
 func _make_hills(r: RandomNumberGenerator, base_y: float, amp: float) -> PackedVector2Array:
 	var pts := PackedVector2Array()
@@ -1829,7 +1900,17 @@ func _draw() -> void:
 		_draw_texts()
 		draw_set_transform(Vector2.ZERO)
 
+		_draw_ambient()
 		_draw_hud()
+
+func _draw_ambient() -> void:
+	for p in ambient:
+		var col := weather_col
+		col.a = p.alpha
+		if weather == "snow" or weather == "bubbles":
+			draw_circle(Vector2(p.x, p.y), p.size, col)
+		else:
+			draw_rect(Rect2(p.x - p.size / 2.0, p.y - p.size / 2.0, p.size, p.size), col)
 
 	_draw_overlays()
 

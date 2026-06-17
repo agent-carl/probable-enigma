@@ -574,6 +574,28 @@ func _init() -> void:
 	game.ride_moving_platforms()
 	_ok(game.P.ride_id == 0 and game.P.vy == 0.0, "player lands on platform from above")
 
+	# ---------- 20. Атмосфера (погода по теме) ----------
+	# у каждой темы задан тип погоды
+	var weathers := {}
+	for thm in game.THEMES:
+		_ok(thm.has("weather") and thm.has("wcol"), "theme '%s' has weather" % thm.name)
+		weathers[thm.weather] = true
+	_ok(weathers.size() >= 4, "themes use several distinct weathers (%d)" % weathers.size())
+
+	# инициализация частиц заполняет до предела и держит их на экране
+	game.start_run(95, "95")  # уровень 1 -> spores
+	game._init_ambient()
+	_ok(game.ambient.size() == game._ambient_cap(), "ambient filled to cap")
+	for p in game.ambient:
+		_ok(p.x >= -16 and p.x <= 960 + 16 and p.y >= -16 and p.y <= 540 + 16, "ambient particle within screen")
+	# обновление сохраняет количество и конечность координат, зацикливает за краями
+	for _i in range(400):
+		game.update_ambient()
+	_ok(game.ambient.size() == game._ambient_cap(), "ambient count stable after updates")
+	for p in game.ambient:
+		_ok(is_finite(p.x) and is_finite(p.y), "ambient stays finite")
+		_ok(p.x >= -16 and p.x <= 960 + 16 and p.y >= -16 and p.y <= 540 + 16, "ambient wraps within bounds")
+
 	if failures == 0:
 		print("\nALL TESTS PASSED")
 	else:
