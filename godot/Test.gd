@@ -596,6 +596,44 @@ func _init() -> void:
 		_ok(is_finite(p.x) and is_finite(p.y), "ambient stays finite")
 		_ok(p.x >= -16 and p.x <= 960 + 16 and p.y >= -16 and p.y <= 540 + 16, "ambient wraps within bounds")
 
+	# ---------- 21. Элитные враги ----------
+	var elites := 0
+	for s5 in range(1, 41):
+		for lv in range(1, 7):
+			for en in game.generate_level(s5 * 311 + lv, lv).enemies:
+				if en.get("elite", false):
+					elites += 1
+					_ok(en.mod == "swift" or en.mod == "armored", "elite has a valid modifier")
+					_ok(not en.get("boss", false) and en.type != "shard", "elite is not boss/shard")
+	_ok(elites > 0, "elite enemies are generated (total %d)" % elites)
+
+	# бронежилет снижает входящий урон (×0.6)
+	game.start_run(41, "41")
+	var armored := { "type": "walker", "x": 100.0, "y": 100.0, "w": 20, "h": 20, "hp": 100, "maxhp": 100, "score": 10, "dead": false, "hurt_t": 0, "eid": 1, "elite": true, "mod": "armored" }
+	game.enemies = [armored]
+	game.hurt_enemy(armored, 50, false)
+	_ok(armored.hp == 100 - int(round(50 * 0.6)), "armored elite takes reduced damage (hp=%d)" % armored.hp)
+
+	# элита роняет дополнительный лут при гибели
+	game.start_run(42, "42")
+	game.pickups = []
+	var rich := { "type": "walker", "x": 200.0, "y": 200.0, "w": 20, "h": 20, "hp": 1, "maxhp": 40, "score": 20, "dead": false, "hurt_t": 0, "eid": 2, "elite": true, "mod": "swift" }
+	game.enemies = [rich]
+	game.hurt_enemy(rich, 50, false)
+	_ok(rich.dead, "elite dies")
+	_ok(game.pickups.size() >= 3, "elite drops extra loot (%d pickups)" % game.pickups.size())
+
+	# ---------- 22. Индикатор направления урона ----------
+	game.start_run(43, "43")
+	game.hurt_dirs = []
+	game.P.inv = 0
+	game.hurt_player(10, 1, Vector2(game.P.x + 200, game.P.y))
+	_ok(game.hurt_dirs.size() == 1, "hurt records a direction indicator")
+	_ok(abs(game.hurt_dirs[0].ang) < 0.2, "damage from the right -> angle ~0")
+	game.P.inv = 0
+	game.hurt_player(10, -1, Vector2(game.P.x - 200, game.P.y))
+	_ok(abs(abs(game.hurt_dirs[1].ang) - PI) < 0.2, "damage from the left -> angle ~PI")
+
 	if failures == 0:
 		print("\nALL TESTS PASSED")
 	else:

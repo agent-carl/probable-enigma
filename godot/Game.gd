@@ -138,6 +138,7 @@ var afterimages := []  # следы рывка [{x,y,life}]
 var ambient := []      # атмосферные частицы по теме (экранное пространство)
 var weather := "spores"
 var weather_col := Color.WHITE
+var hurt_dirs := []    # индикаторы источника урона по краям экрана [{ang, life}]
 
 # Ввод текущего кадра (заполняется gather_input или тестом)
 var input := {
@@ -229,6 +230,17 @@ func _demo_step() -> void:
 		P.x = mp.x + mp.w / 2.0 - P.w / 2.0
 		P.y = mp.y - P.h
 		P.vy = 0.0
+	if demo_frame == 70 and "--elite" in OS.get_cmdline_args() and state == "play":
+		# делаем ближайших врагов элитными и показываем индикатор урона
+		var n := 0
+		for en in enemies:
+			if en.get("boss", false) or en.type == "shard":
+				continue
+			en["elite"] = true
+			en["mod"] = "swift" if n % 2 == 0 else "armored"
+			n += 1
+		P.inv = 0
+		hurt_player(12, -1, Vector2(P.x - 200, P.y))
 	if state == "play":
 		input.move = 1
 		input.jump_pressed = (demo_frame % 26 == 0)
@@ -706,6 +718,25 @@ func generate_level(seed_val: int, level_num: int) -> Dictionary:
 	for i in range(enemy_list.size()):
 		enemy_list[i]["eid"] = i
 
+	# элитные враги с модификаторами (не боссы/осколки)
+	var elite_chance := clampf(0.05 + 0.02 * level_num, 0.0, 0.30)
+	for en in enemy_list:
+		if en.get("boss", false) or en.type == "shard":
+			continue
+		if r.randf() >= elite_chance:
+			continue
+		var mod := "swift" if r.randf() < 0.5 else "armored"
+		en["elite"] = true
+		en["mod"] = mod
+		en.hp = int(round(en.hp * 2.2))
+		en.maxhp = en.hp
+		en.score = int(en.score * 2)
+		en.dmg = int(round(en.dmg * 1.2))
+		if mod == "swift":
+			en.spd *= 1.6
+			if en.cd_max > 0:
+				en.cd_max = int(en.cd_max * 0.7)
+
 	return {
 		"W": W, "H": H, "grid": grid, "ground_y": ground_y,
 		"theme": THEMES[(level_num - 1) % THEMES.size()],
@@ -891,6 +922,7 @@ func start_level() -> void:
 	parts = []
 	texts = []
 	afterimages = []
+	hurt_dirs = []
 	P.x = level.spawn.x
 	P.y = level.spawn.y
 	P.vx = 0.0
@@ -975,7 +1007,7 @@ func level_clear() -> void:
 
 # ============================== Урон и смерть ==============================
 
-func hurt_player(dmg: float, from_dir: float) -> void:
+func hurt_player(dmg: float, from_dir: float, src := Vector2.INF) -> void:
 	if P.inv > 0 or state != "play":
 		return
 	var real: int = max(1, roundi(dmg * P.stats.armor_mul))
@@ -984,6 +1016,13 @@ func hurt_player(dmg: float, from_dir: float) -> void:
 	P.vy = min(P.vy, -4.0)
 	shake = min(14.0, shake + 7.0)
 	play_sfx("hurt")
+	# индикатор направления источника урона
+	var ang: float
+	if src.x != INF:
+		ang = (src - Vector2(P.x + P.w / 2.0, P.y + P.h / 2.0)).angle()
+	else:
+		ang = 0.0 if from_dir >= 0 else PI
+	hurt_dirs.append({ "ang": ang, "life": 40.0 })
 	# щит поглощает урон первым
 	if P.shield > 0:
 		var absorbed: int = int(min(P.shield, real))
@@ -1009,6 +1048,9 @@ func die() -> void:
 	_set_state("dead")
 
 func hurt_enemy(en: Dictionary, dmg: int, crit: bool) -> void:
+	# элита-бронежилет снижает входящий урон
+	if en.get("mod", "") == "armored":
+		dmg = max(1, int(round(dmg * 0.6)))
 	en.hp -= dmg
 	en.hurt_t = 90
 	damage_dealt += dmg
@@ -1048,6 +1090,15 @@ func hurt_enemy(en: Dictionary, dmg: int, crit: bool) -> void:
 			drop_loot(en)
 			if en.get("type", "") == "splitter":
 				_spawn_shards(en)
+		# элита всегда роняет дополнительный лут (монеты + гарантированный предмет)
+		if en.get("elite", false):
+			var ecx: float = en.x + en.w / 2.0
+			for _c in range(rng.randi_range(2, 4)):
+				pickups.append({ "kind": "coin", "x": ecx - 6, "y": en.y, "w": 12, "h": 12, "vy": -3.0 - rng.randf() * 2.0, "t": 0.0 })
+			if rng.randf() < 0.5:
+				pickups.append({ "kind": "med", "x": ecx - 11, "y": en.y, "w": 22, "h": 18, "vy": -3.0, "t": 0.0, "heal": 20 })
+			else:
+				pickups.append({ "kind": "shield", "x": ecx - 10, "y": en.y, "w": 20, "h": 20, "vy": -3.0, "t": 0.0, "shield": 20.0 })
 
 func _spawn_shards(en: Dictionary) -> void:
 	# делящийся враг распадается на два быстрых осколка
@@ -1078,7 +1129,7 @@ func explode(x: float, y: float, radius: float, dmg: int, from: String) -> void:
 				hurt_enemy(en, dmg, false)
 	else:
 		if P.inv <= 0 and state == "play" and Vector2(P.x + P.w / 2.0, P.y + P.h / 2.0).distance_to(c) <= radius:
-			hurt_player(dmg, 1 if P.x + P.w / 2.0 > x else -1)
+			hurt_player(dmg, 1 if P.x + P.w / 2.0 > x else -1, c)
 	# взрывы крушат ящики в радиусе
 	var crates: Dictionary = level.get("crate_hp", {})
 	if not crates.is_empty():
@@ -1604,7 +1655,7 @@ func update_enemies() -> void:
 			en.hurt_t -= 1
 
 		if P.inv <= 0 and not en.dead and en.type != "exploder" and aabb(en, P):
-			hurt_player(en.dmg, 1 if P.x + P.w / 2.0 > ecx else -1)
+			hurt_player(en.dmg, 1 if P.x + P.w / 2.0 > ecx else -1, Vector2(ecx, ecy))
 
 	var alive := []
 	for en in enemies:
@@ -1658,7 +1709,7 @@ func update_bullets() -> void:
 							break
 			elif P.inv <= 0 and state == "play" \
 					and b.x > P.x - 2 and b.x < P.x + P.w + 2 and b.y > P.y - 2 and b.y < P.y + P.h + 2:
-				hurt_player(b.dmg, 1 if b.vx > 0 else -1)
+				hurt_player(b.dmg, 1 if b.vx > 0 else -1, Vector2(b.x, b.y))
 				hit = true
 			if b.y < -200 or b.y > level.px_h + 200 or b.x < -200 or b.x > level.px_w + 200:
 				hit = true
@@ -1753,6 +1804,12 @@ func update_effects() -> void:
 		if t.life > 0:
 			to.append(t)
 	toasts = to
+	var hd := []
+	for h in hurt_dirs:
+		h.life -= 1
+		if h.life > 0:
+			hd.append(h)
+	hurt_dirs = hd
 
 func update_camera() -> void:
 	# лёгкий look-ahead в сторону прицела
@@ -1901,7 +1958,18 @@ func _draw() -> void:
 		draw_set_transform(Vector2.ZERO)
 
 		_draw_ambient()
+		_draw_hurt_dirs()
 		_draw_hud()
+
+func _draw_hurt_dirs() -> void:
+	# дуга-вспышка у края экрана в сторону источника урона
+	var ctr := Vector2(VW / 2.0, VH / 2.0)
+	for h in hurt_dirs:
+		var a := clampf(h.life / 40.0, 0.0, 1.0)
+		var ang: float = h.ang
+		var rad := 250.0
+		var pos := ctr + Vector2(cos(ang), sin(ang)) * rad
+		draw_arc(pos, 60.0, ang + PI - 0.5, ang + PI + 0.5, 12, Color(1, 0.3, 0.3, 0.55 * a), 8.0)
 
 func _draw_ambient() -> void:
 	for p in ambient:
@@ -2031,6 +2099,13 @@ func _draw_pickups() -> void:
 func _draw_enemies() -> void:
 	for en in enemies:
 		var flash: bool = en.hurt_t > 84
+		# аура элитного врага
+		if en.get("elite", false):
+			var ec := Vector2(en.x + en.w / 2.0, en.y + en.h / 2.0)
+			var acol := Color(1, 0.84, 0.3, 0.22) if en.mod == "swift" else Color(0.6, 0.78, 1.0, 0.22)
+			var rr := maxf(en.w, en.h) * 0.7 + sin(tick * 0.12 + float(en.eid)) * 3.0
+			draw_circle(ec, rr, acol)
+			draw_arc(ec, rr, 0, TAU, 20, Color(acol.r, acol.g, acol.b, 0.7), 1.5)
 		if en.type == "walker":
 			draw_rect(Rect2(en.x, en.y, en.w, en.h), Color.WHITE if flash else Color("#e2554f"))
 			var exx: float = en.x + en.w / 2.0 + en.dir * 5
