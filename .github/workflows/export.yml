@@ -1,0 +1,68 @@
+name: GUNFALL build
+
+# Сборка готовых билдов (Windows / Linux / Web) и выгрузка их как артефактов.
+# Запускается вручную (workflow_dispatch) или по тегу вида v1.0.0 — экспорт
+# тяжёлый (скачивает ~1.2 ГБ шаблонов), поэтому не на каждый push.
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    env:
+      GODOT_VERSION: "4.6.3"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache Godot + export templates
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/godot
+            ~/.local/share/godot/export_templates
+          key: godot-export-${{ env.GODOT_VERSION }}
+
+      - name: Set up Godot and export templates
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          base="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable"
+          mkdir -p ~/godot
+          curl -sL -o /tmp/godot.zip "$base/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          unzip -o -q /tmp/godot.zip -d ~/godot
+          chmod +x ~/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64
+          curl -sL -o /tmp/tpl.tpz "$base/Godot_v${GODOT_VERSION}-stable_export_templates.tpz"
+          mkdir -p "$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable"
+          unzip -o -q /tmp/tpl.tpz -d /tmp/tpl
+          cp /tmp/tpl/templates/* "$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable/"
+
+      - name: Import project
+        run: |
+          GODOT=~/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64
+          "$GODOT" --headless --path godot --import 2>&1 | tail -3 || true
+
+      - name: Export builds
+        run: |
+          GODOT=~/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64
+          mkdir -p build/linux build/windows build/web
+          "$GODOT" --headless --path godot --export-release "Linux"   "$PWD/build/linux/gunfall.x86_64"
+          "$GODOT" --headless --path godot --export-release "Windows" "$PWD/build/windows/gunfall.exe"
+          "$GODOT" --headless --path godot --export-release "Web"     "$PWD/build/web/index.html"
+          test -s build/linux/gunfall.x86_64
+          test -s build/windows/gunfall.exe
+          test -s build/web/index.html
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gunfall-linux
+          path: build/linux/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gunfall-windows
+          path: build/windows/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gunfall-web
+          path: build/web/

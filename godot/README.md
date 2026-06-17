@@ -15,12 +15,23 @@
    репозитория → **Import & Edit**.
 3. Нажмите **F5** (или кнопку ▶ «Run Project»).
 
-### Собрать в один исполняемый файл (.exe / .app / бинарник)
+### Готовые сборки из CI (Windows / Linux / Web)
 
-В Godot: **Project → Export**, добавьте пресет нужной платформы (Windows /
-Linux / macOS), скачайте export templates по подсказке движка и нажмите
-**Export Project**. Получите самостоятельный файл, который запускается
-двойным кликом без установленного Godot.
+Билды собираются автоматически в GitHub Actions (workflow **GUNFALL build**,
+`.github/workflows/export.yml`). Запустите его вручную (вкладка **Actions →
+Run workflow**) или создайте тег `vX.Y.Z` — на выходе будут артефакты
+`gunfall-windows` (`.exe`), `gunfall-linux` и `gunfall-web` (играть в браузере),
+которые можно скачать со страницы прогона.
+
+### Собрать локально
+
+В проекте уже есть пресеты экспорта (`export_presets.cfg`). В Godot:
+**Project → Export**, скачайте export templates по подсказке движка и нажмите
+**Export Project**. Либо из консоли:
+
+```bash
+godot --headless --path godot --export-release "Windows" build/gunfall.exe
+```
 
 ## Механики
 
