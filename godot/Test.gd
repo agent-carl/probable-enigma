@@ -537,11 +537,53 @@ func _init() -> void:
 	_ok(fired_at > 10, "sniper telegraphs before firing (fired at frame %d)" % fired_at)
 	_ok(fired_at >= 0, "sniper eventually fires")
 
+	# ---------- 19. Движущиеся платформы ----------
+	# генерация создаёт платформы
+	var total_movers := 0
+	for s4 in range(1, 41):
+		for lv in range(1, 6):
+			total_movers += game.generate_level(s4 * 53 + lv, lv).movers.size()
+	_ok(total_movers > 0, "moving platforms are generated (total %d)" % total_movers)
+
+	# горизонтальная платформа переносит стоящего игрока
+	game.start_run(91, "91")
+	game.level = { "W": 20, "H": 12, "grid": _empty_grid(20, 12), "px_w": 20 * 32, "px_h": 12 * 32,
+		"crate_hp": {}, "theme": { "top": "#58c98f" } }
+	var mp := { "w": 96.0, "h": 10.0, "cx": 300.0, "cy": 200.0, "ax": 64.0, "ay": 0.0,
+		"phase": 0.0, "speed": 0.05, "x": 300.0, "y": 200.0, "dx": 0.0, "dy": 0.0 }
+	game.moving_platforms = [mp]
+	# ставим игрока на платформу
+	game.P.x = 320.0
+	game.P.y = mp.y - game.P.h
+	game.P.vy = 0.0
+	game.P.ride_id = -1
+	game.update_moving_platforms()  # платформа сдвигается
+	var px_before: float = game.P.x
+	var dx_step: float = mp.dx
+	game.ride_moving_platforms()
+	_ok(game.P.ride_id == 0, "player is riding the platform")
+	_ok(abs((game.P.x - px_before) - dx_step) < 0.001, "player is carried by platform dx")
+	_ok(game.P.on_ground, "riding grants on_ground")
+	_ok(abs((game.P.y + game.P.h) - mp.y) < 0.001, "player snapped to platform top")
+
+	# приземление сверху на платформу (кадр, когда ноги пробивают верх)
+	game.P.ride_id = -1
+	game.P.x = 320.0
+	game.P.y = mp.y - game.P.h + 3   # ноги только что зашли за верх
+	game.P.vy = 8.0                   # падал
+	game.ride_moving_platforms()
+	_ok(game.P.ride_id == 0 and game.P.vy == 0.0, "player lands on platform from above")
+
 	if failures == 0:
 		print("\nALL TESTS PASSED")
 	else:
 		print("\n%d FAILURES" % failures)
 	quit(1 if failures > 0 else 0)
+
+func _empty_grid(w: int, h: int) -> PackedByteArray:
+	var g := PackedByteArray()
+	g.resize(w * h)  # заполняется нулями (T_EMPTY)
+	return g
 
 func simulate(game, seed_v: int, max_steps: int) -> Dictionary:
 	game.start_run(seed_v, str(seed_v))

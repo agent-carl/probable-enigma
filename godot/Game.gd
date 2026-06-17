@@ -120,6 +120,7 @@ var toasts := []         # всплывающие уведомления [{text,
 var level := {}        # текущая карта
 var P := {}            # игрок
 var enemies := []
+var moving_platforms := []  # движущиеся платформы/лифты
 var bullets := []
 var parts := []
 var pickups := []
@@ -220,6 +221,11 @@ func _demo_step() -> void:
 			if en.get("boss", false):
 				P.x = en.x - 120
 				P.y = en.y
+	if demo_frame == 60 and "--mover" in OS.get_cmdline_args() and state == "play" and moving_platforms.size() > 0:
+		var mp = moving_platforms[0]
+		P.x = mp.x + mp.w / 2.0 - P.w / 2.0
+		P.y = mp.y - P.h
+		P.vy = 0.0
 	if state == "play":
 		input.move = 1
 		input.jump_pressed = (demo_frame % 26 == 0)
@@ -502,6 +508,45 @@ func generate_level(seed_val: int, level_num: int) -> Dictionary:
 		_setc(grid, W, H, cxc, cyc, T_CRATE)
 		crate_hp[cyc * W + cxc] = 24
 
+	# --- движущиеся платформы/лифты в открытых местах ---
+	var movers := []
+	var mover_tries := 4 + level_num
+	for _i in range(mover_tries):
+		if movers.size() >= 1 + int(level_num / 2.0):
+			break
+		var mx := _rr(r, 16, W - 16)
+		var my: int = ground_y[mx] - _rr(r, 4, 8)
+		if my < 4:
+			continue
+		var horizontal := r.randf() < 0.6
+		var amp_t := _rr(r, 2, 4)   # амплитуда в тайлах
+		var plen := _rr(r, 2, 3)    # длина платформы в тайлах
+		# проверяем, что коридор движения свободен
+		var clear := true
+		var lo: int = mx - (amp_t if horizontal else 0) - 1
+		var hi: int = mx + (amp_t if horizontal else 0) + plen
+		var top: int = my - (amp_t if not horizontal else 0) - 1
+		var bot: int = my + (amp_t if not horizontal else 0) + 1
+		for ty in range(max(0, top), min(H, bot + 1)):
+			for tx in range(max(0, lo), min(W, hi + 1)):
+				if _cell(grid, W, H, tx, ty) != T_EMPTY:
+					clear = false
+					break
+			if not clear:
+				break
+		if not clear:
+			continue
+		var cx_px := mx * TILE
+		var cy_px := my * TILE
+		movers.append({
+			"w": plen * TILE, "h": 10,
+			"cx": float(cx_px), "cy": float(cy_px),
+			"ax": (amp_t * TILE if horizontal else 0.0),
+			"ay": (0.0 if horizontal else amp_t * TILE),
+			"phase": r.randf() * TAU, "speed": 0.018 + r.randf() * 0.018,
+			"x": float(cx_px), "y": float(cy_px), "dx": 0.0, "dy": 0.0,
+		})
+
 	# --- враги ---
 	var hp_mul := 1.0 + 0.25 * (level_num - 1)
 	var dmg_add := 2 * (level_num - 1)
@@ -664,7 +709,7 @@ func generate_level(seed_val: int, level_num: int) -> Dictionary:
 		"px_w": W * TILE, "px_h": H * TILE,
 		"spawn": Vector2(2 * TILE + 6, ground_y[2] * TILE - 31),
 		"exit_px": exit_px, "enemies": enemy_list, "pickups": pickup_list,
-		"has_boss": is_boss_level, "crate_hp": crate_hp,
+		"has_boss": is_boss_level, "crate_hp": crate_hp, "movers": movers,
 	}
 
 # ============================== Доступ к карте (рантайм) ==============================
@@ -802,7 +847,7 @@ func make_player() -> Dictionary:
 		"coyote": 0, "buffer": 0, "air_jumps": 0, "drop": 0,
 		"inv": 0, "cd": 0, "face": 1, "aim": 0.0,
 		"dash_cd": 0, "dash_t": 0, "dash_dir": 1.0,
-		"shield": 0.0, "max_shield": 0.0,
+		"shield": 0.0, "max_shield": 0.0, "ride_id": -1,
 		"weapons": [{ "id": "pistol", "ammo": INF }], "wi": 0,
 		"stats": {
 			"dmg_mul": 1.0, "cd_mul": 1.0, "spd_mul": 1.0, "jumps": 1, "lifesteal": 0,
@@ -838,6 +883,7 @@ func start_level() -> void:
 	level = generate_level(level_seed, lvl)
 	enemies = level.enemies
 	pickups = level.pickups
+	moving_platforms = level.get("movers", [])
 	bullets = []
 	parts = []
 	texts = []
@@ -1073,6 +1119,41 @@ func combo_mult() -> float:
 	# x1.0 при серии 0–2, далее растёт до x4.0
 	return clampf(1.0 + max(0, combo - 2) * 0.25, 1.0, 4.0)
 
+# ============================== Движущиеся платформы ==============================
+
+func update_moving_platforms() -> void:
+	for mp in moving_platforms:
+		mp.phase += mp.speed
+		var nx: float = mp.cx + sin(mp.phase) * mp.ax
+		var ny: float = mp.cy + sin(mp.phase) * mp.ay
+		mp.dx = nx - mp.x
+		mp.dy = ny - mp.y
+		mp.x = nx
+		mp.y = ny
+
+func ride_moving_platforms() -> void:
+	# односторонние платформы: приземление сверху + перенос игрока
+	var was: int = P.ride_id
+	P.ride_id = -1
+	for i in range(moving_platforms.size()):
+		var mp: Dictionary = moving_platforms[i]
+		if P.x + P.w <= mp.x or P.x >= mp.x + mp.w:
+			continue
+		var feet: float = P.y + P.h
+		var prev_feet: float = feet - P.vy
+		var landing: bool = P.vy >= 0.0 and feet >= mp.y - 2.0 and prev_feet <= mp.y + 6.0
+		var continuing: bool = was == i and feet >= mp.y - 8.0 and feet <= mp.y + mp.h
+		if landing or continuing:
+			P.y = mp.y - P.h
+			if P.vy > 0.0:
+				P.vy = 0.0
+			P.on_ground = true
+			P.coyote = 7
+			P.air_jumps = P.stats.jumps - 1
+			P.x += mp.dx
+			P.ride_id = i
+			break
+
 func drop_loot(en: Dictionary) -> void:
 	var rv := rng.randf()
 	var cx: float = en.x + en.w / 2.0 - 11
@@ -1199,6 +1280,7 @@ func sim_step() -> void:
 			update_effects()
 			return
 		run_ticks += 1
+		update_moving_platforms()
 		update_player()
 		if state == "play":
 			update_enemies()
@@ -1276,6 +1358,7 @@ func update_player() -> void:
 		P.shield = min(P.max_shield, P.shield + st.shield_regen)
 
 	collide_entity(P)
+	ride_moving_platforms()
 
 	P.aim = (input.aim - Vector2(P.x + P.w / 2.0, P.y + P.h / 2.0)).angle()
 	aim_angle = P.aim
@@ -1736,6 +1819,7 @@ func _draw() -> void:
 
 		draw_set_transform(-c)
 		_draw_tiles(c)
+		_draw_movers()
 		_draw_portal()
 		_draw_pickups()
 		_draw_enemies()
@@ -1805,6 +1889,22 @@ func _draw_tiles(c: Vector2) -> void:
 					draw_line(Vector2(px + 8, py + 4), Vector2(px + 12, py + TILE - 5), Color(0, 0, 0, 0.45), 1.5)
 				if dmgf > 0.6:
 					draw_line(Vector2(px + TILE - 7, py + 6), Vector2(px + 16, py + TILE - 4), Color(0, 0, 0, 0.5), 1.5)
+
+func _draw_movers() -> void:
+	for mp in moving_platforms:
+		draw_rect(Rect2(mp.x, mp.y, mp.w, mp.h), Color("#8d97bd"))
+		draw_rect(Rect2(mp.x, mp.y, mp.w, 3), Color("#cfd6f5"))
+		draw_rect(Rect2(mp.x, mp.y + mp.h - 2, mp.w, 2), Color(0, 0, 0, 0.35))
+		# индикатор направления движения
+		var horiz: bool = mp.ax > 0.0
+		var cxm: float = mp.x + mp.w / 2.0
+		var cym: float = mp.y + mp.h / 2.0
+		var col := Color(1, 1, 1, 0.5)
+		if horiz:
+			draw_colored_polygon(PackedVector2Array([Vector2(mp.x + 4, cym), Vector2(mp.x + 10, cym - 3), Vector2(mp.x + 10, cym + 3)]), col)
+			draw_colored_polygon(PackedVector2Array([Vector2(mp.x + mp.w - 4, cym), Vector2(mp.x + mp.w - 10, cym - 3), Vector2(mp.x + mp.w - 10, cym + 3)]), col)
+		else:
+			draw_colored_polygon(PackedVector2Array([Vector2(cxm, mp.y - 4), Vector2(cxm - 3, mp.y + 2), Vector2(cxm + 3, mp.y + 2)]), col)
 
 func _draw_portal() -> void:
 	var e: Vector2 = level.exit_px
