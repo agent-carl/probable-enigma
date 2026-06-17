@@ -15,6 +15,7 @@ func _init() -> void:
 	var game = GameScript.new()
 	game.test_mode = true
 	get_root().add_child(game)
+	game.rng.seed = 424242  # детерминированный прогон тестов
 
 	# ---------- 1. Генерация уровней ----------
 	var T_SOLID := 1
@@ -453,7 +454,19 @@ func _init() -> void:
 	game.damage_crate(2, 2, 20)
 	_ok(game.level.grid[crate_idx] == 0, "crate breaks at 0 hp (tile cleared)")
 	_ok(not game.level.crate_hp.has(crate_idx), "crate hp entry removed")
-	_ok(game.pickups.size() >= 1, "broken crate drops loot")
+	# лут выпадает не всегда (≈85%); ломаем несколько ящиков, чтобы проверить надёжно
+	var loot_drops := 0
+	for k in range(20):
+		var ci := (1 + k % 4) * WC + (1 + k / 4)
+		var g := PackedByteArray()
+		g.resize(WC * HC)
+		g[ci] = 5
+		game.level = { "W": WC, "H": HC, "grid": g, "px_w": WC * 32, "px_h": HC * 32,
+			"crate_hp": { ci: 24 }, "theme": { "top": "#58c98f" } }
+		game.pickups = []
+		game.damage_crate(ci % WC, ci / WC, 99)
+		loot_drops += game.pickups.size()
+	_ok(loot_drops >= 10, "broken crates drop loot most of the time (got %d/20)" % loot_drops)
 
 	# взрыв ломает ящик в радиусе
 	var gridc2 := PackedByteArray()
@@ -474,6 +487,55 @@ func _init() -> void:
 	var mover := { "x": 44.0, "y": 64.0, "w": 20, "h": 28, "vx": 5.0, "vy": 0.0, "drop": 0, "on_ground": false, "hit_wall": false }
 	game.collide_entity(mover)
 	_ok(mover.hit_wall and mover.vx == 0.0, "crate blocks entity movement (solid)")
+
+	# ---------- 18. Новые враги: снайпер и делящийся ----------
+	# генерация: делящиеся с ур.2, снайперы с ур.3
+	var has_split2 := false
+	var has_sniper3 := false
+	for s3 in range(1, 41):
+		for en in game.generate_level(s3 * 271 + 2, 2).enemies:
+			if en.type == "splitter":
+				has_split2 = true
+		for en in game.generate_level(s3 * 271 + 3, 3).enemies:
+			if en.type == "sniper":
+				has_sniper3 = true
+	_ok(has_split2, "splitters spawn from level 2")
+	_ok(has_sniper3, "snipers spawn from level 3")
+
+	# делящийся при смерти распадается на 2 осколка
+	game.start_run(81, "81")
+	game.enemies.clear()
+	var spl: Dictionary = game._spawn_enemy("splitter", 300.0, 200.0)
+	game.enemies.append(spl)
+	game.hurt_enemy(spl, 9999, false)
+	var shards := 0
+	for en in game.enemies:
+		if en.type == "shard":
+			shards += 1
+	_ok(shards == 2, "splitter spawns 2 shards on death (got %d)" % shards)
+
+	# снайпер: телеграф лучом, затем выстрел
+	var WS := 24
+	var HS := 12
+	var grids := PackedByteArray()
+	grids.resize(WS * HS)
+	for ty in range(10, HS):
+		for tx in range(WS):
+			grids[ty * WS + tx] = 1  # пол
+	game.level = { "W": WS, "H": HS, "grid": grids, "px_w": WS * 32, "px_h": HS * 32,
+		"crate_hp": {}, "theme": { "top": "#58c98f" } }
+	game.P.x = 120.0
+	game.P.y = 10 * 32 - 30
+	game.P.inv = 999
+	game.enemies = [game._spawn_enemy("sniper", 400.0, 10 * 32 - 30)]
+	game.bullets = []
+	var fired_at := -1
+	for i in range(90):
+		game.update_enemies()
+		if fired_at < 0 and game.bullets.size() > 0:
+			fired_at = i
+	_ok(fired_at > 10, "sniper telegraphs before firing (fired at frame %d)" % fired_at)
+	_ok(fired_at >= 0, "sniper eventually fires")
 
 	if failures == 0:
 		print("\nALL TESTS PASSED")

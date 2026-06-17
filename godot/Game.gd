@@ -76,6 +76,9 @@ const ENEMY_BASE := {
 	"flyer":   { "w": 24, "h": 20, "hp": 22, "spd": 1.7, "dmg": 10, "score": 15, "cd": 0, "fly": true },
 	"tank":    { "w": 36, "h": 38, "hp": 130, "spd": 0.55, "dmg": 11, "score": 45, "cd": 135, "fly": false },
 	"exploder": { "w": 22, "h": 24, "hp": 18, "spd": 1.9, "dmg": 24, "score": 18, "cd": 0, "fly": false, "radius": 62 },
+	"sniper":  { "w": 26, "h": 30, "hp": 34, "spd": 0.0, "dmg": 26, "score": 30, "cd": 0, "fly": false },
+	"splitter": { "w": 30, "h": 30, "hp": 52, "spd": 0.9, "dmg": 12, "score": 25, "cd": 0, "fly": false },
+	"shard":   { "w": 14, "h": 16, "hp": 10, "spd": 2.4, "dmg": 8, "score": 5, "cd": 0, "fly": false },
 	"boss":    { "w": 70, "h": 74, "hp": 900, "spd": 0.9, "dmg": 18, "score": 300, "cd": 70, "fly": false },
 }
 
@@ -100,6 +103,7 @@ var combo_t := 0         # таймер сброса серии
 var max_combo := 0       # лучшая серия за забег
 var boss_alive := false  # на уровне есть живой босс
 var boss_name := ""      # имя текущего босса
+var _eid_counter := 1000000  # счётчик id для врагов, созданных в рантайме
 var hitstop := 0         # короткая заморозка при крупных событиях
 var volume := 0.8        # громкость (0..1), сохраняется
 
@@ -536,6 +540,7 @@ func generate_level(seed_val: int, level_num: int) -> Dictionary:
 			"fly": b.fly, "cd": (_rr(r, 30, b.cd) if b.cd > 0 else 0), "cd_max": b.cd,
 			"hurt_t": 0, "phase": r.randf() * TAU,
 			"on_ground": false, "hit_wall": false, "drop": 0, "dead": false,
+			"charge": 0, "aimx": 0.0, "aimy": 0.0,
 		})
 
 	var is_boss_level := level_num % 5 == 0
@@ -546,6 +551,8 @@ func generate_level(seed_val: int, level_num: int) -> Dictionary:
 		"flyer": int((mini(1 + level_num, 9) if level_num >= 2 else 0) * crowd),
 		"tank": int((mini(level_num - 2, 5) if level_num >= 3 else 0) * crowd),
 		"exploder": int((mini(1 + int((level_num - 1) / 2.0), 5) if level_num >= 2 else 0) * crowd),
+		"splitter": int((mini(1 + int((level_num - 1) / 2.0), 4) if level_num >= 2 else 0) * crowd),
+		"sniper": int((mini(1 + int((level_num - 2) / 2.0), 4) if level_num >= 3 else 0) * crowd),
 	}
 	for type in counts.keys():
 		for _i in range(counts[type]):
@@ -767,6 +774,26 @@ func standing_on_platform(e: Dictionary) -> bool:
 
 # ============================== Запуск забега / уровня ==============================
 
+func _next_eid() -> int:
+	_eid_counter += 1
+	return _eid_counter
+
+func _spawn_enemy(type: String, sx: float, sy: float) -> Dictionary:
+	# создание врага в рантайме (осколки делящегося и т.п.)
+	var b: Dictionary = ENEMY_BASE[type]
+	var hp_mul := 1.0 + 0.25 * (lvl - 1)
+	var dmg_add := 2 * (lvl - 1)
+	return {
+		"type": type, "x": sx, "y": sy, "w": b.w, "h": b.h,
+		"hp": roundi(b.hp * hp_mul), "maxhp": roundi(b.hp * hp_mul),
+		"vx": 0.0, "vy": 0.0, "dir": (-1 if rng.randf() < 0.5 else 1),
+		"spd": b.spd, "dmg": b.dmg + dmg_add, "score": b.score,
+		"fly": b.fly, "cd": 0, "cd_max": b.get("cd", 0),
+		"hurt_t": 0, "phase": rng.randf() * TAU,
+		"on_ground": false, "hit_wall": false, "drop": 0, "dead": false,
+		"charge": 0, "aimx": 0.0, "aimy": 0.0, "eid": _next_eid(),
+	}
+
 func make_player() -> Dictionary:
 	return {
 		"x": 0.0, "y": 0.0, "w": 20, "h": 30, "vx": 0.0, "vy": 0.0,
@@ -970,6 +997,19 @@ func hurt_enemy(en: Dictionary, dmg: int, crit: bool) -> void:
 			explode(en.x + en.w / 2.0, en.y + en.h / 2.0, en.get("radius", 62), int(round(en.dmg * 0.8)), "e")
 		else:
 			drop_loot(en)
+			if en.get("type", "") == "splitter":
+				_spawn_shards(en)
+
+func _spawn_shards(en: Dictionary) -> void:
+	# делящийся враг распадается на два быстрых осколка
+	var cx: float = en.x + en.w / 2.0
+	for s in [-1, 1]:
+		var sh := _spawn_enemy("shard", cx + s * 10 - 7, en.y)
+		sh.dir = s
+		sh.vx = s * 2.0
+		sh.vy = -3.0
+		enemies.append(sh)
+	burst(cx, en.y + en.h / 2.0, 10, Color("#d06be0"))
 
 func explode(x: float, y: float, radius: float, dmg: int, from: String) -> void:
 	# улучшение «Сапёр» усиливает взрывы игрока
@@ -1288,7 +1328,7 @@ func update_enemies() -> void:
 		var ecy: float = en.y + en.h / 2.0
 		var dist := Vector2(pcx - ecx, pcy - ecy).length()
 
-		if en.type == "walker":
+		if en.type == "walker" or en.type == "splitter" or en.type == "shard":
 			en.vy = min(en.vy + GRAV, MAX_FALL)
 			var sees: bool = dist < 280 and abs(pcy - ecy) < 80 and line_of_sight(ecx, ecy, pcx, pcy)
 			if sees:
@@ -1305,6 +1345,27 @@ func update_enemies() -> void:
 				var at_feet := tile_at(foot_tx, foot_ty - 1)
 				if (not is_blocking(below) and below != T_PLAT) or at_feet == T_SPIKE:
 					en.dir *= -1
+		elif en.type == "sniper":
+			en.vy = min(en.vy + GRAV, MAX_FALL)
+			en.vx = 0.0
+			en.dir = 1 if pcx > ecx else -1
+			collide_entity(en)
+			var can_see := dist < 540 and line_of_sight(ecx, ecy, pcx, pcy)
+			if en.charge == 0:
+				if can_see:
+					en.charge = 1
+					en.aimx = pcx   # фиксируем цель — игрок успевает увернуться
+					en.aimy = pcy
+			elif en.charge > 0:
+				en.charge += 1
+				if en.charge >= 54:
+					var a := atan2(en.aimy - ecy, en.aimx - ecx)
+					_eshot(ecx, ecy, a, 11.5, en.dmg, "#ff3b3b")
+					play_sfx("rifle")
+					shake = max(shake, 4.0)
+					en.charge = -110   # перезарядка
+			else:
+				en.charge += 1
 		elif en.type == "exploder":
 			en.vy = min(en.vy + GRAV, MAX_FALL)
 			var chase: bool = dist < 360 and line_of_sight(ecx, ecy, pcx, pcy)
@@ -1794,6 +1855,25 @@ func _draw_enemies() -> void:
 			var exx: float = en.x + en.w / 2.0 + en.dir * 5
 			draw_rect(Rect2(exx - 3, en.y + 8, 3, 5), Color("#2a0f0e"))
 			draw_rect(Rect2(exx + 2, en.y + 8, 3, 5), Color("#2a0f0e"))
+		elif en.type == "splitter" or en.type == "shard":
+			var base_c := Color("#b85ad0") if en.type == "splitter" else Color("#d98ae8")
+			draw_rect(Rect2(en.x, en.y, en.w, en.h), Color.WHITE if flash else base_c)
+			# линия раскола
+			draw_line(Vector2(en.x + en.w / 2.0, en.y + 2), Vector2(en.x + en.w / 2.0, en.y + en.h - 2), Color(0, 0, 0, 0.3), 2.0)
+			var sxx: float = en.x + en.w / 2.0 + en.dir * (3 if en.type == "shard" else 5)
+			draw_rect(Rect2(sxx - 3, en.y + en.h * 0.3, 2, 4), Color("#2a0f2e"))
+			draw_rect(Rect2(sxx + 2, en.y + en.h * 0.3, 2, 4), Color("#2a0f2e"))
+		elif en.type == "sniper":
+			# луч-прицел во время зарядки выстрела
+			if en.charge > 0:
+				var a := atan2(en.aimy - (en.y + en.h / 2.0), en.aimx - (en.x + en.w / 2.0))
+				var beam := clampf(en.charge / 54.0, 0, 1)
+				var origin := Vector2(en.x + en.w / 2.0, en.y + en.h / 2.0)
+				draw_line(origin, origin + Vector2(cos(a), sin(a)) * 600, Color(1, 0.23, 0.23, 0.25 + beam * 0.55), 1.0 + beam * 2.0)
+			draw_rect(Rect2(en.x, en.y, en.w, en.h), Color.WHITE if flash else Color("#5a6b3a"))
+			draw_rect(Rect2(en.x + 4, en.y + 4, en.w - 8, 6), Color("#2a3018"))
+			# «глаз-прицел»
+			draw_circle(Vector2(en.x + en.w / 2.0 + en.dir * 4, en.y + 16), 4, Color("#ff3b3b") if en.charge > 0 else Color("#9bb05a"))
 		elif en.type == "shooter":
 			draw_rect(Rect2(en.x, en.y, en.w, en.h), Color.WHITE if flash else Color("#b06ee8"))
 			draw_rect(Rect2(en.x + en.w / 2.0 - 2 + en.dir * 4, en.y + 9, 5, 5), Color("#34204a"))
