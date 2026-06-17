@@ -682,6 +682,71 @@ func _init() -> void:
 	game.shop_continue()
 	_ok(game.state == "play" and game.lvl == 3, "shop_continue starts the level")
 
+	# ---------- 24. Статусы, ульта ----------
+	game.start_run(61, "61")
+	# заморозка замедляет, потом скорость восстанавливается
+	game.P.x = 50.0
+	var fr: Dictionary = game._spawn_enemy("walker", 600.0, 200.0)
+	var base_spd: float = fr.base_spd
+	game.enemies = [fr]
+	game.apply_chill(fr, 8)
+	game.update_enemies()
+	_ok(abs(fr.spd - base_spd * 0.45) < 1e-6, "chill slows enemy speed")
+	_ok(int(fr.chill) == 7, "chill ticks down")
+	fr.chill = 0
+	game.update_enemies()
+	_ok(abs(fr.spd - base_spd) < 1e-6, "speed restores after chill ends")
+
+	# горение наносит урон по времени и заряжает ульту/статы
+	game.start_run(62, "62")
+	game.P.x = 50.0
+	var bn: Dictionary = game._spawn_enemy("tank", 600.0, 200.0)
+	bn.hp = 200
+	game.enemies = [bn]
+	game.apply_burn(bn, 96)
+	var hp_b: int = bn.hp
+	for _i in range(60):
+		game.update_enemies()
+	_ok(bn.hp < hp_b, "burning deals damage over time (%d -> %d)" % [hp_b, bn.hp])
+
+	# улучшения incend/cryo задают шансы и применяют статус (шанс=1 для теста)
+	game.start_run(63, "63")
+	game.apply_upgrade_stats({ "id": "incend" })
+	game.apply_upgrade_stats({ "id": "cryo" })
+	_ok(game.P.stats.burn_chance > 0 and game.P.stats.chill_chance > 0, "incend/cryo set chances")
+	game.P.stats.burn_chance = 1.0
+	game.P.stats.chill_chance = 1.0
+	var tgt: Dictionary = game._spawn_enemy("walker", 400.0, 200.0)
+	game._roll_bullet_status(tgt)
+	_ok(int(tgt.burn) > 0 and int(tgt.chill) > 0, "bullet status applies at 100% chance")
+
+	# ультимейт: заряжается уроном, активируется на максимуме
+	game.start_run(64, "64")
+	game.ult = 0.0
+	var due: Dictionary = game._spawn_enemy("walker", 400.0, 200.0)
+	due.hp = 1000
+	game.enemies = [due]
+	game.hurt_enemy(due, 50, false)
+	_ok(abs(game.ult - 50.0) < 1e-6, "ult charges from damage")
+	# не на максимуме — активация через update_player не срабатывает
+	game.ult = 10.0
+	game.input.ult = true
+	game.P.inv = 999
+	game.update_player()
+	_ok(abs(game.ult - 10.0) < 1e-6, "ult does not fire below max")
+	# на максимуме — срабатывает (урон по площади, чистит вражеские пули, сброс)
+	game.ult = game.ULT_MAX
+	var ult_e: Dictionary = game._spawn_enemy("walker", game.P.x + 40, game.P.y)
+	ult_e.hp = 1000
+	game.enemies = [ult_e]
+	game.bullets = [{ "x": game.P.x + 10, "y": game.P.y, "vx": 0.0, "vy": 0.0, "dmg": 5, "from": "e", "life": 100, "color": "#f00" }]
+	var nh: int = ult_e.hp
+	game.input.ult = true
+	game.update_player()
+	_ok(game.ult == 0.0, "ult resets after use")
+	_ok(ult_e.hp < nh, "ult damages nearby enemies")
+	_ok(game.bullets.size() == 0, "ult clears nearby enemy bullets")
+
 	if failures == 0:
 		print("\nALL TESTS PASSED")
 	else:

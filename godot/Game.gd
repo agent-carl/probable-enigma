@@ -57,6 +57,8 @@ const UPGRADES := [
 	{ "id": "blast", "icon": "✺", "name": "Сапёр", "desc": "+40% к радиусу и урону ваших взрывов" },
 	{ "id": "magnet", "icon": "◈", "name": "Магнит", "desc": "Притягивает монеты и предметы с большего расстояния" },
 	{ "id": "berserk", "icon": "⚡", "name": "Берсерк", "desc": "Чем длиннее серия убийств, тем выше урон" },
+	{ "id": "incend", "icon": "🔥", "name": "Зажигательные", "desc": "Пули с шансом поджигают врагов (урон по времени)" },
+	{ "id": "cryo", "icon": "❄", "name": "Крио-патроны", "desc": "Пули с шансом замораживают врагов (замедление)" },
 ]
 
 const ACHIEVEMENTS := [
@@ -108,6 +110,8 @@ var boss_name := ""      # имя текущего босса
 var _eid_counter := 1000000  # счётчик id для врагов, созданных в рантайме
 var hitstop := 0         # короткая заморозка при крупных событиях
 var volume := 0.8        # громкость (0..1), сохраняется
+var ult := 0.0           # заряд ультимейта (0..ULT_MAX)
+const ULT_MAX := 300.0
 
 # статистика забега
 var run_ticks := 0       # прожитые кадры (время)
@@ -146,7 +150,7 @@ var hurt_dirs := []    # индикаторы источника урона по
 var input := {
 	"move": 0, "down": false, "jump_pressed": false, "jump_held": false,
 	"shoot_held": false, "shoot_clicked": false, "aim": Vector2.ZERO,
-	"switch_to": -1, "wheel": 0, "dash": false,
+	"switch_to": -1, "wheel": 0, "dash": false, "ult": false,
 }
 var _prev_keys := {}
 var _prev_mouse := false
@@ -243,6 +247,9 @@ func _demo_step() -> void:
 			n += 1
 		P.inv = 0
 		hurt_player(12, -1, Vector2(P.x - 200, P.y))
+	if demo_frame == 5 and "--status" in OS.get_cmdline_args() and state == "play":
+		P.stats.burn_chance = 1.0
+		P.stats.chill_chance = 1.0
 	if demo_frame == 50 and "--shop" in OS.get_cmdline_args() and state == "play":
 		coins = 50
 		open_shop()
@@ -263,6 +270,7 @@ func _demo_step() -> void:
 		input.shoot_held = true
 		input.shoot_clicked = (demo_frame % 6 == 0)
 		input.dash = (demo_frame % 40 == 20)
+		input.ult = ult >= ULT_MAX   # бот бьёт ультой по готовности
 		input.switch_to = -1
 		if "--guns" in OS.get_cmdline_args() and demo_frame % 35 == 0:
 			input.switch_to = (P.wi + 1) % P.weapons.size()
@@ -296,6 +304,7 @@ func gather_input() -> void:
 	var jump_now := Input.is_key_pressed(KEY_W) or Input.is_key_pressed(KEY_UP) or Input.is_key_pressed(KEY_SPACE)
 	var shoot_now := Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)
 	var dash_now := Input.is_key_pressed(KEY_SHIFT) or Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT)
+	var ult_now := Input.is_key_pressed(KEY_Q)
 
 	input.move = (1 if k_right else 0) - (1 if k_left else 0)
 	input.down = k_down
@@ -304,6 +313,7 @@ func gather_input() -> void:
 	input.shoot_held = shoot_now
 	input.shoot_clicked = shoot_now and not _prev_mouse
 	input.dash = dash_now and not _prev_keys.get("dash", false)
+	input.ult = ult_now and not _prev_keys.get("ult", false)
 	input.aim = get_local_mouse_position() + cam
 	input.switch_to = -1
 	for i in range(4):
@@ -312,6 +322,7 @@ func gather_input() -> void:
 
 	_prev_keys["jump"] = jump_now
 	_prev_keys["dash"] = dash_now
+	_prev_keys["ult"] = ult_now
 	for i in range(4):
 		_prev_keys["d%d" % i] = Input.is_key_pressed(KEY_1 + i)
 	_prev_mouse = shoot_now
@@ -752,6 +763,12 @@ func generate_level(seed_val: int, level_num: int) -> Dictionary:
 			if en.cd_max > 0:
 				en.cd_max = int(en.cd_max * 0.7)
 
+	# нормализуем поля статусов (база скорости — после элитных модификаторов)
+	for en in enemy_list:
+		en["base_spd"] = en.spd
+		en["burn"] = 0
+		en["chill"] = 0
+
 	return {
 		"W": W, "H": H, "grid": grid, "ground_y": ground_y,
 		"theme": THEMES[(level_num - 1) % THEMES.size()],
@@ -881,9 +898,9 @@ func _spawn_enemy(type: String, sx: float, sy: float) -> Dictionary:
 		"type": type, "x": sx, "y": sy, "w": b.w, "h": b.h,
 		"hp": roundi(b.hp * hp_mul), "maxhp": roundi(b.hp * hp_mul),
 		"vx": 0.0, "vy": 0.0, "dir": (-1 if rng.randf() < 0.5 else 1),
-		"spd": b.spd, "dmg": b.dmg + dmg_add, "score": b.score,
+		"spd": b.spd, "base_spd": b.spd, "dmg": b.dmg + dmg_add, "score": b.score,
 		"fly": b.fly, "cd": 0, "cd_max": b.get("cd", 0),
-		"hurt_t": 0, "phase": rng.randf() * TAU,
+		"hurt_t": 0, "phase": rng.randf() * TAU, "burn": 0, "chill": 0,
 		"on_ground": false, "hit_wall": false, "drop": 0, "dead": false,
 		"charge": 0, "aimx": 0.0, "aimy": 0.0, "eid": _next_eid(),
 	}
@@ -902,6 +919,7 @@ func make_player() -> Dictionary:
 			"dmg_mul": 1.0, "cd_mul": 1.0, "spd_mul": 1.0, "jumps": 1, "lifesteal": 0,
 			"armor_mul": 1.0, "crit": 0.0, "jump_mul": 1.0,
 			"shield_regen": 0.0, "dash_cd_mul": 1.0, "blast_mul": 1.0, "magnet_range": 90.0, "berserk": 0.0,
+			"burn_chance": 0.0, "chill_chance": 0.0,
 		},
 	}
 
@@ -915,6 +933,7 @@ func start_run(s: int, label: String) -> void:
 	lvl = 1
 	score = 0
 	coins = 0
+	ult = 0.0
 	kills = 0
 	max_combo = 0
 	run_ticks = 0
@@ -1011,6 +1030,8 @@ func apply_upgrade_stats(u: Dictionary) -> void:
 		"blast": st.blast_mul *= 1.4
 		"magnet": st.magnet_range += 90.0
 		"berserk": st.berserk += 0.5
+		"incend": st.burn_chance = min(0.9, st.burn_chance + 0.35)
+		"cryo": st.chill_chance = min(0.9, st.chill_chance + 0.35)
 
 func choose_upgrade(u: Dictionary) -> void:
 	apply_upgrade_stats(u)
@@ -1121,16 +1142,63 @@ func die() -> void:
 		_save_best(best)
 	_set_state("dead")
 
-func hurt_enemy(en: Dictionary, dmg: int, crit: bool) -> void:
+func activate_ult() -> void:
+	# «Перегрузка»: ударная волна, чистит вражеские пули, даёт i-кадры
+	var cx: float = P.x + P.w / 2.0
+	var cy: float = P.y + P.h / 2.0
+	P.inv = max(P.inv, 40)
+	shake = min(24.0, shake + 16.0)
+	hitstop = 6
+	burst(cx, cy, 50, Color("#9be8ff"))
+	burst(cx, cy, 30, Color("#ffffff"))
+	play_sfx("portal")
+	# урон и отбрасывание врагов в радиусе
+	var radius := 200.0
+	for en in enemies:
+		if en.dead:
+			continue
+		var d := Vector2(en.x + en.w / 2.0 - cx, en.y + en.h / 2.0 - cy)
+		if d.length() <= radius:
+			hurt_enemy(en, 80, true)
+			if not en.dead:
+				var dir := d.normalized()
+				en.vx += dir.x * 8.0
+				en.vy += dir.y * 6.0 - 3.0
+	# развеиваем вражеские пули поблизости
+	var kept := []
+	for b in bullets:
+		if b.from == "e" and Vector2(b.x - cx, b.y - cy).length() <= radius:
+			continue
+		kept.append(b)
+	bullets = kept
+	ult = 0.0  # сброс после нанесения урона (чтобы урон волны не перезаряжал ульту)
+
+func _roll_bullet_status(en: Dictionary) -> void:
+	if en.dead:
+		return
+	if P.stats.burn_chance > 0 and rng.randf() < P.stats.burn_chance:
+		apply_burn(en, 96)
+	if P.stats.chill_chance > 0 and rng.randf() < P.stats.chill_chance:
+		apply_chill(en, 120)
+
+func apply_burn(en: Dictionary, ticks: int) -> void:
+	en["burn"] = max(int(en.get("burn", 0)), ticks)
+
+func apply_chill(en: Dictionary, ticks: int) -> void:
+	en["chill"] = max(int(en.get("chill", 0)), ticks)
+
+func hurt_enemy(en: Dictionary, dmg: int, crit: bool, silent := false) -> void:
 	# элита-бронежилет снижает входящий урон
 	if en.get("mod", "") == "armored":
 		dmg = max(1, int(round(dmg * 0.6)))
 	en.hp -= dmg
 	en.hurt_t = 90
 	damage_dealt += dmg
-	add_text(en.x + en.w / 2.0, en.y - 4, str(dmg), Color("#ffd86b") if crit else Color.WHITE)
-	burst(en.x + en.w / 2.0, en.y + en.h / 2.0, 7 if crit else 4, Color("#ffd1a8"))
-	play_sfx("hit")
+	ult = min(ULT_MAX, ult + dmg)  # урон заряжает ультимейт
+	if not silent:
+		add_text(en.x + en.w / 2.0, en.y - 4, str(dmg), Color("#ffd86b") if crit else Color.WHITE)
+		burst(en.x + en.w / 2.0, en.y + en.h / 2.0, 7 if crit else 4, Color("#ffd1a8"))
+		play_sfx("hit")
 	if en.hp <= 0:
 		en.dead = true
 		kills += 1
@@ -1201,6 +1269,8 @@ func explode(x: float, y: float, radius: float, dmg: int, from: String) -> void:
 				continue
 			if Vector2(en.x + en.w / 2.0, en.y + en.h / 2.0).distance_to(c) <= radius:
 				hurt_enemy(en, dmg, false)
+				if not en.dead:
+					apply_burn(en, 80)  # взрывы поджигают
 	else:
 		if P.inv <= 0 and state == "play" and Vector2(P.x + P.w / 2.0, P.y + P.h / 2.0).distance_to(c) <= radius:
 			hurt_player(dmg, 1 if P.x + P.w / 2.0 > x else -1, c)
@@ -1514,6 +1584,9 @@ func update_player() -> void:
 	if input.switch_to >= 0 and input.switch_to < P.weapons.size():
 		switch_weapon(input.switch_to)
 
+	if input.ult and ult >= ULT_MAX:
+		activate_ult()
+
 	try_shoot()
 
 func do_jump() -> void:
@@ -1539,6 +1612,20 @@ func update_enemies() -> void:
 		var ecx: float = en.x + en.w / 2.0
 		var ecy: float = en.y + en.h / 2.0
 		var dist := Vector2(pcx - ecx, pcy - ecy).length()
+
+		# статусы: заморозка замедляет, горение наносит урон по времени
+		if int(en.get("chill", 0)) > 0:
+			en.chill -= 1
+			en.spd = en.get("base_spd", en.spd) * 0.45
+		else:
+			en.spd = en.get("base_spd", en.spd)
+		if int(en.get("burn", 0)) > 0:
+			en.burn -= 1
+			if int(en.burn) % 12 == 0:
+				burst(ecx, en.y, 2, Color("#ff8a3d"))
+				hurt_enemy(en, 4, false, true)
+				if en.dead:
+					continue
 
 		if en.type == "walker" or en.type == "splitter" or en.type == "shard":
 			en.vy = min(en.vy + GRAV, MAX_FALL)
@@ -1773,11 +1860,13 @@ func update_bullets() -> void:
 						if is_pierce:
 							if not (en.eid in b.hit_ids):
 								hurt_enemy(en, b.dmg, b.crit)
+								_roll_bullet_status(en)
 								b.hit_ids.append(en.eid)
 								shots_hit += 1
 							# рельса проходит насквозь — не останавливаемся
 						else:
 							hurt_enemy(en, b.dmg, b.crit)
+							_roll_bullet_status(en)
 							shots_hit += 1
 							hit = true
 							break
@@ -2260,6 +2349,13 @@ func _draw_enemies() -> void:
 			# пушки
 			draw_rect(Rect2(en.x - 6, ecb.y + 6, en.w + 12, 8), Color("#3a2440"))
 
+		# наложение статуса
+		if int(en.get("chill", 0)) > 0:
+			draw_rect(Rect2(en.x, en.y, en.w, en.h), Color(0.5, 0.83, 1.0, 0.30))
+		if int(en.get("burn", 0)) > 0:
+			draw_rect(Rect2(en.x, en.y, en.w, en.h), Color(1.0, 0.45, 0.2, 0.22))
+			draw_circle(Vector2(en.x + en.w / 2.0 + sin(tick * 0.5 + float(en.eid)) * 4, en.y - 2), 2.5, Color("#ff8a3d"))
+
 		if en.type != "boss" and en.hurt_t > 0 and en.hp < en.maxhp:
 			var bw: float = en.w + 8
 			draw_rect(Rect2(en.x - 4, en.y - 9, bw, 4), Color(0, 0, 0, 0.55))
@@ -2357,6 +2453,15 @@ func _draw_hud() -> void:
 	var dfrac := 1.0 - clampf(float(P.dash_cd) / 55.0, 0, 1)
 	draw_rect(Rect2(13, dy + 1, 118 * dfrac, 6), Color("#7fdcff") if dfrac >= 1.0 else Color("#3a6c8c"))
 	_text(Vector2(136, dy + 8), "рывок (Shift/ПКМ)", 10, Color("#8d97bd"))
+
+	# заряд ультимейта
+	var uy := 50.0
+	draw_rect(Rect2(12, uy, 120, 8), Color(0, 0, 0, 0.45))
+	var ufrac := clampf(ult / ULT_MAX, 0, 1)
+	var ready := ufrac >= 1.0
+	var ucol := Color("#ffd86b") if (ready and (tick % 20 < 10)) else (Color("#ff9e4d") if ready else Color("#7a5a2c"))
+	draw_rect(Rect2(13, uy + 1, 118 * ufrac, 6), ucol)
+	_text(Vector2(136, uy + 8), "ПЕРЕГРУЗКА (Q)" if ready else "перегрузка (Q)", 10, Color("#ffd86b") if ready else Color("#8d97bd"))
 
 	# серия убийств
 	if combo >= 3:
@@ -2507,7 +2612,7 @@ func _draw_overlays() -> void:
 			_text(Vector2(cx, 190), "Платформер-рогалик: каждый забег — новая карта", 16, Color("#aab3d6"), true)
 			_text(Vector2(cx, 250), "A/D — бег · W/Пробел — прыжок · S+прыжок — вниз", 14, Color("#8d97bd"), true)
 			_text(Vector2(cx, 274), "Мышь — прицел · ЛКМ — огонь · 1–4/колесо — оружие", 14, Color("#8d97bd"), true)
-			_text(Vector2(cx, 298), "Shift / ПКМ — рывок · Esc — пауза · M — звук", 14, Color("#8d97bd"), true)
+			_text(Vector2(cx, 298), "Shift/ПКМ — рывок · Q — перегрузка · Esc — пауза · M — звук", 14, Color("#8d97bd"), true)
 			_text(Vector2(cx, 322), "Каждый 5-й уровень — БОСС", 13, Color("#ff8fc4"), true)
 			_btn(Rect2(cx - 90, 344, 180, 50), "Играть", "play")
 			var bl := "Рекорд: %d очков" % best if best > 0 else "Удачного первого забега!"
