@@ -174,6 +174,9 @@ var _ui_rects := {}
 
 # Аудио
 var _audio_players := []
+var _music_player: AudioStreamPlayer = null
+var _music_cache := {}
+var _music_key := ""
 var _audio_idx := 0
 var _sfx_cache := {}
 
@@ -191,7 +194,7 @@ func _ready() -> void:
 	set_process_unhandled_input(true)
 	if "--demo" in OS.get_cmdline_args():
 		demo = true
-		audio_enabled = false
+		audio_enabled = "--music" in OS.get_cmdline_args()  # музыку проверяем по флагу
 		RenderingServer.frame_post_draw.connect(_on_post_draw)
 		start_run(12345, "DEMO")
 		if "--boss" in OS.get_cmdline_args() or "--airboss" in OS.get_cmdline_args():
@@ -374,6 +377,10 @@ func _unhandled_input(event: InputEvent) -> void:
 				elif state == "pause": _set_state("play")
 			KEY_M:
 				audio_enabled = not audio_enabled
+				if not audio_enabled:
+					_stop_music()
+				elif state == "play":
+					_play_music((lvl - 1) % 5, boss_alive)
 			KEY_MINUS, KEY_KP_SUBTRACT:
 				set_volume(volume - 0.1)
 			KEY_EQUAL, KEY_KP_ADD:
@@ -1066,9 +1073,12 @@ func start_level() -> void:
 	else:
 		intro_text = "Уровень %d — %s" % [lvl, level.theme.name]
 	_build_background(level_seed)
+	_play_music((lvl - 1) % 5, boss_alive)
 
 func _set_state(s: String) -> void:
 	state = s
+	if s == "menu":
+		_stop_music()
 	queue_redraw()
 
 # ============================== Улучшения ==============================
@@ -1220,6 +1230,7 @@ func die() -> void:
 	if score > best:
 		best = score
 		_save_best(best)
+	_stop_music()
 	_set_state("dead")
 
 func activate_ult() -> void:
@@ -2848,6 +2859,9 @@ func _setup_audio() -> void:
 		var p := AudioStreamPlayer.new()
 		add_child(p)
 		_audio_players.append(p)
+	_music_player = AudioStreamPlayer.new()
+	_music_player.volume_db = -9.0  # музыка тише эффектов
+	add_child(_music_player)
 	_sfx_cache = {
 		"shoot": _tone(320, 90, 0.09, "square", 0.30),
 		"shotgun": _noise(0.22, 0.55, false),
@@ -2873,6 +2887,60 @@ func play_sfx(name: String) -> void:
 	_audio_idx = (_audio_idx + 1) % _audio_players.size()
 	p.stream = _sfx_cache[name]
 	p.play()
+
+func _build_music(theme_idx: int, intense: bool) -> AudioStreamWAV:
+	# процедурная зацикленная тема: бас (треугольник) + арпеджио (синус-пелл) по пентатонике
+	var rate := 22050
+	var beat := 0.22 if intense else 0.30
+	var beats := 16
+	var bn := int(beat * rate)
+	var n := beats * bn
+	var samples := PackedFloat32Array()
+	samples.resize(n)
+	var roots := [220.0, 196.0, 174.61, 233.08, 207.65]
+	var root: float = roots[theme_idx % roots.size()]
+	var penta := [0, 3, 5, 7, 10, 12]
+	var prog := [0, -2, -4, 3]  # смена аккорда каждые 4 доли
+	var mr := RandomNumberGenerator.new()
+	mr.seed = 1000 + theme_idx * 7 + (1 if intense else 0)
+	var bphase := 0.0
+	for b in range(beats):
+		var chord: int = prog[int(b / 4.0) % prog.size()]
+		var deg: int = penta[mr.randi_range(0, penta.size() - 1)]
+		var note_f: float = root * pow(2.0, (chord + deg + 12) / 12.0)
+		var bass_f: float = root * 0.5 * pow(2.0, chord / 12.0)
+		for j in range(bn):
+			var idx := b * bn + j
+			var tt := float(j) / bn
+			bphase += TAU * bass_f / rate
+			var bass := asin(sin(bphase)) * (2.0 / PI) * 0.07
+			var env := exp(-tt * 4.0)
+			var arp := sin(TAU * note_f * (float(j) / rate)) * env * (0.11 if intense else 0.09)
+			samples[idx] = clampf(bass + arp, -1.0, 1.0)
+	var wav := _make_wav(samples)
+	wav.loop_mode = AudioStreamWAV.LOOP_FORWARD
+	wav.loop_begin = 0
+	wav.loop_end = samples.size()
+	return wav
+
+func _play_music(theme_idx: int, intense: bool) -> void:
+	if _music_player == null:
+		return
+	var key := "%d_%s" % [theme_idx % 5, intense]
+	if key == _music_key and _music_player.playing:
+		return
+	_music_key = key
+	if not _music_cache.has(key):
+		_music_cache[key] = _build_music(theme_idx, intense)
+	if not audio_enabled:
+		return
+	_music_player.stream = _music_cache[key]
+	_music_player.play()
+
+func _stop_music() -> void:
+	_music_key = ""
+	if _music_player != null:
+		_music_player.stop()
 
 func _make_wav(samples: PackedFloat32Array) -> AudioStreamWAV:
 	var data := PackedByteArray()
