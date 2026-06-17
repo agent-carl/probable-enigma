@@ -133,6 +133,11 @@ var bullets := []
 var parts := []
 var pickups := []
 var texts := []
+var muzzles := []        # вспышки выстрела {x,y,ang,life}
+var shockwaves := []     # расходящиеся кольца взрывов {x,y,r,max_r,life,col}
+var flash := 0.0         # полноэкранная вспышка (0..1)
+var flash_color := Color.WHITE
+var fade := 0.0          # затемнение перехода уровня (1→0)
 
 # Фон (кэш на уровень)
 var th := {}           # цвета темы (Color)
@@ -239,6 +244,9 @@ func _demo_step() -> void:
 			if en.get("boss", false):
 				P.x = en.x - 120
 				P.y = en.y
+	if demo_frame == 88 and "--fx" in OS.get_cmdline_args() and state == "play":
+		ult = ULT_MAX
+		activate_ult()  # ударная волна + вспышка для скриншота
 	if demo_frame == 60 and "--mover" in OS.get_cmdline_args() and state == "play" and moving_platforms.size() > 0:
 		var mp = moving_platforms[0]
 		P.x = mp.x + mp.w / 2.0 - P.w / 2.0
@@ -1048,6 +1056,9 @@ func start_level() -> void:
 	texts = []
 	afterimages = []
 	hurt_dirs = []
+	muzzles = []
+	shockwaves = []
+	fade = 1.0  # уровень плавно проявляется из затемнения
 	P.x = level.spawn.x
 	P.y = level.spawn.y
 	P.vx = 0.0
@@ -1245,6 +1256,9 @@ func activate_ult() -> void:
 	hitstop = 6
 	burst(cx, cy, 50, Color("#9be8ff"))
 	burst(cx, cy, 30, Color("#ffffff"))
+	shockwaves.append({ "x": cx, "y": cy, "r": 10.0, "max_r": 200.0, "life": 22.0, "col": Color("#9be8ff") })
+	flash = 0.6
+	flash_color = Color("#9be8ff")
 	play_sfx("portal")
 	# урон и отбрасывание врагов в радиусе
 	var radius := 200.0
@@ -1317,6 +1331,9 @@ func hurt_enemy(en: Dictionary, dmg: int, crit: bool, silent := false) -> void:
 			hitstop = 24
 			shake = 16.0
 			burst(en.x + en.w / 2.0, en.y + en.h / 2.0, 60, Color("#ffd86b"))
+			shockwaves.append({ "x": en.x + en.w / 2.0, "y": en.y + en.h / 2.0, "r": 12.0, "max_r": 160.0, "life": 26.0, "col": Color("#ffd86b") })
+			flash = 0.7
+			flash_color = Color("#ffe9b0")
 			add_text(en.x + en.w / 2.0, en.y - 30, "БОСС ПОВЕРЖЕН! +500", Color("#ffd86b"))
 			play_sfx("portal")
 			unlock("boss_slayer")
@@ -1354,6 +1371,7 @@ func explode(x: float, y: float, radius: float, dmg: int, from: String) -> void:
 		dmg = int(round(dmg * P.stats.blast_mul))
 	burst(x, y, 26, Color("#ffd06b"))
 	burst(x, y, 14, Color("#ff7a4d"))
+	shockwaves.append({ "x": x, "y": y, "r": 8.0, "max_r": radius, "life": 16.0, "col": Color("#ffd06b") })
 	shake = min(20.0, shake + 9.0)
 	play_sfx("boom")
 	var c := Vector2(x, y)
@@ -1530,6 +1548,7 @@ func try_shoot() -> void:
 	P.vx = clampf(P.vx - cos(angle) * w.kick * 0.35, -9, 9)
 	shake = min(12.0, shake + w.kick * 0.55)
 	burst(cx + cos(angle) * 18, cy + sin(angle) * 18, 3, Color("#fff2b0"))
+	muzzles.append({ "x": cx + cos(angle) * 17, "y": cy + sin(angle) * 17, "ang": angle, "life": 5.0, "len": w.len })
 	if slot.id == "shotgun" or is_gren:
 		play_sfx("shotgun")
 	elif slot.id == "rifle" or is_pierce:
@@ -2088,6 +2107,23 @@ func update_effects() -> void:
 		if h.life > 0:
 			hd.append(h)
 	hurt_dirs = hd
+	var mz := []
+	for m in muzzles:
+		m.life -= 1
+		if m.life > 0:
+			mz.append(m)
+	muzzles = mz
+	var sw := []
+	for s in shockwaves:
+		s.life -= 1
+		s.r = lerp(s.r, s.max_r, 0.35)
+		if s.life > 0:
+			sw.append(s)
+	shockwaves = sw
+	if flash > 0.0:
+		flash = max(0.0, flash - 0.08)
+	if fade > 0.0:
+		fade = max(0.0, fade - 0.06)
 
 func update_camera() -> void:
 	# лёгкий look-ahead в сторону прицела
@@ -2230,15 +2266,36 @@ func _draw() -> void:
 		_draw_enemies()
 		_draw_player()
 		_draw_bullets()
+		_draw_fx()
 		_draw_particles()
 		_draw_texts()
 		draw_set_transform(Vector2.ZERO)
 
 		if vignette_tex:
 			draw_texture_rect(vignette_tex, Rect2(0, 0, VW, VH), false)
+		if flash > 0.0:
+			draw_rect(Rect2(0, 0, VW, VH), Color(flash_color.r, flash_color.g, flash_color.b, flash * 0.6))
 		_draw_ambient()
 		_draw_hurt_dirs()
 		_draw_hud()
+		if fade > 0.0:
+			draw_rect(Rect2(0, 0, VW, VH), Color(0, 0, 0, fade))
+
+func _draw_fx() -> void:
+	# расходящиеся кольца взрывов
+	for s in shockwaves:
+		var a := clampf(s.life / 16.0, 0.0, 1.0)
+		draw_arc(Vector2(s.x, s.y), s.r, 0, TAU, 28, Color(s.col.r, s.col.g, s.col.b, 0.6 * a), 3.0 * a + 1.0)
+	# вспышки выстрела
+	for m in muzzles:
+		var a := clampf(m.life / 5.0, 0.0, 1.0)
+		var base := Vector2(m.x, m.y)
+		var dir := Vector2(cos(m.ang), sin(m.ang))
+		var perp := Vector2(-dir.y, dir.x)
+		var tip := base + dir * (8.0 + a * 8.0)
+		draw_colored_polygon(PackedVector2Array([
+			base + perp * 4.0 * a, tip, base - perp * 4.0 * a]), Color(1, 0.95, 0.7, 0.9 * a))
+		draw_circle(base, 4.0 * a, Color(1, 1, 1, 0.8 * a))
 
 func _draw_hurt_dirs() -> void:
 	# дуга-вспышка у края экрана в сторону источника урона
