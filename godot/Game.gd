@@ -84,9 +84,11 @@ const ENEMY_BASE := {
 
 # ============================== Состояние ==============================
 
-var state := "menu"  # menu | play | pause | upgrade | dead
+var state := "menu"  # menu | play | pause | upgrade | shop | dead
 var lvl := 1
 var score := 0
+var coins := 0       # валюта для магазина
+var shop_items := [] # товары текущего магазина
 var kills := 0
 var run_seed := 0
 var seed_label := ""
@@ -241,6 +243,9 @@ func _demo_step() -> void:
 			n += 1
 		P.inv = 0
 		hurt_player(12, -1, Vector2(P.x - 200, P.y))
+	if demo_frame == 50 and "--shop" in OS.get_cmdline_args() and state == "play":
+		coins = 50
+		open_shop()
 	if state == "play":
 		input.move = 1
 		input.jump_pressed = (demo_frame % 26 == 0)
@@ -264,6 +269,8 @@ func _demo_step() -> void:
 	sim_step()
 	if state == "upgrade":
 		choose_upgrade(offer[0])
+	if state == "shop" and not ("--shop" in OS.get_cmdline_args()):
+		shop_continue()
 	if state == "dead" and not ("--dead" in OS.get_cmdline_args()):
 		start_run(12345 + demo_frame, "DEMO")
 	queue_redraw()
@@ -325,15 +332,18 @@ func _unhandled_input(event: InputEvent) -> void:
 				if state == "menu": start_from_menu()
 				elif state == "dead": start_from_menu()
 				elif state == "pause": _set_state("play")
+				elif state == "shop": shop_continue()
 			KEY_SPACE:
 				if state == "menu": start_from_menu()
+				elif state == "shop": shop_continue()
 			KEY_R:
 				if state == "menu": start_from_menu()
-			KEY_1, KEY_2, KEY_3:
-				if state == "upgrade":
-					var i: int = event.keycode - KEY_1
-					if i < offer.size():
-						choose_upgrade(offer[i])
+			KEY_1, KEY_2, KEY_3, KEY_4, KEY_5:
+				var i: int = event.keycode - KEY_1
+				if state == "upgrade" and i < offer.size():
+					choose_upgrade(offer[i])
+				elif state == "shop" and i < shop_items.size():
+					buy_shop_item(i)
 	elif event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		_handle_ui_click(get_local_mouse_position())
 	elif event is InputEventMouseButton and event.pressed and state == "play":
@@ -356,11 +366,16 @@ func _on_ui(key: String) -> void:
 		"menu": _set_state("menu")
 		"resume": _set_state("play")
 		"quit": _set_state("menu")
+		"shop_continue": shop_continue()
 		_:
 			if key.begins_with("card"):
 				var i := int(key.substr(4))
 				if i < offer.size():
 					choose_upgrade(offer[i])
+			elif key.begins_with("shop"):
+				var i := int(key.substr(4))
+				if i < shop_items.size():
+					buy_shop_item(i)
 
 func _cycle_weapon(d: int) -> void:
 	if state != "play" or P.weapons.size() < 2:
@@ -899,6 +914,7 @@ func start_run(s: int, label: String) -> void:
 	seed_label = label if label != "" else str(run_seed)
 	lvl = 1
 	score = 0
+	coins = 0
 	kills = 0
 	max_combo = 0
 	run_ticks = 0
@@ -973,7 +989,7 @@ func offer_upgrades() -> void:
 	offer = pool.slice(0, 3)
 	_set_state("upgrade")
 
-func choose_upgrade(u: Dictionary) -> void:
+func apply_upgrade_stats(u: Dictionary) -> void:
 	var st: Dictionary = P.stats
 	match u.id:
 		"hp":
@@ -995,12 +1011,70 @@ func choose_upgrade(u: Dictionary) -> void:
 		"blast": st.blast_mul *= 1.4
 		"magnet": st.magnet_range += 90.0
 		"berserk": st.berserk += 0.5
+
+func choose_upgrade(u: Dictionary) -> void:
+	apply_upgrade_stats(u)
 	play_sfx("select")
 	lvl += 1
+	# перед некоторыми уровнями — магазин за монеты
+	if is_shop_level(lvl):
+		open_shop()
+	else:
+		start_level()
+		_set_state("play")
+
+func is_shop_level(level_num: int) -> bool:
+	return level_num % 3 == 0
+
+func open_shop() -> void:
+	shop_items = build_shop()
+	_set_state("shop")
+
+func build_shop() -> Array:
+	var items := [
+		{ "id": "heal", "icon": "♥", "name": "Аптечка", "desc": "+50 здоровья", "price": 8, "sold": false },
+		{ "id": "ammo", "icon": "▭", "name": "Боезапас", "desc": "Патроны всему оружию", "price": 6, "sold": false },
+		{ "id": "shield", "icon": "▢", "name": "Щит", "desc": "+30 к запасу щита", "price": 12, "sold": false },
+		{ "id": "weapon", "icon": "▸", "name": "Оружие", "desc": "Случайный новый ствол", "price": 16, "sold": false, "weapon": pick_rng(WEAPON_DROPS) },
+		{ "id": "upgrade", "icon": "★", "name": "Улучшение", "desc": "Случайная прокачка", "price": 20, "sold": false, "up": _random_upgrade() },
+	]
+	return items
+
+func pick_rng(arr: Array):
+	return arr[rng.randi_range(0, arr.size() - 1)]
+
+func _random_upgrade() -> Dictionary:
+	return UPGRADES[rng.randi_range(0, UPGRADES.size() - 1)]
+
+func buy_shop_item(i: int) -> void:
+	if i < 0 or i >= shop_items.size():
+		return
+	var it: Dictionary = shop_items[i]
+	if it.sold or coins < it.price:
+		return
+	coins -= it.price
+	it.sold = true
+	match it.id:
+		"heal": P.hp = min(P.maxhp, P.hp + 50)
+		"ammo": _refill_all_ammo()
+		"shield":
+			P.max_shield += 30
+			P.shield = min(P.max_shield, P.shield + 30)
+		"weapon": give_weapon(it.weapon)
+		"upgrade": apply_upgrade_stats(it.up)
+	play_sfx("pickup")
+
+func _refill_all_ammo() -> void:
+	for slot in P.weapons:
+		if is_finite(slot.ammo):
+			slot.ammo += WEAPONS[slot.id].ammo
+
+func shop_continue() -> void:
 	start_level()
 	_set_state("play")
 
 func level_clear() -> void:
+	score += 100 + lvl * 25
 	score += 100 + lvl * 25
 	play_sfx("portal")
 	offer_upgrades()
@@ -1767,7 +1841,8 @@ func update_pickups() -> void:
 				add_text(P.x + P.w / 2.0, P.y - 10, "+%d щит" % int(pk.shield), Color("#7fd4ff"))
 			elif pk.kind == "coin":
 				score += 5
-				add_text(pk.x, pk.y - 6, "+5", Color("#ffd86b"))
+				coins += 1
+				add_text(pk.x, pk.y - 6, "+1●", Color("#ffd86b"))
 			play_sfx("pickup")
 			continue
 		alive.append(pk)
@@ -2318,7 +2393,7 @@ func _draw_hud() -> void:
 	var score_str := str(score)
 	var ssz := font.get_string_size(score_str, HORIZONTAL_ALIGNMENT_LEFT, -1, 16)
 	_text(Vector2(VW - 16 - ssz.x, 26), score_str, 16, Color("#ffd86b"))
-	var sub := "убийств: %d · сид: %s" % [kills, seed_label]
+	var sub := "● %d · убийств: %d · сид: %s" % [coins, kills, seed_label]
 	var subsz := font.get_string_size(sub, HORIZONTAL_ALIGNMENT_LEFT, -1, 11)
 	_text(Vector2(VW - 16 - subsz.x, 44), sub, 11, Color("#8d97bd"))
 
@@ -2487,6 +2562,33 @@ func _draw_overlays() -> void:
 				_text(Vector2(ccx, rect.position.y + 100), u.name, 18, Color("#ffe9b0"), true)
 				_draw_wrapped(u.desc, rect.position.x + 16, rect.position.y + 130, cw - 32, 14, Color("#aab3d6"))
 				_text(Vector2(ccx, rect.position.y + 188), "[%d]" % (i + 1), 14, Color("#8d97bd"), true)
+		"shop":
+			_text(Vector2(cx, 80), "Магазин", 36, Color("#ffe9b0"), true)
+			_text(Vector2(cx, 116), "Монеты: ● %d   (цифры 1–5 или клик — купить)" % coins, 16, Color("#ffd86b"), true)
+			var n := shop_items.size()
+			var cw := 165.0
+			var gap := 14.0
+			var total := n * cw + (n - 1) * gap
+			var sx := cx - total / 2.0
+			for i in range(n):
+				var it: Dictionary = shop_items[i]
+				var rect := Rect2(sx + i * (cw + gap), 160, cw, 210)
+				var affordable: bool = coins >= it.price and not it.sold
+				draw_rect(rect, Color(1, 1, 1, 0.05) if not it.sold else Color(0, 0, 0, 0.25))
+				draw_rect(rect, Color(1, 0.85, 0.42, 0.6) if affordable else Color(1, 1, 1, 0.15), false, 2.0)
+				_ui_rects["shop%d" % i] = rect
+				var ccx := rect.position.x + cw / 2.0
+				var fade := 0.4 if it.sold else 1.0
+				_text(Vector2(ccx, rect.position.y + 56), it.icon, 40, Color(1, 0.91, 0.69, fade), true)
+				_text(Vector2(ccx, rect.position.y + 92), it.name, 17, Color(1, 0.91, 0.69, fade), true)
+				_draw_wrapped(it.desc, rect.position.x + 12, rect.position.y + 118, cw - 24, 13, Color(0.67, 0.70, 0.84, fade))
+				if it.sold:
+					_text(Vector2(ccx, rect.position.y + 176), "куплено", 14, Color("#7df2a5"), true)
+				else:
+					var pc := Color("#ffd86b") if affordable else Color("#ff6b5e")
+					_text(Vector2(ccx, rect.position.y + 176), "● %d" % it.price, 16, pc, true)
+				_text(Vector2(ccx, rect.position.y + 198), "[%d]" % (i + 1), 13, Color("#8d97bd"), true)
+			_btn(Rect2(cx - 110, 396, 220, 48), "Дальше →", "shop_continue")
 
 func _draw_volume(cx: float, y: float) -> void:
 	var bw := 160.0

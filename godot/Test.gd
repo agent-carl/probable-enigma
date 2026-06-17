@@ -634,6 +634,54 @@ func _init() -> void:
 	game.hurt_player(10, -1, Vector2(game.P.x - 200, game.P.y))
 	_ok(abs(abs(game.hurt_dirs[1].ang) - PI) < 0.2, "damage from the left -> angle ~PI")
 
+	# ---------- 23. Магазин и монеты ----------
+	# монеты — отдельная валюта, копятся с подбора
+	game.start_run(51, "51")
+	_ok(game.coins == 0, "coins reset on run start")
+	game.pickups = [{ "kind": "coin", "x": game.P.x, "y": game.P.y, "w": 12, "h": 12, "vy": 0.0, "t": 0.0 }]
+	game.update_pickups()
+	_ok(game.coins == 1, "coin pickup grants a coin")
+
+	# магазин появляется перед уровнями, кратными 3
+	_ok(game.is_shop_level(3) and game.is_shop_level(6) and not game.is_shop_level(4), "shop levels are every 3rd")
+	# после улучшения на переходе к ур.3 открывается магазин
+	game.start_run(52, "52")
+	game.lvl = 2
+	game.choose_upgrade({ "id": "dmg" })  # lvl -> 3 -> магазин
+	_ok(game.state == "shop", "shop opens before a shop level")
+	_ok(game.shop_items.size() >= 4, "shop offers items")
+
+	# покупка: хватает монет — списывает и применяет; не хватает — нет
+	game.coins = 100
+	var hp_shop: float = game.P.hp
+	game.P.hp = max(1.0, game.P.maxhp - 60)
+	var c0: int = game.coins
+	# найдём аптечку
+	var heal_idx := -1
+	for i in range(game.shop_items.size()):
+		if game.shop_items[i].id == "heal":
+			heal_idx = i
+	_ok(heal_idx >= 0, "shop has a heal item")
+	game.buy_shop_item(heal_idx)
+	_ok(game.coins == c0 - game.shop_items[heal_idx].price, "buying deducts coins")
+	_ok(game.shop_items[heal_idx].sold, "item marked sold")
+	_ok(game.P.hp > game.P.maxhp - 60, "heal applied")
+	# повторная покупка проданного — без эффекта
+	var c1: int = game.coins
+	game.buy_shop_item(heal_idx)
+	_ok(game.coins == c1, "cannot rebuy a sold item")
+	# нехватка монет — покупка не проходит
+	game.coins = 0
+	var weapon_idx := -1
+	for i in range(game.shop_items.size()):
+		if game.shop_items[i].id == "weapon":
+			weapon_idx = i
+	game.buy_shop_item(weapon_idx)
+	_ok(not game.shop_items[weapon_idx].sold, "cannot afford -> no purchase")
+	# выход из магазина запускает уровень
+	game.shop_continue()
+	_ok(game.state == "play" and game.lvl == 3, "shop_continue starts the level")
+
 	if failures == 0:
 		print("\nALL TESTS PASSED")
 	else:
@@ -667,6 +715,8 @@ func simulate(game, seed_v: int, max_steps: int) -> Dictionary:
 		if game.state == "upgrade":
 			cleared += 1
 			game.choose_upgrade(game.offer[i % game.offer.size()])
+		if game.state == "shop":
+			game.shop_continue()
 		if game.state == "dead":
 			deaths += 1
 			game.start_run(seed_v + deaths, str(seed_v + deaths))
