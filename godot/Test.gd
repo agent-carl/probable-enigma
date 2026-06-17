@@ -772,6 +772,38 @@ func _init() -> void:
 	game.shake_on = true
 	game._save_settings()  # вернуть значение по умолчанию
 
+	# ---------- 26. Ловушки-пилы ----------
+	# генерация размещает пилы (с уровня 2)
+	var total_haz := 0
+	for s6 in range(1, 41):
+		for lv in range(2, 7):
+			total_haz += game.generate_level(s6 * 71 + lv, lv).hazards.size()
+	_ok(total_haz > 0, "saw hazards are generated (total %d)" % total_haz)
+
+	# пила колеблется в пределах амплитуды и остаётся конечной
+	game.hazards = [{ "type": "saw", "r": 16.0, "cx": 300.0, "cy": 200.0, "ax": 64.0, "ay": 0.0,
+		"phase": 0.0, "speed": 0.07, "x": 300.0, "y": 200.0, "spin": 0.0 }]
+	for _i in range(400):
+		game.update_hazards()
+		var hz: Dictionary = game.hazards[0]
+		_ok(is_finite(hz.x) and is_finite(hz.y), "saw stays finite")
+		_ok(hz.x >= 300.0 - 64.0 - 1 and hz.x <= 300.0 + 64.0 + 1, "saw x within amplitude")
+
+	# контакт с пилой ранит игрока; вдали — нет
+	game.start_run(81, "81")
+	game.P.inv = 0
+	game.hazards = [{ "type": "saw", "r": 16.0, "cx": game.P.x, "cy": game.P.y, "ax": 0.0, "ay": 0.0,
+		"phase": 0.0, "speed": 0.0, "x": game.P.x + game.P.w / 2.0, "y": game.P.y + game.P.h / 2.0, "spin": 0.0 }]
+	var hpb: float = game.P.hp
+	game.check_hazards()
+	_ok(game.P.hp < hpb, "saw contact damages player")
+	game.P.inv = 0
+	game.hazards[0].x = game.P.x + 5000.0
+	game.hazards[0].y = game.P.y
+	var hpb2: float = game.P.hp
+	game.check_hazards()
+	_ok(game.P.hp == hpb2, "distant saw does not damage player")
+
 	if failures == 0:
 		print("\nALL TESTS PASSED")
 	else:

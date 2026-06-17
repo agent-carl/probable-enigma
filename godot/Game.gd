@@ -128,6 +128,7 @@ var level := {}        # текущая карта
 var P := {}            # игрок
 var enemies := []
 var moving_platforms := []  # движущиеся платформы/лифты
+var hazards := []           # ловушки (пилы и т.п.)
 var bullets := []
 var parts := []
 var pickups := []
@@ -237,6 +238,13 @@ func _demo_step() -> void:
 		P.x = mp.x + mp.w / 2.0 - P.w / 2.0
 		P.y = mp.y - P.h
 		P.vy = 0.0
+	if demo_frame == 86 and "--saw" in OS.get_cmdline_args() and state == "play":
+		var sxp: float = P.x + P.w / 2.0 + 60.0
+		var syp: float = P.y + P.h / 2.0
+		hazards.append({ "type": "saw", "r": 18.0, "cx": sxp, "cy": syp, "ax": 0.0, "ay": 0.0,
+			"phase": 0.0, "speed": 0.0, "x": sxp, "y": syp, "spin": 1.0 })
+		P.vx = 0.0
+		P.inv = 999
 	if demo_frame == 70 and "--elite" in OS.get_cmdline_args() and state == "play":
 		# делаем ближайших врагов элитными и показываем индикатор урона
 		var n := 0
@@ -620,6 +628,45 @@ func generate_level(seed_val: int, level_num: int) -> Dictionary:
 			"x": float(cx_px), "y": float(cy_px), "dx": 0.0, "dy": 0.0,
 		})
 
+	# --- пилы-ловушки в открытых коридорах (с уровня 2) ---
+	var hazards := []
+	if level_num >= 2:
+		var haz_tries := 5 + level_num
+		var haz_max := mini(1 + int(level_num / 3.0), 4)
+		for _i in range(haz_tries):
+			if hazards.size() >= haz_max:
+				break
+			var hx := _rr(r, 16, W - 16)
+			var hy: int = ground_y[hx] - _rr(r, 1, 5)
+			if hy < 4:
+				continue
+			var horiz := r.randf() < 0.5
+			var amp := _rr(r, 2, 5)
+			var lo2: int = hx - (amp if horiz else 0) - 1
+			var hi2: int = hx + (amp if horiz else 0) + 1
+			var top2: int = hy - (amp if not horiz else 0) - 1
+			var bot2: int = hy + (amp if not horiz else 0) + 1
+			var ok := true
+			for ty in range(max(0, top2), min(H, bot2 + 1)):
+				for tx in range(max(0, lo2), min(W, hi2 + 1)):
+					if _cell(grid, W, H, tx, ty) != T_EMPTY:
+						ok = false
+						break
+				if not ok:
+					break
+			if not ok:
+				continue
+			var hcx := hx * TILE + TILE / 2.0
+			var hcy := hy * TILE + TILE / 2.0
+			hazards.append({
+				"type": "saw", "r": 16.0,
+				"cx": hcx, "cy": hcy,
+				"ax": (amp * TILE if horiz else 0.0),
+				"ay": (0.0 if horiz else amp * TILE),
+				"phase": r.randf() * TAU, "speed": 0.02 + r.randf() * 0.02,
+				"x": hcx, "y": hcy, "spin": r.randf() * TAU,
+			})
+
 	# --- враги ---
 	var hp_mul := 1.0 + 0.25 * (level_num - 1)
 	var dmg_add := 2 * (level_num - 1)
@@ -807,7 +854,7 @@ func generate_level(seed_val: int, level_num: int) -> Dictionary:
 		"px_w": W * TILE, "px_h": H * TILE,
 		"spawn": Vector2(2 * TILE + 6, ground_y[2] * TILE - 31),
 		"exit_px": exit_px, "enemies": enemy_list, "pickups": pickup_list,
-		"has_boss": is_boss_level, "crate_hp": crate_hp, "movers": movers,
+		"has_boss": is_boss_level, "crate_hp": crate_hp, "movers": movers, "hazards": hazards,
 	}
 
 # ============================== Доступ к карте (рантайм) ==============================
@@ -985,6 +1032,7 @@ func start_level() -> void:
 	enemies = level.enemies
 	pickups = level.pickups
 	moving_platforms = level.get("movers", [])
+	hazards = level.get("hazards", [])
 	bullets = []
 	parts = []
 	texts = []
@@ -1361,6 +1409,24 @@ func update_moving_platforms() -> void:
 		mp.x = nx
 		mp.y = ny
 
+func update_hazards() -> void:
+	for hz in hazards:
+		hz.phase += hz.speed
+		hz.spin += 0.3
+		hz.x = hz.cx + sin(hz.phase) * hz.ax
+		hz.y = hz.cy + sin(hz.phase) * hz.ay
+
+func check_hazards() -> void:
+	# пила ранит игрока при касании
+	if P.inv > 0 or state != "play":
+		return
+	var pc := Vector2(P.x + P.w / 2.0, P.y + P.h / 2.0)
+	var pr: float = max(P.w, P.h) / 2.0
+	for hz in hazards:
+		if Vector2(hz.x, hz.y).distance_to(pc) <= hz.r + pr:
+			hurt_player(18, 1 if pc.x > hz.x else -1, Vector2(hz.x, hz.y))
+			break
+
 func ride_moving_platforms() -> void:
 	# односторонние платформы: приземление сверху + перенос игрока
 	var was: int = P.ride_id
@@ -1511,6 +1577,7 @@ func sim_step() -> void:
 			return
 		run_ticks += 1
 		update_moving_platforms()
+		update_hazards()
 		update_player()
 		if state == "play":
 			update_enemies()
@@ -1590,6 +1657,7 @@ func update_player() -> void:
 
 	collide_entity(P)
 	ride_moving_platforms()
+	check_hazards()
 
 	P.aim = (input.aim - Vector2(P.x + P.w / 2.0, P.y + P.h / 2.0)).angle()
 	aim_angle = P.aim
@@ -2141,6 +2209,7 @@ func _draw() -> void:
 		draw_set_transform(-c)
 		_draw_tiles(c)
 		_draw_movers()
+		_draw_hazards()
 		_draw_portal()
 		_draw_pickups()
 		_draw_enemies()
@@ -2231,6 +2300,20 @@ func _draw_tiles(c: Vector2) -> void:
 					draw_line(Vector2(px + 8, py + 4), Vector2(px + 12, py + TILE - 5), Color(0, 0, 0, 0.45), 1.5)
 				if dmgf > 0.6:
 					draw_line(Vector2(px + TILE - 7, py + 6), Vector2(px + 16, py + TILE - 4), Color(0, 0, 0, 0.5), 1.5)
+
+func _draw_hazards() -> void:
+	for hz in hazards:
+		var c := Vector2(hz.x, hz.y)
+		# зубчатое лезвие
+		var teeth := 10
+		var pts := PackedVector2Array()
+		for i in range(teeth * 2):
+			var a: float = hz.spin + i * PI / teeth
+			var rad: float = hz.r if (i % 2 == 0) else hz.r * 0.66
+			pts.append(c + Vector2(cos(a), sin(a)) * rad)
+		draw_colored_polygon(pts, Color("#c9d2e0"))
+		draw_circle(c, hz.r * 0.4, Color("#5a6478"))
+		draw_circle(c, hz.r * 0.15, Color("#2a3040"))
 
 func _draw_movers() -> void:
 	for mp in moving_platforms:
