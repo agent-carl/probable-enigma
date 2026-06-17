@@ -805,17 +805,17 @@ func _init() -> void:
 	_ok(game.P.hp == hpb2, "distant saw does not damage player")
 
 	# ---------- 27. Процедурная музыка ----------
-	var m0: AudioStreamWAV = game._build_music(0, false)
+	var m0: AudioStreamWAV = Synth.build_music(0, false)
 	_ok(m0 != null and m0.data.size() > 0, "music track has audio data")
 	_ok(m0.loop_mode == AudioStreamWAV.LOOP_FORWARD, "music track loops")
 	_ok(m0.loop_end == m0.data.size() / 2, "loop end at track end (s16 samples)")
 	# детерминизм
-	var m0b: AudioStreamWAV = game._build_music(0, false)
+	var m0b: AudioStreamWAV = Synth.build_music(0, false)
 	_ok(m0.data == m0b.data, "music is deterministic per theme")
 	# разные темы и боссовый вариант звучат иначе
-	var m1: AudioStreamWAV = game._build_music(1, false)
+	var m1: AudioStreamWAV = Synth.build_music(1, false)
 	_ok(m0.data != m1.data, "different themes -> different music")
-	var m0i: AudioStreamWAV = game._build_music(0, true)
+	var m0i: AudioStreamWAV = Synth.build_music(0, true)
 	_ok(m0.data != m0i.data, "boss (intense) variant differs")
 
 	if failures == 0:
