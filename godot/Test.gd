@@ -747,6 +747,31 @@ func _init() -> void:
 	_ok(ult_e.hp < nh, "ult damages nearby enemies")
 	_ok(game.bullets.size() == 0, "ult clears nearby enemy bullets")
 
+	# ---------- 25. Доступность: стик геймпада и опция тряски ----------
+	# мёртвая зона стика
+	_ok(game._stick(0.1, 0.1, 0.3) == Vector2.ZERO, "stick within deadzone -> zero")
+	var sv: Vector2 = game._stick(0.6, 0.0, 0.3)
+	_ok(sv.length() > 0.3, "stick beyond deadzone -> non-zero")
+	# опция тряски управляет смещением экрана
+	game.shake = 12.0
+	game.shake_on = false
+	_ok(game._shake_offset() == Vector2.ZERO, "shake off -> no offset")
+	game.shake_on = true
+	var off: Vector2 = game._shake_offset()
+	_ok(abs(off.x) <= 12.0 and abs(off.y) <= 12.0, "shake offset within amplitude")
+	game.shake = 0.0
+	_ok(game._shake_offset() == Vector2.ZERO, "no shake -> no offset")
+	# переключение и сохранение опции
+	game.shake_on = true
+	game.toggle_shake()
+	_ok(not game.shake_on, "toggle flips shake option")
+	game._save_settings()
+	game.shake_on = true
+	game._load_settings()
+	_ok(not game.shake_on, "shake option persists across save/load")
+	game.shake_on = true
+	game._save_settings()  # вернуть значение по умолчанию
+
 	if failures == 0:
 		print("\nALL TESTS PASSED")
 	else:

@@ -110,6 +110,7 @@ var boss_name := ""      # имя текущего босса
 var _eid_counter := 1000000  # счётчик id для врагов, созданных в рантайме
 var hitstop := 0         # короткая заморозка при крупных событиях
 var volume := 0.8        # громкость (0..1), сохраняется
+var shake_on := true     # тряска экрана (опция доступности), сохраняется
 var ult := 0.0           # заряд ультимейта (0..ULT_MAX)
 const ULT_MAX := 300.0
 
@@ -250,6 +251,8 @@ func _demo_step() -> void:
 	if demo_frame == 5 and "--status" in OS.get_cmdline_args() and state == "play":
 		P.stats.burn_chance = 1.0
 		P.stats.chill_chance = 1.0
+	if demo_frame == 60 and "--pause" in OS.get_cmdline_args() and state == "play":
+		_set_state("pause")
 	if demo_frame == 50 and "--shop" in OS.get_cmdline_args() and state == "play":
 		coins = 50
 		open_shop()
@@ -297,14 +300,32 @@ func _on_post_draw() -> void:
 
 # ============================== Ввод (реальный) ==============================
 
+func _stick(ax: float, ay: float, dz: float) -> Vector2:
+	# вектор стика с мёртвой зоной (нулевой внутри dz)
+	var v := Vector2(ax, ay)
+	if v.length() < dz:
+		return Vector2.ZERO
+	return v
+
 func gather_input() -> void:
-	var k_left := Input.is_key_pressed(KEY_A) or Input.is_key_pressed(KEY_LEFT)
-	var k_right := Input.is_key_pressed(KEY_D) or Input.is_key_pressed(KEY_RIGHT)
-	var k_down := Input.is_key_pressed(KEY_S) or Input.is_key_pressed(KEY_DOWN)
-	var jump_now := Input.is_key_pressed(KEY_W) or Input.is_key_pressed(KEY_UP) or Input.is_key_pressed(KEY_SPACE)
-	var shoot_now := Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)
-	var dash_now := Input.is_key_pressed(KEY_SHIFT) or Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT)
-	var ult_now := Input.is_key_pressed(KEY_Q)
+	# --- геймпад (объединяется с клавиатурой/мышью) ---
+	var pad := 0
+	var has_pad := Input.get_connected_joypads().size() > 0
+	var lstick := _stick(Input.get_joy_axis(pad, JOY_AXIS_LEFT_X), Input.get_joy_axis(pad, JOY_AXIS_LEFT_Y), 0.3) if has_pad else Vector2.ZERO
+	var rstick := _stick(Input.get_joy_axis(pad, JOY_AXIS_RIGHT_X), Input.get_joy_axis(pad, JOY_AXIS_RIGHT_Y), 0.3) if has_pad else Vector2.ZERO
+	var pad_jump := has_pad and Input.is_joy_button_pressed(pad, JOY_BUTTON_A)
+	var pad_shoot := has_pad and (Input.get_joy_axis(pad, JOY_AXIS_TRIGGER_RIGHT) > 0.4 or Input.is_joy_button_pressed(pad, JOY_BUTTON_RIGHT_SHOULDER))
+	var pad_dash := has_pad and (Input.get_joy_axis(pad, JOY_AXIS_TRIGGER_LEFT) > 0.4 or Input.is_joy_button_pressed(pad, JOY_BUTTON_B))
+	var pad_ult := has_pad and Input.is_joy_button_pressed(pad, JOY_BUTTON_Y)
+	var pad_down := has_pad and (lstick.y > 0.5 or Input.is_joy_button_pressed(pad, JOY_BUTTON_DPAD_DOWN))
+
+	var k_left := Input.is_key_pressed(KEY_A) or Input.is_key_pressed(KEY_LEFT) or lstick.x < -0.3 or (has_pad and Input.is_joy_button_pressed(pad, JOY_BUTTON_DPAD_LEFT))
+	var k_right := Input.is_key_pressed(KEY_D) or Input.is_key_pressed(KEY_RIGHT) or lstick.x > 0.3 or (has_pad and Input.is_joy_button_pressed(pad, JOY_BUTTON_DPAD_RIGHT))
+	var k_down := Input.is_key_pressed(KEY_S) or Input.is_key_pressed(KEY_DOWN) or pad_down
+	var jump_now := Input.is_key_pressed(KEY_W) or Input.is_key_pressed(KEY_UP) or Input.is_key_pressed(KEY_SPACE) or pad_jump
+	var shoot_now := Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT) or pad_shoot
+	var dash_now := Input.is_key_pressed(KEY_SHIFT) or Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT) or pad_dash
+	var ult_now := Input.is_key_pressed(KEY_Q) or pad_ult
 
 	input.move = (1 if k_right else 0) - (1 if k_left else 0)
 	input.down = k_down
@@ -314,11 +335,21 @@ func gather_input() -> void:
 	input.shoot_clicked = shoot_now and not _prev_mouse
 	input.dash = dash_now and not _prev_keys.get("dash", false)
 	input.ult = ult_now and not _prev_keys.get("ult", false)
-	input.aim = get_local_mouse_position() + cam
+	# прицел: правый стик геймпада в приоритете, иначе мышь
+	if rstick != Vector2.ZERO:
+		input.aim = Vector2(P.x + P.w / 2.0, P.y + P.h / 2.0) + rstick.normalized() * 300.0
+	else:
+		input.aim = get_local_mouse_position() + cam
 	input.switch_to = -1
 	for i in range(4):
 		if Input.is_key_pressed(KEY_1 + i) and not _prev_keys.get("d%d" % i, false):
 			input.switch_to = i
+	# смена оружия бамперами геймпада
+	if has_pad:
+		var lb := Input.is_joy_button_pressed(pad, JOY_BUTTON_LEFT_SHOULDER)
+		if lb and not _prev_keys.get("padlb", false):
+			_cycle_weapon(-1)
+		_prev_keys["padlb"] = lb
 
 	_prev_keys["jump"] = jump_now
 	_prev_keys["dash"] = dash_now
@@ -378,6 +409,7 @@ func _on_ui(key: String) -> void:
 		"resume": _set_state("play")
 		"quit": _set_state("menu")
 		"shop_continue": shop_continue()
+		"toggle_shake": toggle_shake()
 		_:
 			if key.begins_with("card"):
 				var i := int(key.substr(4))
@@ -2100,10 +2132,7 @@ func _draw() -> void:
 	if level.is_empty():
 		draw_rect(Rect2(0, 0, VW, VH), Color("#0d1020"))
 	else:
-		var sh := Vector2.ZERO
-		if shake > 0:
-			sh = Vector2((rng.randf() - 0.5) * shake, (rng.randf() - 0.5) * shake)
-		var c := cam + sh
+		var c := cam + _shake_offset()
 
 		_draw_sky()
 		_draw_hills(hill_far, th.hill_far, c, 0.25)
@@ -2601,6 +2630,15 @@ func _btn(rect: Rect2, label: String, key: String, primary := true) -> void:
 	_text(Vector2(rect.position.x + rect.size.x / 2.0, rect.position.y + rect.size.y / 2.0 + 6), label, 16, tc, true)
 	_ui_rects[key] = rect
 
+func _shake_offset() -> Vector2:
+	if shake <= 0 or not shake_on:
+		return Vector2.ZERO
+	return Vector2((rng.randf() - 0.5) * shake, (rng.randf() - 0.5) * shake)
+
+func toggle_shake() -> void:
+	shake_on = not shake_on
+	_save_settings()
+
 func _draw_overlays() -> void:
 	if state == "play":
 		return
@@ -2620,10 +2658,12 @@ func _draw_overlays() -> void:
 			_text(Vector2(cx, 430), "Достижения: %d / %d  ·  Enter / клик — старт" % [unlocked.size(), ACHIEVEMENTS.size()], 13, Color("#6f7aa3"), true)
 			_draw_volume(cx, 458)
 		"pause":
-			_text(Vector2(cx, 180), "Пауза", 40, Color("#eaf0ff"), true)
-			_btn(Rect2(cx - 90, 230, 180, 50), "Продолжить", "resume")
-			_btn(Rect2(cx - 90, 292, 180, 46), "В меню", "quit", false)
-			_draw_volume(cx, 372)
+			_text(Vector2(cx, 170), "Пауза", 40, Color("#eaf0ff"), true)
+			_btn(Rect2(cx - 90, 214, 180, 48), "Продолжить", "resume")
+			_btn(Rect2(cx - 130, 274, 260, 40), "Тряска экрана: %s" % ("Вкл" if shake_on else "Выкл"), "toggle_shake", false)
+			_btn(Rect2(cx - 90, 324, 180, 42), "В меню", "quit", false)
+			_text(Vector2(cx, 392), "Геймпад поддерживается", 12, Color("#6f7aa3"), true)
+			_draw_volume(cx, 414)
 		"dead":
 			_text(Vector2(cx, 120), "Вы погибли", 44, Color("#ff6b5e"), true)
 			var is_record := score >= best and score > 0
@@ -2813,6 +2853,7 @@ func _load_settings() -> void:
 	if cfg.load(_cfg_path()) == OK:
 		best = int(cfg.get_value("progress", "best", 0))
 		volume = clampf(float(cfg.get_value("settings", "volume", 0.8)), 0.0, 1.0)
+		shake_on = bool(cfg.get_value("settings", "shake", true))
 		unlocked.clear()
 		if cfg.has_section("achievements"):
 			for k in cfg.get_section_keys("achievements"):
@@ -2830,6 +2871,7 @@ func _save_settings() -> void:
 	var cfg := ConfigFile.new()
 	cfg.set_value("progress", "best", best)
 	cfg.set_value("settings", "volume", volume)
+	cfg.set_value("settings", "shake", shake_on)
 	for id in unlocked.keys():
 		cfg.set_value("achievements", id, true)
 	cfg.save(_cfg_path())
