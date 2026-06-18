@@ -1601,6 +1601,19 @@ func burst(x: float, y: float, n: int, color: Color) -> void:
 			"size": 1.5 + rng.randf() * 2.5, "grav": 0.12,
 		})
 
+func spark(x: float, y: float, vx: float, vy: float, n: int) -> void:
+	# искры от удара пули: летят назад от поверхности с разбросом
+	var base := atan2(-vy, -vx)
+	for _i in range(n):
+		var a := base + (rng.randf() - 0.5) * 1.4
+		var s := 2.0 + rng.randf() * 4.0
+		var bright := Color("#fff0c0") if rng.randf() < 0.5 else Color("#ffc24d")
+		parts.append({
+			"x": x, "y": y, "vx": cos(a) * s, "vy": sin(a) * s,
+			"life": 8.0 + rng.randf() * 12.0, "color": bright,
+			"size": 1.0 + rng.randf() * 1.8, "grav": 0.22,
+		})
+
 func add_text(x: float, y: float, s: String, color: Color) -> void:
 	texts.append({ "x": x, "y": y, "str": s, "color": color, "life": 55.0, "vy": -0.8 })
 
@@ -1983,7 +1996,8 @@ func update_bullets() -> void:
 				if tile_at(htx, hty) == T_CRATE:
 					damage_crate(htx, hty, b.dmg)
 				if not is_gren:
-					burst(b.x, b.y, 3, Color("#cdd6f0"))
+					burst(b.x, b.y, 2, Color("#cdd6f0"))
+					spark(b.x, b.y, b.vx, b.vy, 5)
 				hit = true
 				break
 			if b.from == "p":
@@ -2562,8 +2576,17 @@ func _draw_pickups() -> void:
 			draw_rect(Rect2(x, y, pk.w, pk.h), Color("#caa64a"))
 			draw_rect(Rect2(x, y + 5, pk.w, 3), Color("#8a6f2c"))
 		elif pk.kind == "coin":
-			draw_circle(Vector2(x + 6, y + 6), 6, Color("#ffd86b"))
-			draw_circle(Vector2(x + 6, y + 6), 3, Color("#b88f2e"))
+			# вращающаяся блестящая монета (ширина меняется → эффект спина)
+			var cc := Vector2(x + 6, y + 6)
+			var rxw: float = maxf(6.0 * absf(cos(pk.t * 4.0)), 1.0)
+			var ell := PackedVector2Array()
+			for i in range(14):
+				var aa := i * TAU / 14.0
+				ell.append(cc + Vector2(cos(aa) * rxw, sin(aa) * 6.0))
+			draw_colored_polygon(ell, Color("#ffd86b"))
+			draw_line(cc + Vector2(0, -6), cc + Vector2(0, 6), Color("#b88f2e"), 1.5)
+			if rxw > 3.0:
+				draw_circle(cc + Vector2(-rxw * 0.4, -2), 1.4, Color(1, 1, 1, 0.8))
 		elif pk.kind == "shield":
 			var sc := Vector2(x + pk.w / 2.0, y + pk.h / 2.0)
 			draw_circle(sc, pk.w / 2.0 + 2, Color(0.5, 0.83, 1.0, 0.18))
