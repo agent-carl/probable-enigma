@@ -148,6 +148,8 @@ var sky0 := Color.BLACK
 var sky1 := Color.BLACK
 var sky_tex: GradientTexture2D = null   # кэш градиента неба
 var vignette_tex: GradientTexture2D = null  # затемнение по краям экрана
+var ground_tex: ImageTexture = null   # пиксель-текстура камня
+var grass_tex: ImageTexture = null    # текстура травянистой кромки
 var _cam_draw := Vector2.ZERO   # текущее смещение камеры в кадре (с тряской)
 var afterimages := []  # следы рывка [{x,y,life}]
 var ambient := []      # атмосферные частицы по теме (экранное пространство)
@@ -2163,9 +2165,46 @@ func _build_background(seed_val: int) -> void:
 		stars.append(Vector3(r.randf() * VW, r.randf() * VH * 0.7, 0.4 + r.randf() * 1.2))
 	hill_far = _make_hills(r, 330, 26)
 	hill_near = _make_hills(r, 420, 34)
+	_build_tile_textures(seed_val)
 	weather = level.theme.get("weather", "spores")
 	weather_col = _col(level.theme.get("wcol", "#ffffff"))
 	_init_ambient()
+
+func _build_tile_textures(seed_val: int) -> void:
+	# пиксель-текстуры тайлов: камень (дизеринг + бевел) и трава для кромки
+	var g: Color = th.ground
+	var tg: Color = th.top
+	var tr := RandomNumberGenerator.new()
+	tr.seed = (seed_val ^ 0x5A17) & 0xFFFFFFFF
+	var img := Image.create(TILE, TILE, false, Image.FORMAT_RGBA8)
+	for y in range(TILE):
+		for x in range(TILE):
+			var c := g
+			if y < 2:
+				c = g.lightened(0.16)        # верхний блик
+			elif y >= TILE - 3:
+				c = g.darkened(0.22)         # нижняя тень (AO)
+			if x < 1:
+				c = c.lightened(0.06)
+			elif x >= TILE - 1:
+				c = c.darkened(0.10)
+			var n := tr.randf()
+			if n < 0.10:
+				c = c.darkened(0.14)         # тёмные крапины-камешки
+			elif n < 0.16:
+				c = c.lightened(0.08)
+			img.set_pixel(x, y, c)
+	ground_tex = ImageTexture.create_from_image(img)
+	# текстура травянистой кромки (верхние ~7px ярче + редкие «травинки»)
+	var top := Image.create(TILE, 7, false, Image.FORMAT_RGBA8)
+	for x in range(TILE):
+		for y in range(7):
+			top.set_pixel(x, y, tg if y < 5 else tg.darkened(0.25))
+		if tr.randf() < 0.4:
+			var h := tr.randi_range(1, 3)
+			for y in range(h):
+				top.set_pixel(x, max(0, y), tg.lightened(0.2))
+	grass_tex = ImageTexture.create_from_image(top)
 
 # ============================== Атмосфера (погода по теме) ==============================
 
@@ -2377,11 +2416,16 @@ func _draw_tiles(c: Vector2) -> void:
 			var px := tx * TILE
 			var py := ty * TILE
 			if t == T_SOLID:
-				draw_rect(Rect2(px, py, TILE, TILE), th.ground)
-				if ((tx * 7 + ty * 13) & 3) == 0:
-					draw_rect(Rect2(px, py, TILE, TILE), Color(0, 0, 0, 0.08))
+				if ground_tex:
+					draw_texture_rect(ground_tex, Rect2(px, py, TILE, TILE), false)
+				else:
+					draw_rect(Rect2(px, py, TILE, TILE), th.ground)
+				# травянистая кромка на открытой сверху земле
 				if tile_at(tx, ty - 1) != T_SOLID:
-					draw_rect(Rect2(px, py, TILE, 6), th.top)
+					if grass_tex:
+						draw_texture_rect(grass_tex, Rect2(px, py, TILE, 7), false)
+					else:
+						draw_rect(Rect2(px, py, TILE, 6), th.top)
 			elif t == T_PLAT:
 				draw_rect(Rect2(px, py, TILE, 8), th.plat)
 				draw_rect(Rect2(px, py + 6, TILE, 2), Color(0, 0, 0, 0.25))
@@ -2493,6 +2537,9 @@ func _draw_enemies() -> void:
 			var rr := maxf(en.w, en.h) * 0.7 + sin(tick * 0.12 + float(en.eid)) * 3.0
 			draw_circle(ec, rr, acol)
 			draw_arc(ec, rr, 0, TAU, 20, Color(acol.r, acol.g, acol.b, 0.7), 1.5)
+		# тёмный контур для читаемости (кроме босса и летунов-кругов)
+		if en.type != "boss" and not en.get("fly", false):
+			draw_rect(Rect2(en.x - 1.5, en.y - 1.5, en.w + 3, en.h + 3), Color(0, 0, 0, 0.5))
 		if en.type == "walker":
 			draw_rect(Rect2(en.x, en.y, en.w, en.h), Color.WHITE if flash else Color("#e2554f"))
 			var exx: float = en.x + en.w / 2.0 + en.dir * 5
@@ -2603,6 +2650,7 @@ func _draw_player() -> void:
 	var l2: float = (sin(ph + PI) * 2.5) if moving else 0.0
 	draw_rect(Rect2(P.x + 2 + l1, P.y + P.h - 4, 6, 4), Color("#226b5c"))
 	draw_rect(Rect2(P.x + P.w - 8 + l2, P.y + P.h - 4, 6, 4), Color("#226b5c"))
+	draw_rect(Rect2(P.x - 1.5, P.y + 2.5, P.w + 3, P.h - 2.5), Color("#10302a"))  # контур
 	draw_rect(Rect2(P.x, P.y + 4, P.w, P.h - 4), Color("#3ec6a8"))
 	draw_rect(Rect2(P.x + 2, P.y + 5, P.w - 4, 3), Color("#5fe0c2"))  # верхний блик
 	draw_rect(Rect2(P.x, P.y + P.h - 7, P.w, 7), Color("#2c917b"))
