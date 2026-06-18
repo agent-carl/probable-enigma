@@ -151,6 +151,7 @@ var vignette_tex: GradientTexture2D = null  # затемнение по края
 var ground_tex: ImageTexture = null   # пиксель-текстура камня
 var grass_tex: ImageTexture = null    # текстура травянистой кромки
 var plat_tex: ImageTexture = null     # текстура односторонней платформы
+var crate_tex: ImageTexture = null    # текстура дерева ящика
 var _cam_draw := Vector2.ZERO   # текущее смещение камеры в кадре (с тряской)
 var afterimages := []  # следы рывка [{x,y,life}]
 var ambient := []      # атмосферные частицы по теме (экранное пространство)
@@ -196,6 +197,7 @@ func _ready() -> void:
 	rng.randomize()
 	font = ThemeDB.fallback_font
 	_build_vignette()
+	_build_crate_texture()
 	_load_settings()
 	_apply_volume()
 	if not test_mode and DisplayServer.get_name() != "headless":
@@ -2372,6 +2374,23 @@ func _draw_ambient() -> void:
 
 	_draw_overlays()
 
+func _build_crate_texture() -> void:
+	# деревянный ящик: горизонтальная текстура волокон + тёмная рамка
+	var base := Color("#b07c3e")
+	var tr := RandomNumberGenerator.new()
+	tr.seed = 0xC0FFEE
+	var img := Image.create(TILE, TILE, false, Image.FORMAT_RGBA8)
+	for y in range(TILE):
+		var band := base.darkened(0.10) if (y % 6 < 1) else base
+		for x in range(TILE):
+			var c := band
+			if x < 2 or x >= TILE - 2 or y < 2 or y >= TILE - 2:
+				c = base.darkened(0.38)        # рамка
+			elif tr.randf() < 0.12:
+				c = c.darkened(0.10)           # волокна
+			img.set_pixel(x, y, c)
+	crate_tex = ImageTexture.create_from_image(img)
+
 func _build_vignette() -> void:
 	var g := Gradient.new()
 	g.set_offset(0, 0.0)
@@ -2414,10 +2433,17 @@ func _draw_hills(pts: PackedVector2Array, color: Color, c: Vector2, par: float) 
 		return
 	var ox: float = -fmod(c.x * par, 1920.0)
 	var oy: float = -c.y * 0.12 - 120
+	# вертикальный градиент по вершинам: светлее у силуэта, темнее у низа
+	var cols := PackedColorArray()
+	cols.resize(pts.size())
+	for i in range(pts.size()):
+		var t := clampf((760.0 - pts[i].y) / 480.0, 0.0, 1.0)
+		var sh := lerpf(-0.12, 0.20, t)
+		cols[i] = color.lightened(sh) if sh >= 0.0 else color.darkened(-sh)
 	# смещаем через трансформ, не пересобирая массив точек каждый кадр
 	for k in [-1, 0, 1]:
 		draw_set_transform(Vector2(ox + k * 1920, oy))
-		draw_colored_polygon(pts, color)
+		draw_polygon(pts, cols)
 	draw_set_transform(Vector2.ZERO)
 
 func _draw_tiles(c: Vector2) -> void:
@@ -2462,8 +2488,10 @@ func _draw_tiles(c: Vector2) -> void:
 				var idx: int = ty * level.W + tx
 				var chp: float = level.crate_hp.get(idx, 24)
 				var dmgf := 1.0 - clampf(chp / 24.0, 0.0, 1.0)  # больше урона — заметнее трещины
-				draw_rect(Rect2(px + 1, py + 1, TILE - 2, TILE - 2), Color("#8a5a2b"))
-				draw_rect(Rect2(px + 3, py + 3, TILE - 6, TILE - 6), Color("#b07c3e"))
+				if crate_tex:
+					draw_texture_rect(crate_tex, Rect2(px, py, TILE, TILE), false)
+				else:
+					draw_rect(Rect2(px + 1, py + 1, TILE - 2, TILE - 2), Color("#b07c3e"))
 				# доски-крест
 				draw_line(Vector2(px + 3, py + 3), Vector2(px + TILE - 3, py + TILE - 3), Color("#6b4420"), 2.0)
 				draw_line(Vector2(px + TILE - 3, py + 3), Vector2(px + 3, py + TILE - 3), Color("#6b4420"), 2.0)
