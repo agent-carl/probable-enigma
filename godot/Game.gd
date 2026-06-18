@@ -150,6 +150,7 @@ var sky_tex: GradientTexture2D = null   # кэш градиента неба
 var vignette_tex: GradientTexture2D = null  # затемнение по краям экрана
 var ground_tex: ImageTexture = null   # пиксель-текстура камня
 var grass_tex: ImageTexture = null    # текстура травянистой кромки
+var plat_tex: ImageTexture = null     # текстура односторонней платформы
 var _cam_draw := Vector2.ZERO   # текущее смещение камеры в кадре (с тряской)
 var afterimages := []  # следы рывка [{x,y,life}]
 var ambient := []      # атмосферные частицы по теме (экранное пространство)
@@ -2205,6 +2206,20 @@ func _build_tile_textures(seed_val: int) -> void:
 			for y in range(h):
 				top.set_pixel(x, max(0, y), tg.lightened(0.2))
 	grass_tex = ImageTexture.create_from_image(top)
+	# текстура односторонней платформы (доска: светлый верх, тёмный низ, швы)
+	var pc: Color = th.plat
+	var pimg := Image.create(TILE, 8, false, Image.FORMAT_RGBA8)
+	for x in range(TILE):
+		for y in range(8):
+			var c := pc
+			if y < 2:
+				c = pc.lightened(0.18)
+			elif y >= 6:
+				c = pc.darkened(0.32)
+			if x % 8 == 0:
+				c = c.darkened(0.16)  # шов между досками
+			pimg.set_pixel(x, y, c)
+	plat_tex = ImageTexture.create_from_image(pimg)
 
 # ============================== Атмосфера (погода по теме) ==============================
 
@@ -2427,15 +2442,22 @@ func _draw_tiles(c: Vector2) -> void:
 					else:
 						draw_rect(Rect2(px, py, TILE, 6), th.top)
 			elif t == T_PLAT:
-				draw_rect(Rect2(px, py, TILE, 8), th.plat)
-				draw_rect(Rect2(px, py + 6, TILE, 2), Color(0, 0, 0, 0.25))
+				if plat_tex:
+					draw_texture_rect(plat_tex, Rect2(px, py, TILE, 8), false)
+				else:
+					draw_rect(Rect2(px, py, TILE, 8), th.plat)
 			elif t == T_SPIKE:
 				var poly := PackedVector2Array([
 					Vector2(px, py + TILE), Vector2(px + 8, py + 6),
 					Vector2(px + 16, py + TILE), Vector2(px + 24, py + 6),
 					Vector2(px + TILE, py + TILE),
 				])
-				draw_colored_polygon(poly, th.spike)
+				draw_colored_polygon(poly, th.spike.darkened(0.18))
+				# подсветка освещённых левых граней + тёмное основание (металл)
+				var lit: Color = th.spike.lightened(0.25)
+				draw_line(Vector2(px, py + TILE), Vector2(px + 8, py + 6), lit, 1.5)
+				draw_line(Vector2(px + 16, py + TILE), Vector2(px + 24, py + 6), lit, 1.5)
+				draw_rect(Rect2(px, py + TILE - 3, TILE, 3), th.ground.darkened(0.12))
 			elif t == T_CRATE:
 				var idx: int = ty * level.W + tx
 				var chp: float = level.crate_hp.get(idx, 24)
@@ -2619,6 +2641,9 @@ func _draw_enemies() -> void:
 			# пушки
 			draw_rect(Rect2(en.x - 6, ecb.y + 6, en.w + 12, 8), Color("#3a2440"))
 
+		# верхний блик (объём), кроме босса и летунов
+		if en.type != "boss" and not en.get("fly", false) and not flash:
+			draw_rect(Rect2(en.x + 2, en.y + 1, en.w - 4, 2), Color(1, 1, 1, 0.16))
 		# наложение статуса
 		if int(en.get("chill", 0)) > 0:
 			draw_rect(Rect2(en.x, en.y, en.w, en.h), Color(0.5, 0.83, 1.0, 0.30))
