@@ -15,20 +15,31 @@
    репозитория → **Import & Edit**.
 3. Нажмите **F5** (или кнопку ▶ «Run Project»).
 
-### Играть в браузере (GitHub Pages)
+### Релизы с готовыми билдами (рекомендуется)
 
-Workflow **GUNFALL web (Pages)** (`.github/workflows/pages.yml`) собирает
-Web-версию и публикует её на GitHub Pages при push в ветку (нужно включить
-Settings → Pages → Source = «GitHub Actions»). После деплоя игра доступна по
-адресу Pages этого репозитория — прямо в браузере, без установки.
+Опубликуйте версию — и сборки появятся на странице **Releases** сами:
 
-### Готовые сборки из CI (Windows / Linux / Web)
+1. На GitHub: **Releases → Draft a new release** (или «Create a new release»).
+2. Создайте тег вида `v0.1.0` (Choose a tag → ввести → Create new tag), заголовок
+   можно любой, → **Publish release**.
+3. Workflow **GUNFALL build** соберёт Windows/Linux/Web и **прикрепит к этому
+   релизу** архивы `gunfall-windows.zip` (`.exe`), `gunfall-linux.zip` и
+   `gunfall-web.zip` (играть в браузере), плюс авто-заметки об изменениях.
 
-Билды собираются автоматически в GitHub Actions (workflow **GUNFALL build**,
-`.github/workflows/export.yml`). Запустите его вручную (вкладка **Actions →
-Run workflow**) или создайте тег `vX.Y.Z` — на выходе будут артефакты
-`gunfall-windows` (`.exe`), `gunfall-linux` и `gunfall-web` (играть в браузере),
-которые можно скачать со страницы прогона.
+Скачиваете нужный архив со страницы релиза — игра запускается двойным кликом
+без установленного Godot. Каждый новый тег `vX.Y.Z` = новая версия с билдами.
+
+### Скачать билды из прогона CI (без релиза)
+
+Можно и без релиза: **Actions → «GUNFALL build» → Run workflow** — артефакты
+`gunfall-windows` / `gunfall-linux` / `gunfall-web` появятся на странице прогона.
+
+### Играть в браузере (GitHub Pages, опционально)
+
+Workflow **GUNFALL web (Pages)** публикует Web-версию на GitHub Pages.
+Сначала включите **Settings → Pages → Source = «GitHub Actions»** (для
+приватного репозитория нужен подходящий тариф), затем запустите его вручную
+(**Actions → «GUNFALL web (Pages)» → Run workflow**).
 
 ### Собрать локально
 

@@ -1,15 +1,12 @@
 name: GUNFALL web (Pages)
 
 # Собирает Web-версию и публикует на GitHub Pages.
-# Требуется: Settings → Pages → Source = "GitHub Actions" (для приватного репо
-# нужен подходящий тариф). Запускается при push в рабочую ветку и вручную.
+# ВАЖНО: сначала включите Settings → Pages → Source = "GitHub Actions"
+# (для приватного репозитория нужен подходящий тариф GitHub). Только после
+# этого запускайте вручную: Actions → "GUNFALL web (Pages)" → Run workflow.
+# Триггер по push убран намеренно, чтобы деплой не падал до включения Pages.
 on:
   workflow_dispatch:
-  push:
-    branches: ["claude/platformer-roguelike-game-92d5dz"]
-    paths:
-      - "godot/**"
-      - ".github/workflows/pages.yml"
 
 permissions:
   contents: read

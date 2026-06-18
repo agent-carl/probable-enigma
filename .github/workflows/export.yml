@@ -8,6 +8,9 @@ on:
   push:
     tags: ["v*"]
 
+permissions:
+  contents: write   # нужно для создания релиза и загрузки бинарников
+
 jobs:
   export:
     runs-on: ubuntu-latest
@@ -66,3 +69,24 @@ jobs:
         with:
           name: gunfall-web
           path: build/web/
+
+      # При публикации тега vX.Y.Z — собираем архивы и создаём GitHub Release
+      - name: Package release archives
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          cd build
+          (cd web && zip -qr ../gunfall-web.zip .)
+          (cd windows && zip -q ../gunfall-windows.zip gunfall.exe)
+          (cd linux && zip -q ../gunfall-linux.zip gunfall.x86_64)
+          ls -la
+
+      - name: Create GitHub Release with builds
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          name: "GUNFALL ${{ github.ref_name }}"
+          files: |
+            build/gunfall-windows.zip
+            build/gunfall-linux.zip
+            build/gunfall-web.zip
