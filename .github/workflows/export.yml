@@ -5,6 +5,11 @@ name: GUNFALL build
 # тяжёлый (скачивает ~1.2 ГБ шаблонов), поэтому не на каждый push.
 on:
   workflow_dispatch:
+    inputs:
+      version:
+        description: "Версия релиза, напр. v0.1.0 (пусто — только артефакты, без релиза)"
+        required: false
+        default: ""
   push:
     tags: ["v*"]
 
@@ -70,9 +75,9 @@ jobs:
           name: gunfall-web
           path: build/web/
 
-      # При публикации тега vX.Y.Z — собираем архивы и создаём GitHub Release
+      # Релиз: по тегу vX.Y.Z или по ручному запуску с указанной версией
       - name: Package release archives
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/v') || github.event.inputs.version != ''
         run: |
           cd build
           (cd web && zip -qr ../gunfall-web.zip .)
@@ -81,11 +86,12 @@ jobs:
           ls -la
 
       - name: Create GitHub Release with builds
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/v') || github.event.inputs.version != ''
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
-          name: "GUNFALL ${{ github.ref_name }}"
+          tag_name: ${{ github.event.inputs.version != '' && github.event.inputs.version || github.ref_name }}
+          name: "GUNFALL ${{ github.event.inputs.version != '' && github.event.inputs.version || github.ref_name }}"
           files: |
             build/gunfall-windows.zip
             build/gunfall-linux.zip
