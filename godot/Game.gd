@@ -209,6 +209,8 @@ func _ready() -> void:
 		demo = true
 		audio_enabled = "--music" in OS.get_cmdline_args()  # музыку проверяем по флагу
 		RenderingServer.frame_post_draw.connect(_on_post_draw)
+		if "--menu" in OS.get_cmdline_args():
+			return  # остаёмся в меню для проверки его отрисовки
 		start_run(12345, "DEMO")
 		if "--boss" in OS.get_cmdline_args() or "--airboss" in OS.get_cmdline_args():
 			# прыжок на боссовый уровень с прокачкой — для проверки рендера босса
@@ -2350,6 +2352,8 @@ func _draw() -> void:
 		_draw_hud()
 		if fade > 0.0:
 			draw_rect(Rect2(0, 0, VW, VH), Color(0, 0, 0, fade))
+	# меню/пауза/смерть/магазин рисуются всегда (в т.ч. когда уровня ещё нет)
+	_draw_overlays()
 
 func _draw_fx() -> void:
 	# расходящиеся кольца взрывов
@@ -2385,8 +2389,6 @@ func _draw_ambient() -> void:
 			draw_circle(Vector2(p.x, p.y), p.size, col)
 		else:
 			draw_rect(Rect2(p.x - p.size / 2.0, p.y - p.size / 2.0, p.size, p.size), col)
-
-	_draw_overlays()
 
 func _build_crate_texture() -> void:
 	# деревянный ящик: горизонтальная текстура волокон + тёмная рамка
