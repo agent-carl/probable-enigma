@@ -466,8 +466,14 @@ func _rr(r: RandomNumberGenerator, a: int, b: int) -> int:
 func _pick(r: RandomNumberGenerator, arr: Array):
 	return arr[r.randi_range(0, arr.size() - 1)]
 
+var _col_cache := {}
 func _col(hex: String) -> Color:
-	return Color(hex)
+	# мемоизация: не парсим один и тот же hex каждый кадр
+	var c = _col_cache.get(hex)
+	if c == null:
+		c = Color(hex)
+		_col_cache[hex] = c
+	return c
 
 func _hash_seed(s: String) -> int:
 	var h := 2166136261
@@ -1327,6 +1333,8 @@ func hurt_enemy(en: Dictionary, dmg: int, crit: bool, silent := false) -> void:
 		if P.stats.lifesteal > 0:
 			P.hp = min(P.maxhp, P.hp + P.stats.lifesteal)
 		burst(en.x + en.w / 2.0, en.y + en.h / 2.0, 16, Color("#ff9d6b"))
+		if not en.get("boss", false):
+			shockwaves.append({ "x": en.x + en.w / 2.0, "y": en.y + en.h / 2.0, "r": 4.0, "max_r": en.w * 1.3, "life": 10.0, "col": Color("#ffd1a8") })
 		var label := "+%d" % gained
 		if mult > 1.0:
 			label += " x%.1f" % mult
@@ -1541,7 +1549,7 @@ func try_shoot() -> void:
 		var b := {
 			"x": cx + cos(a) * 16, "y": cy + sin(a) * 16,
 			"vx": cos(a) * w.spd, "vy": sin(a) * w.spd,
-			"dmg": dmg, "crit": crit, "from": "p", "life": 90, "color": w.color,
+			"dmg": dmg, "crit": crit, "from": "p", "life": 90, "color": _col(w.color),
 		}
 		if is_gren:
 			b["grenade"] = true
@@ -1708,9 +1716,18 @@ func update_player() -> void:
 	if st.shield_regen > 0 and P.max_shield > 0 and P.shield < P.max_shield:
 		P.shield = min(P.max_shield, P.shield + st.shield_regen)
 
+	var was_grounded: bool = P.on_ground
+	var pre_vy: float = P.vy
 	collide_entity(P)
 	ride_moving_platforms()
 	check_hazards()
+	# пыль при приземлении после падения
+	if P.on_ground and not was_grounded and pre_vy > 4.5:
+		for _i in range(5):
+			var sx := (rng.randf() - 0.5) * 4.0
+			parts.append({ "x": P.x + P.w / 2.0 + (rng.randf() - 0.5) * P.w, "y": P.y + P.h,
+				"vx": sx, "vy": -rng.randf() * 1.2, "life": 12.0 + rng.randf() * 8.0,
+				"color": Color(0.8, 0.82, 0.7, 0.5), "size": 1.5 + rng.randf() * 2.0, "grav": 0.05 })
 
 	P.aim = (input.aim - Vector2(P.x + P.w / 2.0, P.y + P.h / 2.0)).angle()
 	aim_angle = P.aim
@@ -1753,7 +1770,7 @@ func _eshot(x: float, y: float, a: float, spd: float, dmg: int, color: String) -
 	bullets.append({
 		"x": x + cos(a) * 8, "y": y + sin(a) * 8,
 		"vx": cos(a) * spd, "vy": sin(a) * spd,
-		"dmg": dmg, "crit": false, "from": "e", "life": 320, "color": color,
+		"dmg": dmg, "crit": false, "from": "e", "life": 320, "color": _col(color),
 	})
 
 func update_enemies() -> void:
@@ -1867,7 +1884,7 @@ func update_enemies() -> void:
 						bullets.append({
 							"x": ecx + cos(a) * (en.w / 2.0 + 4), "y": ecy + sin(a) * (en.w / 2.0 + 4),
 							"vx": cos(a) * spd, "vy": sin(a) * spd,
-							"dmg": en.dmg, "crit": false, "from": "e", "life": 240, "color": "#ff7a6b",
+							"dmg": en.dmg, "crit": false, "from": "e", "life": 240, "color": _col("#ff7a6b"),
 						})
 					burst(ecx + en.dir * (en.w / 2.0 + 6), ecy, 3, Color("#ffb0a0"))
 			else:
@@ -2751,7 +2768,7 @@ func _draw_player() -> void:
 
 func _draw_bullets() -> void:
 	for b in bullets:
-		var col := _col(b.color)
+		var col: Color = b.color
 		if b.get("grenade", false):
 			# граната — вращающийся снаряд со светящимся следом
 			draw_circle(Vector2(b.x, b.y), 6, col)
