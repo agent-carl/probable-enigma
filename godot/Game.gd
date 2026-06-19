@@ -2118,6 +2118,9 @@ func update_effects() -> void:
 		p.x += p.vx
 		p.y += p.vy
 		pa.append(p)
+	# страховка производительности: ограничиваем число частиц в пике
+	if pa.size() > 600:
+		pa = pa.slice(pa.size() - 600)
 	parts = pa
 	var ta := []
 	for t in texts:
@@ -2459,7 +2462,8 @@ func _draw_sky() -> void:
 	if sky_tex:
 		draw_texture_rect(sky_tex, Rect2(0, 0, VW, VH), false)
 	for sv in stars:
-		draw_rect(Rect2(sv.x, sv.y, sv.z, sv.z), Color(1, 1, 1, 0.5))
+		var tw := 0.45 + 0.35 * sin(tick * 0.05 + sv.x * 0.3)  # мерцание
+		draw_rect(Rect2(sv.x, sv.y, sv.z, sv.z), Color(1, 1, 1, tw))
 
 func _draw_hills(pts: PackedVector2Array, color: Color, c: Vector2, par: float) -> void:
 	if pts.size() < 3:

@@ -818,6 +818,14 @@ func _init() -> void:
 	var m0i: AudioStreamWAV = Synth.build_music(0, true)
 	_ok(m0.data != m0i.data, "boss (intense) variant differs")
 
+	# ---------- 28. Лимит частиц (производительность) ----------
+	game.start_run(201, "201")
+	game.parts = []
+	for _i in range(2000):
+		game.burst(100.0, 100.0, 1, Color.WHITE)
+	game.update_effects()
+	_ok(game.parts.size() <= 600, "particle count capped (%d)" % game.parts.size())
+
 	if failures == 0:
 		print("\nALL TESTS PASSED")
 	else:
