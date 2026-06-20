@@ -151,6 +151,8 @@ var sky1 := Color.BLACK
 var sky_tex: GradientTexture2D = null   # кэш градиента неба
 var vignette_tex: GradientTexture2D = null  # затемнение по краям экрана
 var light_tex: GradientTexture2D = null  # мягкий радиальный «фонарик» для динамического света
+var world_env: WorldEnvironment = null   # HDR-bloom (свечение ярких источников)
+var bloom_on := true                     # переключатель свечения (в паузе)
 var ground_tex: ImageTexture = null   # пиксель-текстура камня
 var grass_tex: ImageTexture = null    # текстура травянистой кромки
 var plat_tex: ImageTexture = null     # текстура односторонней платформы
@@ -203,6 +205,8 @@ func _ready() -> void:
 	_build_light_tex()
 	_build_crate_texture()
 	_load_settings()
+	if DisplayServer.get_name() != "headless":
+		_setup_bloom()
 	_apply_volume()
 	if not test_mode and DisplayServer.get_name() != "headless":
 		_setup_audio()
@@ -451,6 +455,7 @@ func _on_ui(key: String) -> void:
 		"quit": _set_state("menu")
 		"shop_continue": shop_continue()
 		"toggle_shake": toggle_shake()
+		"toggle_bloom": toggle_bloom()
 		_:
 			if key.begins_with("card"):
 				var i := int(key.substr(4))
@@ -2479,8 +2484,8 @@ func _draw_fx() -> void:
 		var perp := Vector2(-dir.y, dir.x)
 		var tip := base + dir * (8.0 + a * 8.0)
 		draw_colored_polygon(PackedVector2Array([
-			base + perp * 4.0 * a, tip, base - perp * 4.0 * a]), Color(1, 0.95, 0.7, 0.9 * a))
-		draw_circle(base, 4.0 * a, Color(1, 1, 1, 0.8 * a))
+			base + perp * 4.0 * a, tip, base - perp * 4.0 * a]), Color(2.2, 2.0, 1.4, 0.9 * a))
+		draw_circle(base, 4.0 * a, Color(3.0, 2.9, 2.4, 0.8 * a))
 
 func _draw_hurt_dirs() -> void:
 	# дуга-вспышка у края экрана в сторону источника урона
@@ -2533,6 +2538,33 @@ func _build_vignette() -> void:
 	vignette_tex.fill_from = Vector2(0.5, 0.5)
 	vignette_tex.fill_to = Vector2(1.0, 1.0)
 
+func _setup_bloom() -> void:
+	# HDR-свечение: яркие (>1.0) пиксели — свет, лава, вспышки, криты — «цветут».
+	# Работает и на Forward+ (десктоп), и на совместимом рендере.
+	var env := Environment.new()
+	env.background_mode = Environment.BG_CANVAS
+	env.glow_enabled = true
+	env.glow_intensity = 0.9
+	env.glow_strength = 1.1
+	env.glow_bloom = 0.15
+	env.glow_blend_mode = Environment.GLOW_BLEND_MODE_ADDITIVE
+	env.glow_hdr_threshold = 1.0   # цветёт только то, что ярче белого
+	env.glow_hdr_scale = 2.0
+	# многоуровневое размытие — мягкий ореол
+	env.set_glow_level(1, 0.0)
+	env.set_glow_level(2, 1.0)
+	env.set_glow_level(3, 1.0)
+	env.set_glow_level(4, 0.5)
+	env.set_glow_level(5, 0.0)
+	world_env = WorldEnvironment.new()
+	world_env.environment = env
+	add_child(world_env)
+	_apply_bloom()
+
+func _apply_bloom() -> void:
+	if world_env and world_env.environment:
+		world_env.environment.glow_enabled = bloom_on
+
 func _build_light_tex() -> void:
 	# мягкий радиальный «фонарик»: яркое ядро → плавное затухание в прозрачность.
 	# Накладывается обычным блендом, осветляя сцену под источником (свет-пятно).
@@ -2551,16 +2583,18 @@ func _build_light_tex() -> void:
 	light_tex.fill_from = Vector2(0.5, 0.5)
 	light_tex.fill_to = Vector2(1.0, 0.5)
 
-func _light(world_pos: Vector2, radius: float, col: Color, intensity: float) -> void:
-	# свет-пятно в мировых координатах (рисуется в экранном пространстве)
+func _light(world_pos: Vector2, radius: float, col: Color, intensity: float, energy := 1.0) -> void:
+	# свет-пятно в мировых координатах (рисуется в экранном пространстве).
+	# energy>1 делает ядро HDR-ярким → оно «цветёт» через bloom.
 	if light_tex == null or intensity <= 0.0 or radius <= 0.0:
 		return
 	var sp := world_pos - _cam_draw
 	if sp.x + radius < 0.0 or sp.x - radius > VW or sp.y + radius < 0.0 or sp.y - radius > VH:
 		return  # за экраном — пропускаем
+	var e := energy if bloom_on else 1.0
 	var d := radius * 2.0
 	draw_texture_rect(light_tex, Rect2(sp.x - radius, sp.y - radius, d, d), false,
-		Color(col.r, col.g, col.b, clampf(intensity, 0.0, 1.0)))
+		Color(col.r * e, col.g * e, col.b * e, clampf(intensity, 0.0, 1.0)))
 
 func _draw_lighting(_c: Vector2) -> void:
 	# Динамический свет: лёгкое атмосферное затемнение мира + светящиеся пятна
@@ -2577,27 +2611,27 @@ func _draw_lighting(_c: Vector2) -> void:
 		var lcol: Color = th.get("lava", Color(1, 0.45, 0.2))
 		var lflick := 0.42 + 0.08 * sin(tick * 0.2)
 		for lp in level.get("lava_cells", []):
-			_light(lp, 44.0, lcol, lflick)
+			_light(lp, 44.0, lcol, lflick, 1.8)
 	# портал — крупный пульсирующий маяк
 	if not level.is_empty():
 		var ep: Vector2 = level.exit_px
 		var ppulse := 0.85 + sin(tick * 0.07) * 0.15
-		_light(Vector2(ep.x, ep.y + TILE / 2.0), 110.0 * ppulse, Color(0.55, 0.74, 1.0), 0.6)
+		_light(Vector2(ep.x, ep.y + TILE / 2.0), 110.0 * ppulse, Color(0.55, 0.74, 1.0), 0.6, 2.0)
 	# игрок — мягкая аура, ярче в рывке
 	if state != "dead":
 		var pdash := 0.0
 		if P.get("dash_t", 0) > 0:
 			pdash = 0.35
 		_light(Vector2(P.x + P.w / 2.0, P.y + P.h / 2.0), 84.0 + pdash * 60.0,
-			Color(0.36, 0.95, 0.82), 0.4 + pdash)
+			Color(0.36, 0.95, 0.82), 0.4 + pdash, 1.6 + pdash)
 	# взрывы — крупная оранжевая вспышка, затухающая по жизни кольца
 	for s in shockwaves:
 		var sa := clampf(s.life / 16.0, 0.0, 1.0)
-		_light(Vector2(s.x, s.y), s.r + 40.0, Color(s.col.r, s.col.g, s.col.b), 0.7 * sa)
+		_light(Vector2(s.x, s.y), s.r + 40.0, Color(s.col.r, s.col.g, s.col.b), 0.7 * sa, 2.6)
 	# дульные вспышки — короткий яркий свет
 	for m in muzzles:
 		var ma := clampf(m.life / 5.0, 0.0, 1.0)
-		_light(Vector2(m.x, m.y), 70.0 * ma + 10.0, Color(1.0, 0.93, 0.7), 0.85 * ma)
+		_light(Vector2(m.x, m.y), 70.0 * ma + 10.0, Color(1.0, 0.93, 0.7), 0.85 * ma, 2.8)
 	# пули — небольшие огоньки своим цветом (без перебора — их и так немного)
 	for b in bullets:
 		var br := 30.0
@@ -2605,16 +2639,16 @@ func _draw_lighting(_c: Vector2) -> void:
 			br = 46.0
 		elif b.get("grenade", false):
 			br = 40.0
-		_light(Vector2(b.x, b.y), br, b.color, 0.5)
+		_light(Vector2(b.x, b.y), br, b.color, 0.5, 2.0 if b.get("crit", false) else 1.6)
 	# горящие враги — мерцающий огонёк
 	for en in enemies:
 		if en.get("burn", 0) > 0:
 			var flick := 0.4 + 0.2 * sin(tick * 0.5 + float(en.get("eid", 0)))
-			_light(Vector2(en.x + en.w / 2.0, en.y + en.h / 2.0), 46.0, Color(1.0, 0.5, 0.2), flick)
+			_light(Vector2(en.x + en.w / 2.0, en.y + en.h / 2.0), 46.0, Color(1.0, 0.5, 0.2), flick, 2.0)
 	# предметы — нежный блик по типу
 	for pk in pickups:
 		var pcol: Color = { "weapon": Color(1, 0.85, 0.42), "med": Color(1, 0.42, 0.48), "ammo": Color(0.79, 0.65, 0.29), "coin": Color(1, 0.85, 0.42), "shield": Color(0.5, 0.83, 1.0) }.get(pk.kind, Color(1, 1, 1))
-		_light(Vector2(pk.x + pk.w / 2.0, pk.y + pk.h / 2.0), 34.0, pcol, 0.4)
+		_light(Vector2(pk.x + pk.w / 2.0, pk.y + pk.h / 2.0), 34.0, pcol, 0.4, 1.5)
 
 func _glow(c: Vector2, r: float, col: Color) -> void:
 	# мягкое свечение из нескольких полупрозрачных кругов
@@ -2703,7 +2737,8 @@ func _draw_tiles(c: Vector2) -> void:
 				# волнистая светящаяся поверхность
 				var wob := sin(tick * 0.12 + tx * 0.9) * 2.0
 				draw_rect(Rect2(px, py + 4 + wob, TILE, 4), lc)
-				draw_rect(Rect2(px, py + 3 + wob, TILE, 2), lc.lightened(0.4))
+				var lcr: Color = lc.lightened(0.4)
+				draw_rect(Rect2(px, py + 3 + wob, TILE, 2), Color(lcr.r * 1.7, lcr.g * 1.7, lcr.b * 1.7))
 				# пузырьки
 				var bx := px + 6 + fmod(tx * 11 + tick * 0.2, TILE - 12)
 				var bb := 2.0 + sin(tick * 0.18 + tx) * 1.2
@@ -2763,7 +2798,7 @@ func _draw_portal() -> void:
 	for i in range(5, 0, -1):
 		var rr := 9.0 * i * pulse
 		draw_circle(Vector2(cxp, cyp), rr, Color(0.47, 0.63, 1.0, 0.06))
-	draw_arc(Vector2(cxp, cyp), 20 * pulse, 0, TAU, 32, Color(0.78, 0.94, 1.0, 0.85), 3.0)
+	draw_arc(Vector2(cxp, cyp), 20 * pulse, 0, TAU, 32, Color(1.6, 1.9, 2.2, 0.9), 3.0)
 	draw_arc(Vector2(cxp, cyp), 28 * pulse, 0, TAU, 32, Color(0.55, 0.74, 1.0, 0.5), 2.0)
 
 func _draw_pickups() -> void:
@@ -2985,14 +3020,14 @@ func _draw_bullets() -> void:
 		elif b.get("pierce", false):
 			# рельса — толстый яркий луч
 			var from := Vector2(b.x - b.vx * 1.8, b.y - b.vy * 1.8)
-			draw_line(from, Vector2(b.x, b.y), Color(1, 1, 1, 0.5), 5.0)
-			draw_line(from, Vector2(b.x, b.y), col, 3.0)
+			draw_line(from, Vector2(b.x, b.y), Color(2.4, 2.4, 2.6, 0.5), 5.0)
+			draw_line(from, Vector2(b.x, b.y), Color(col.r * 1.6, col.g * 1.6, col.b * 1.6, 1.0), 3.0)
 		else:
 			var from := Vector2(b.x - b.vx * 1.4, b.y - b.vy * 1.4)
 			# мягкое свечение + яркое ядро
 			draw_line(from, Vector2(b.x, b.y), Color(col.r, col.g, col.b, 0.25), (7.0 if b.crit else 5.0))
 			draw_line(from, Vector2(b.x, b.y), col, 3.5 if b.crit else 2.5)
-			draw_circle(Vector2(b.x, b.y), 1.6 if b.crit else 1.2, Color(1, 1, 1, 0.85))
+			draw_circle(Vector2(b.x, b.y), 1.6 if b.crit else 1.2, Color(2.6, 2.6, 2.6, 0.85) if b.crit else Color(1.4, 1.4, 1.4, 0.85))
 
 func _draw_particles() -> void:
 	for p in parts:
@@ -3198,6 +3233,11 @@ func toggle_shake() -> void:
 	shake_on = not shake_on
 	_save_settings()
 
+func toggle_bloom() -> void:
+	bloom_on = not bloom_on
+	_apply_bloom()
+	_save_settings()
+
 func _draw_overlays() -> void:
 	if state == "play":
 		return
@@ -3217,12 +3257,13 @@ func _draw_overlays() -> void:
 			_text(Vector2(cx, 430), "Достижения: %d / %d  ·  Enter / клик — старт" % [unlocked.size(), ACHIEVEMENTS.size()], 13, Color("#6f7aa3"), true)
 			_draw_volume(cx, 458)
 		"pause":
-			_text(Vector2(cx, 170), "Пауза", 40, Color("#eaf0ff"), true)
-			_btn(Rect2(cx - 90, 214, 180, 48), "Продолжить", "resume")
-			_btn(Rect2(cx - 130, 274, 260, 40), "Тряска экрана: %s" % ("Вкл" if shake_on else "Выкл"), "toggle_shake", false)
-			_btn(Rect2(cx - 90, 324, 180, 42), "В меню", "quit", false)
-			_text(Vector2(cx, 392), "Геймпад поддерживается", 12, Color("#6f7aa3"), true)
-			_draw_volume(cx, 414)
+			_text(Vector2(cx, 150), "Пауза", 40, Color("#eaf0ff"), true)
+			_btn(Rect2(cx - 90, 196, 180, 46), "Продолжить", "resume")
+			_btn(Rect2(cx - 130, 252, 260, 38), "Тряска экрана: %s" % ("Вкл" if shake_on else "Выкл"), "toggle_shake", false)
+			_btn(Rect2(cx - 130, 298, 260, 38), "Свечение (bloom): %s" % ("Вкл" if bloom_on else "Выкл"), "toggle_bloom", false)
+			_btn(Rect2(cx - 90, 344, 180, 40), "В меню", "quit", false)
+			_text(Vector2(cx, 404), "Геймпад поддерживается", 12, Color("#6f7aa3"), true)
+			_draw_volume(cx, 424)
 		"dead":
 			_text(Vector2(cx, 120), "Вы погибли", 44, Color("#ff6b5e"), true)
 			var is_record := score >= best and score > 0
@@ -3385,6 +3426,7 @@ func _load_settings() -> void:
 		best = int(cfg.get_value("progress", "best", 0))
 		volume = clampf(float(cfg.get_value("settings", "volume", 0.8)), 0.0, 1.0)
 		shake_on = bool(cfg.get_value("settings", "shake", true))
+		bloom_on = bool(cfg.get_value("settings", "bloom", true))
 		unlocked.clear()
 		if cfg.has_section("achievements"):
 			for k in cfg.get_section_keys("achievements"):
@@ -3403,6 +3445,7 @@ func _save_settings() -> void:
 	cfg.set_value("progress", "best", best)
 	cfg.set_value("settings", "volume", volume)
 	cfg.set_value("settings", "shake", shake_on)
+	cfg.set_value("settings", "bloom", bloom_on)
 	for id in unlocked.keys():
 		cfg.set_value("achievements", id, true)
 	cfg.save(_cfg_path())

@@ -24,3 +24,4 @@ common/physics_ticks_per_second=60
 
 textures/canvas_textures/default_texture_filter=0
 environment/defaults/default_clear_color=Color(0.05, 0.06, 0.12, 1)
+viewport/hdr_2d=true
