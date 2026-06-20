@@ -160,6 +160,9 @@ var fx_layer: CanvasLayer = null         # слой полноэкранного
 var fx_rect: ColorRect = null
 var fx_mat: ShaderMaterial = null
 var world_fx: Node2D = null              # слой движковых частиц, следует за камерой
+var ui_layer: CanvasLayer = null         # HUD/оверлеи поверх пост-эффекта (не искажаются)
+var ui_node: Node2D = null
+var _ci: CanvasItem = null               # активный холст для отрисовки интерфейса
 var aberration := 0.0                    # хром. аберрация при уроне (затухает)
 var ground_tex: ImageTexture = null   # пиксель-текстура камня
 var grass_tex: ImageTexture = null    # текстура травянистой кромки
@@ -209,6 +212,7 @@ var _sfx_cache := {}
 
 func _ready() -> void:
 	rng.randomize()
+	_ci = self
 	font = ThemeDB.fallback_font
 	_build_vignette()
 	_build_light_tex()
@@ -2512,16 +2516,13 @@ func _draw() -> void:
 		if flash > 0.0:
 			draw_rect(Rect2(0, 0, VW, VH), Color(flash_color.r, flash_color.g, flash_color.b, flash * 0.6))
 		_draw_ambient()
-		_draw_hurt_dirs()
-		_draw_hud()
-		if fade > 0.0:
-			_draw_iris(fade)   # круговой ирис-переход (открывается на игроке)
-	# меню/пауза/смерть/магазин рисуются всегда (в т.ч. когда уровня ещё нет)
-	_draw_overlays()
+	# HUD/оверлеи/ирис рисуются на ui_node (слой выше пост-эффекта) — см. _paint_ui()
+	if ui_node:
+		ui_node.queue_redraw()
 
 func _draw_iris(f: float) -> void:
 	# чёрный экран с растущим круглым «окном» на игроке: f=1 закрыто, f=0 открыто
-	draw_set_transform(Vector2.ZERO)
+	_ci.draw_set_transform(Vector2.ZERO)
 	var center := Vector2(VW / 2.0, VH / 2.0)
 	if not level.is_empty() and state != "dead":
 		center = Vector2(P.x + P.w / 2.0, P.y + P.h / 2.0) - _cam_draw
@@ -2537,7 +2538,7 @@ func _draw_iris(f: float) -> void:
 		var d0 := Vector2(cos(a0), sin(a0))
 		var d1 := Vector2(cos(a1), sin(a1))
 		# кольцевой сегмент-четырёхугольник (надёжно через draw_colored_polygon)
-		draw_colored_polygon(PackedVector2Array([
+		_ci.draw_colored_polygon(PackedVector2Array([
 			center + d0 * hole, center + d0 * outer,
 			center + d1 * outer, center + d1 * hole]), black)
 
@@ -2565,7 +2566,7 @@ func _draw_hurt_dirs() -> void:
 		var ang: float = h.ang
 		var rad := 250.0
 		var pos := ctr + Vector2(cos(ang), sin(ang)) * rad
-		draw_arc(pos, 60.0, ang + PI - 0.5, ang + PI + 0.5, 12, Color(1, 0.3, 0.3, 0.55 * a), 8.0)
+		_ci.draw_arc(pos, 60.0, ang + PI - 0.5, ang + PI + 0.5, 12, Color(1, 0.3, 0.3, 0.55 * a), 8.0)
 
 func _draw_ambient() -> void:
 	for p in ambient:
@@ -2718,8 +2719,7 @@ func _setup_fx() -> void:
 	_set_grade(-1)   # нейтральный грейдинг по умолчанию
 	fx_rect = ColorRect.new()
 	fx_rect.material = fx_mat
-	fx_rect.set_anchors_preset(Control.PRESET_FULL_RECT)
-	fx_rect.size = Vector2(VW, VH)
+	fx_rect.set_anchors_preset(Control.PRESET_FULL_RECT)   # размер — по якорям (весь экран)
 	fx_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	fx_layer = CanvasLayer.new()
 	fx_layer.layer = 3   # выше мира, ниже... (HUD пока в _draw мира — допустимо)
@@ -2727,6 +2727,23 @@ func _setup_fx() -> void:
 	add_child(fx_layer)
 	world_fx = Node2D.new()   # частицы в мировых координатах (сдвигается на -камеру)
 	add_child(world_fx)
+	# HUD/оверлеи — на слое ВЫШЕ пост-эффекта, чтобы интерфейс не искажался
+	ui_layer = CanvasLayer.new()
+	ui_layer.layer = 5
+	ui_node = Node2D.new()
+	ui_layer.add_child(ui_node)
+	add_child(ui_layer)
+	ui_node.draw.connect(_paint_ui)
+
+func _paint_ui() -> void:
+	_ci = ui_node
+	if not level.is_empty():
+		_draw_hurt_dirs()
+		_draw_hud()
+		if fade > 0.0:
+			_draw_iris(fade)
+	_draw_overlays()
+	_ci = self
 
 func _burst_particles(world_pos: Vector2, color: Color, amount: int, vel := 150.0, life := 0.6) -> void:
 	# одноразовый GPU-подобный всплеск искр (движковый CPUParticles2D), аддитивный
@@ -3477,37 +3494,37 @@ func _text(pos: Vector2, s: String, size: int, color: Color, center := false) ->
 	if center:
 		var sz := font.get_string_size(s, HORIZONTAL_ALIGNMENT_LEFT, -1, size)
 		px.x -= sz.x / 2.0
-	draw_string(font, px, s, HORIZONTAL_ALIGNMENT_LEFT, -1, size, color)
+	_ci.draw_string(font, px, s, HORIZONTAL_ALIGNMENT_LEFT, -1, size, color)
 
 func _draw_hud() -> void:
 	# здоровье
 	var hpw := 190.0
-	draw_rect(Rect2(12, 12, hpw + 4, 20), Color(0, 0, 0, 0.45))
+	_ci.draw_rect(Rect2(12, 12, hpw + 4, 20), Color(0, 0, 0, 0.45))
 	var frac := clampf(P.hp / P.maxhp, 0, 1)
 	var hpcol := Color("#56d98b")
 	if frac <= 0.35:
 		hpcol = Color("#ff5e57") if (tick % 30 < 15) else Color("#c93a34")
-	draw_rect(Rect2(14, 14, hpw * frac, 16), hpcol)
+	_ci.draw_rect(Rect2(14, 14, hpw * frac, 16), hpcol)
 	# полоса щита поверх верхнего края HP
 	if P.shield > 0:
 		var sw := hpw * clampf(P.shield / P.maxhp, 0, 1)
-		draw_rect(Rect2(14, 12, sw, 4), Color("#7fd4ff"))
+		_ci.draw_rect(Rect2(14, 12, sw, 4), Color("#7fd4ff"))
 	_text(Vector2(20, 27), "%d / %d" % [ceili(P.hp), int(P.maxhp)], 12, Color("#eaf0ff"))
 
 	# индикатор рывка
 	var dy := 38.0
-	draw_rect(Rect2(12, dy, 120, 8), Color(0, 0, 0, 0.45))
+	_ci.draw_rect(Rect2(12, dy, 120, 8), Color(0, 0, 0, 0.45))
 	var dfrac := 1.0 - clampf(float(P.dash_cd) / 55.0, 0, 1)
-	draw_rect(Rect2(13, dy + 1, 118 * dfrac, 6), Color("#7fdcff") if dfrac >= 1.0 else Color("#3a6c8c"))
+	_ci.draw_rect(Rect2(13, dy + 1, 118 * dfrac, 6), Color("#7fdcff") if dfrac >= 1.0 else Color("#3a6c8c"))
 	_text(Vector2(136, dy + 8), "рывок (Shift/ПКМ)", 10, Color("#8d97bd"))
 
 	# заряд ультимейта
 	var uy := 50.0
-	draw_rect(Rect2(12, uy, 120, 8), Color(0, 0, 0, 0.45))
+	_ci.draw_rect(Rect2(12, uy, 120, 8), Color(0, 0, 0, 0.45))
 	var ufrac := clampf(ult / ULT_MAX, 0, 1)
 	var ready := ufrac >= 1.0
 	var ucol := Color("#ffd86b") if (ready and (tick % 20 < 10)) else (Color("#ff9e4d") if ready else Color("#7a5a2c"))
-	draw_rect(Rect2(13, uy + 1, 118 * ufrac, 6), ucol)
+	_ci.draw_rect(Rect2(13, uy + 1, 118 * ufrac, 6), ucol)
 	_text(Vector2(136, uy + 8), "ПЕРЕГРУЗКА (Q)" if ready else "перегрузка (Q)", 10, Color("#ffd86b") if ready else Color("#8d97bd"))
 
 	# серия убийств
@@ -3532,9 +3549,9 @@ func _draw_hud() -> void:
 		if boss != null:
 			var bw := 520.0
 			var bx := VW / 2.0 - bw / 2.0
-			draw_rect(Rect2(bx - 3, VH - 86, bw + 6, 22), Color(0, 0, 0, 0.55))
+			_ci.draw_rect(Rect2(bx - 3, VH - 86, bw + 6, 22), Color(0, 0, 0, 0.55))
 			var bfrac := clampf(float(boss.hp) / boss.maxhp, 0, 1)
-			draw_rect(Rect2(bx, VH - 83, bw * bfrac, 16), Color("#ff4db0"))
+			_ci.draw_rect(Rect2(bx, VH - 83, bw * bfrac, 16), Color("#ff4db0"))
 			_text(Vector2(VW / 2.0, VH - 70), boss_name if boss_name != "" else "БОСС", 12, Color("#ffe9b0"), true)
 			_draw_offscreen_arrow(Vector2(boss.x + boss.w / 2.0, boss.y + boss.h / 2.0), Color("#ff4db0"))
 	else:
@@ -3557,8 +3574,8 @@ func _draw_hud() -> void:
 	# оружие
 	var slot: Dictionary = P.weapons[P.wi]
 	var w: Dictionary = WEAPONS[slot.id]
-	draw_rect(Rect2(12, VH - 46, 210, 34), Color(0, 0, 0, 0.45))
-	draw_rect(Rect2(22, VH - 32, 18, 6), _col(w.color))
+	_ci.draw_rect(Rect2(12, VH - 46, 210, 34), Color(0, 0, 0, 0.45))
+	_ci.draw_rect(Rect2(22, VH - 32, 18, 6), _col(w.color))
 	var ammo_str := "∞" if not is_finite(slot.ammo) else str(int(slot.ammo))
 	var acol := Color("#eaf0ff")
 	if low_ammo_t > 0 or (is_finite(slot.ammo) and slot.ammo <= 5):
@@ -3566,7 +3583,7 @@ func _draw_hud() -> void:
 	_text(Vector2(50, VH - 22), "%s · %s" % [w.name, ammo_str], 13, acol)
 	for i in range(P.weapons.size()):
 		var sx := 232 + i * 26
-		draw_rect(Rect2(sx, VH - 42, 22, 22), Color(1, 0.85, 0.42, 0.85) if i == P.wi else Color(1, 1, 1, 0.15))
+		_ci.draw_rect(Rect2(sx, VH - 42, 22, 22), Color(1, 0.85, 0.42, 0.85) if i == P.wi else Color(1, 1, 1, 0.15))
 		_text(Vector2(sx + 7, VH - 26), str(i + 1), 12, Color("#2a1c04") if i == P.wi else Color("#cfd6f5"))
 
 	# пульс при низком здоровье
@@ -3575,9 +3592,9 @@ func _draw_hud() -> void:
 		if hpr < 0.3:
 			var pulse := 0.18 + 0.16 * (0.5 + 0.5 * sin(tick * 0.18))
 			var dang := (1.0 - hpr / 0.3)   # чем меньше HP, тем сильнее
-			draw_rect(Rect2(0, 0, VW, VH), Color(0.9, 0.05, 0.08, pulse * dang * 0.6))
+			_ci.draw_rect(Rect2(0, 0, VW, VH), Color(0.9, 0.05, 0.08, pulse * dang * 0.6))
 			if vignette_tex:
-				draw_texture_rect(vignette_tex, Rect2(0, 0, VW, VH), false, Color(1.0, 0.2, 0.2, pulse * dang * 2.0))
+				_ci.draw_texture_rect(vignette_tex, Rect2(0, 0, VW, VH), false, Color(1.0, 0.2, 0.2, pulse * dang * 2.0))
 
 	# интро
 	if intro > 0:
@@ -3585,8 +3602,8 @@ func _draw_hud() -> void:
 		# кинематографичный леттербокс на боссовых уровнях
 		if boss_alive:
 			var bar := 46.0 * a
-			draw_rect(Rect2(0, 0, VW, bar), Color(0, 0, 0, 0.9))
-			draw_rect(Rect2(0, VH - bar, VW, bar), Color(0, 0, 0, 0.9))
+			_ci.draw_rect(Rect2(0, 0, VW, bar), Color(0, 0, 0, 0.9))
+			_ci.draw_rect(Rect2(0, VH - bar, VW, bar), Color(0, 0, 0, 0.9))
 		_text(Vector2(VW / 2.0, VH / 2.0 - 60), intro_text, 30, Color(1, 0.91, 0.69, a), true)
 		_text(Vector2(VW / 2.0, VH / 2.0 - 30), "Доберитесь до портала →", 15, Color(0.67, 0.70, 0.84, a), true)
 
@@ -3595,8 +3612,8 @@ func _draw_hud() -> void:
 	# прицел
 	if state == "play":
 		var m := get_local_mouse_position()
-		draw_arc(m, 7, 0, TAU, 20, Color(1, 1, 1, 0.9), 1.5)
-		draw_rect(Rect2(m.x - 1, m.y - 1, 2, 2), Color(1, 1, 1, 0.9))
+		_ci.draw_arc(m, 7, 0, TAU, 20, Color(1, 1, 1, 0.9), 1.5)
+		_ci.draw_rect(Rect2(m.x - 1, m.y - 1, 2, 2), Color(1, 1, 1, 0.9))
 
 func _draw_toasts() -> void:
 	var ty := 100.0
@@ -3604,8 +3621,8 @@ func _draw_toasts() -> void:
 		var a := clampf(t.life / 40.0, 0, 1)
 		var tw := font.get_string_size(t.text, HORIZONTAL_ALIGNMENT_LEFT, -1, 15).x + 28
 		var tx := VW / 2.0 - tw / 2.0
-		draw_rect(Rect2(tx, ty, tw, 26), Color(0.1, 0.12, 0.2, 0.85 * a))
-		draw_rect(Rect2(tx, ty, 4, 26), Color(1, 0.85, 0.42, a))
+		_ci.draw_rect(Rect2(tx, ty, tw, 26), Color(0.1, 0.12, 0.2, 0.85 * a))
+		_ci.draw_rect(Rect2(tx, ty, 4, 26), Color(1, 0.85, 0.42, a))
 		_text(Vector2(VW / 2.0, ty + 18), t.text, 15, Color(1, 0.92, 0.7, a), true)
 		ty += 32
 
@@ -3618,7 +3635,7 @@ func _draw_minimap() -> void:
 	var mh := 50.0
 	var ox := VW - 12 - mw
 	var oy := 58.0
-	draw_rect(Rect2(ox - 2, oy - 2, mw + 4, mh + 4), Color(0, 0, 0, 0.5))
+	_ci.draw_rect(Rect2(ox - 2, oy - 2, mw + 4, mh + 4), Color(0, 0, 0, 0.5))
 	var sx := mw / float(level.px_w)
 	var sy := mh / float(level.px_h)
 	var W: int = level.W
@@ -3627,10 +3644,10 @@ func _draw_minimap() -> void:
 	for i in range(int(mw)):
 		var c := clampi(int(i / mw * W), 0, W - 1)
 		var py: float = level.ground_y[c] * TILE * sy
-		draw_rect(Rect2(ox + i, oy + py, 1, mh - py), Color(col_ground.r, col_ground.g, col_ground.b, 0.75))
+		_ci.draw_rect(Rect2(ox + i, oy + py, 1, mh - py), Color(col_ground.r, col_ground.g, col_ground.b, 0.75))
 	# портал
 	var ex: Vector2 = level.exit_px
-	draw_rect(Rect2(ox + ex.x * sx - 1, oy + ex.y * sy - 2, 3, 4), Color("#9be8ff"))
+	_ci.draw_rect(Rect2(ox + ex.x * sx - 1, oy + ex.y * sy - 2, 3, 4), Color("#9be8ff"))
 	# враги
 	for en in enemies:
 		if en.dead:
@@ -3641,9 +3658,9 @@ func _draw_minimap() -> void:
 		elif en.type == "flyer":
 			ec = Color("#5fb0e8")
 		var sz := 3.0 if en.get("boss", false) else 2.0
-		draw_rect(Rect2(ox + (en.x + en.w / 2.0) * sx - sz / 2, oy + (en.y + en.h / 2.0) * sy - sz / 2, sz, sz), ec)
+		_ci.draw_rect(Rect2(ox + (en.x + en.w / 2.0) * sx - sz / 2, oy + (en.y + en.h / 2.0) * sy - sz / 2, sz, sz), ec)
 	# игрок
-	draw_rect(Rect2(ox + (P.x + P.w / 2.0) * sx - 1.5, oy + (P.y + P.h / 2.0) * sy - 1.5, 3, 3), Color("#3ec6a8"))
+	_ci.draw_rect(Rect2(ox + (P.x + P.w / 2.0) * sx - 1.5, oy + (P.y + P.h / 2.0) * sy - 1.5, 3, 3), Color("#3ec6a8"))
 
 func _draw_offscreen_arrow(world_pos: Vector2, color: Color) -> void:
 	var sp := world_pos - cam
@@ -3652,13 +3669,13 @@ func _draw_offscreen_arrow(world_pos: Vector2, color: Color) -> void:
 		return  # цель на экране — стрелка не нужна
 	var pos := Vector2(clampf(sp.x, margin, VW - margin), clampf(sp.y, margin, VH - margin))
 	var ang := (sp - pos).angle()
-	draw_set_transform(pos, ang)
-	draw_colored_polygon(PackedVector2Array([Vector2(12, 0), Vector2(-7, -8), Vector2(-7, 8)]), color)
-	draw_set_transform(Vector2.ZERO)
+	_ci.draw_set_transform(pos, ang)
+	_ci.draw_colored_polygon(PackedVector2Array([Vector2(12, 0), Vector2(-7, -8), Vector2(-7, 8)]), color)
+	_ci.draw_set_transform(Vector2.ZERO)
 
 func _btn(rect: Rect2, label: String, key: String, primary := true) -> void:
 	var bg := Color("#ffc24d") if primary else Color(1, 1, 1, 0.10)
-	draw_rect(rect, bg)
+	_ci.draw_rect(rect, bg)
 	var tc := Color("#2a1c04") if primary else Color("#cfd6f5")
 	_text(Vector2(rect.position.x + rect.size.x / 2.0, rect.position.y + rect.size.y / 2.0 + 6), label, 16, tc, true)
 	_ui_rects[key] = rect
@@ -3718,7 +3735,7 @@ func _start_slowmo(factor: float, real_secs: float) -> void:
 func _draw_overlays() -> void:
 	if state == "play":
 		return
-	draw_rect(Rect2(0, 0, VW, VH), Color(0.027, 0.031, 0.059, 0.80))
+	_ci.draw_rect(Rect2(0, 0, VW, VH), Color(0.027, 0.031, 0.059, 0.80))
 	var cx := VW / 2.0
 	match state:
 		"menu":
@@ -3779,8 +3796,8 @@ func _draw_overlays() -> void:
 			for i in range(offer.size()):
 				var u: Dictionary = offer[i]
 				var rect := Rect2(sx + i * (cw + gap), 200, cw, 200)
-				draw_rect(rect, Color(1, 1, 1, 0.05))
-				draw_rect(rect, Color(1, 0.85, 0.42, 0.5), false, 2.0)
+				_ci.draw_rect(rect, Color(1, 1, 1, 0.05))
+				_ci.draw_rect(rect, Color(1, 0.85, 0.42, 0.5), false, 2.0)
 				_ui_rects["card%d" % i] = rect
 				var ccx := rect.position.x + cw / 2.0
 				_text(Vector2(ccx, rect.position.y + 60), u.icon, 48, Color("#ffe9b0"), true)
@@ -3799,8 +3816,8 @@ func _draw_overlays() -> void:
 				var it: Dictionary = shop_items[i]
 				var rect := Rect2(sx + i * (cw + gap), 160, cw, 210)
 				var affordable: bool = coins >= it.price and not it.sold
-				draw_rect(rect, Color(1, 1, 1, 0.05) if not it.sold else Color(0, 0, 0, 0.25))
-				draw_rect(rect, Color(1, 0.85, 0.42, 0.6) if affordable else Color(1, 1, 1, 0.15), false, 2.0)
+				_ci.draw_rect(rect, Color(1, 1, 1, 0.05) if not it.sold else Color(0, 0, 0, 0.25))
+				_ci.draw_rect(rect, Color(1, 0.85, 0.42, 0.6) if affordable else Color(1, 1, 1, 0.15), false, 2.0)
 				_ui_rects["shop%d" % i] = rect
 				var ccx := rect.position.x + cw / 2.0
 				var fade := 0.4 if it.sold else 1.0
@@ -3819,8 +3836,8 @@ func _draw_volume(cx: float, y: float) -> void:
 	var bw := 160.0
 	var bx := cx - bw / 2.0
 	_text(Vector2(cx, y - 10), "Громкость  ( − / + )", 12, Color("#8d97bd"), true)
-	draw_rect(Rect2(bx, y, bw, 10), Color(0, 0, 0, 0.5))
-	draw_rect(Rect2(bx + 1, y + 1, (bw - 2) * volume, 8), Color("#ffc24d"))
+	_ci.draw_rect(Rect2(bx, y, bw, 10), Color(0, 0, 0, 0.5))
+	_ci.draw_rect(Rect2(bx + 1, y + 1, (bw - 2) * volume, 8), Color("#ffc24d"))
 	_text(Vector2(cx, y + 28), "%d%%" % int(round(volume * 100)), 12, Color("#cfd6f5"), true)
 
 func _draw_wrapped(s: String, x: float, y: float, w: float, size: int, color: Color) -> void:
