@@ -2490,6 +2490,7 @@ func _draw() -> void:
 
 		draw_set_transform(-c)
 		_draw_tiles(c)
+		_draw_lava_reflection()
 		_draw_movers()
 		_draw_hazards()
 		_draw_portal()
@@ -3303,6 +3304,40 @@ func _draw_enemies() -> void:
 			var bw: float = en.w + 8
 			draw_rect(Rect2(en.x - 4, en.y - 9, bw, 4), Color(0, 0, 0, 0.55))
 			draw_rect(Rect2(en.x - 4, en.y - 9, bw * clampf(float(en.hp) / en.maxhp, 0, 1), 4), Color("#ff5e57"))
+
+func _draw_lava_reflection() -> void:
+	# отражение игрока на поверхности лавы: перевёрнутое, дрожащее, в цвете лавы
+	if state == "dead" or level.is_empty():
+		return
+	var pcx: float = P.x + P.w / 2.0
+	var surf := INF
+	var lxmin := INF
+	var lxmax := -INF
+	for lp in level.get("lava_cells", []):
+		if absf(lp.x - pcx) < 70.0 and lp.y > P.y:        # лава под игроком рядом
+			surf = minf(surf, lp.y - TILE / 2.0)
+			lxmin = minf(lxmin, lp.x - TILE / 2.0)
+			lxmax = maxf(lxmax, lp.x + TILE / 2.0)
+	if surf == INF or P.y + P.h > surf + 4.0:
+		return                                            # нет лавы под ногами
+	var rx0 := maxf(P.x, lxmin)
+	var rx1 := minf(P.x + P.w, lxmax)
+	if rx1 <= rx0:
+		return
+	var wob := sin(tick * 0.16) * 2.5                     # дрожание поверхности
+	var lc: Color = th.get("lava", Color(1, 0.5, 0.2))
+	# три горизонтальные полосы отражения, всё бледнее вглубь
+	for k in range(3):
+		var seg: float = (P.h - 4.0) / 3.0
+		var src_y: float = P.y + 4.0 + k * seg            # полоса тела игрока
+		var ry: float = 2.0 * surf - (src_y + seg)        # зеркально вниз
+		var depth := clampf((ry - surf) / 40.0, 0.0, 1.0)
+		var a := 0.30 - depth * 0.22
+		if a <= 0.02:
+			continue
+		var ox := wob * (1.0 + k * 0.4)
+		var bc := Color("#3ec6a8").lerp(lc, 0.45)
+		draw_rect(Rect2(rx0 + ox, ry, rx1 - rx0, seg + 1.0), Color(bc.r, bc.g, bc.b, a))
 
 func _draw_player() -> void:
 	if state == "dead":
