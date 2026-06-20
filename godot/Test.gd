@@ -1076,6 +1076,35 @@ func _init() -> void:
 		_ok(game.bullets.size() > 0, "artillery boss fires a volley")
 	game.level = {}
 
+	# ---------- 35. Мета-прогрессия ----------
+	game.meta = {}
+	game.meta_cores = 0
+	_ok(game.meta_level("vitality") == 0, "meta level starts at 0")
+	_ok(game.meta_cost("vitality") == 4, "meta cost from catalog")
+	_ok(not game.buy_meta("vitality"), "cannot buy meta without cores")
+	game.meta_cores = 100
+	_ok(game.buy_meta("vitality"), "buy meta with enough cores")
+	_ok(game.meta_level("vitality") == 1, "meta level increments after buy")
+	_ok(game.meta_cores == 96, "cores deducted on buy (100-4)")
+	# apply_meta влияет на старт забега
+	game.meta = { "vitality": 2, "power": 1, "fortune": 2 }
+	game.start_run(7700, "meta")
+	_ok(game.P.maxhp >= 140, "vitality raises starting max HP (%d)" % game.P.maxhp)
+	_ok(game.coins == 10, "fortune grants starting coins")
+	_ok(game.P.stats.dmg_mul > 1.0, "power raises starting damage")
+	# заработок ядер при смерти
+	game.meta = {}
+	game.meta_cores = 0
+	game.start_run(7701, "die")
+	game.score = 1000
+	game.lvl = 3
+	game.P.hp = 1.0
+	game.P.inv = 0
+	game.hurt_player(999, 0)
+	_ok(game.state == "dead", "player dies")
+	_ok(game.run_cores >= 1 and game.meta_cores == game.run_cores, "cores earned on death (%d)" % game.run_cores)
+	game.level = {}
+
 	if failures == 0:
 		print("\nALL TESTS PASSED")
 	else:

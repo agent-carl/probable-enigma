@@ -78,6 +78,17 @@ const RELICS := {
 	"frost":      { "icon": "❄", "name": "Морозная аура", "desc": "Близкие враги замедляются" },
 }
 
+# Мета-прогрессия: постоянные улучшения между забегами за «ядра»
+const META := {
+	"vitality":    { "icon": "♥", "name": "Закалка", "desc": "+20 к стартовому HP за уровень", "cost": [4, 7, 11], "max": 3 },
+	"power":       { "icon": "✦", "name": "Мощь", "desc": "+6% к урону за уровень", "cost": [5, 9, 14], "max": 3 },
+	"swift":       { "icon": "»", "name": "Прыть", "desc": "+5% к скорости бега за уровень", "cost": [4, 8], "max": 2 },
+	"fortune":     { "icon": "◉", "name": "Богатство", "desc": "+5 стартовых монет за уровень", "cost": [3, 6, 9], "max": 3 },
+	"munitions":   { "icon": "▸", "name": "Арсенал", "desc": "Старт со случайным доп. оружием", "cost": [10], "max": 1 },
+	"relic_start": { "icon": "🔮", "name": "Наследие", "desc": "Старт со случайной реликвией", "cost": [16], "max": 1 },
+	"discount":    { "icon": "%", "name": "Скидки", "desc": "−12% к ценам в магазине за уровень", "cost": [6, 11], "max": 2 },
+}
+
 const ACHIEVEMENTS := [
 	{ "id": "first_blood", "name": "Первая кровь", "desc": "Убить первого врага" },
 	{ "id": "combo_master", "name": "Мастер серий", "desc": "Серия из 10 убийств" },
@@ -133,6 +144,9 @@ var shake_on := true     # тряска экрана (опция доступн�
 var ult := 0.0           # заряд ультимейта (0..ULT_MAX)
 const ULT_MAX := 300.0
 var relics := {}         # реликвии забега (id → true)
+var meta_cores := 0      # постоянная валюта мета-прогрессии (сохраняется)
+var meta := {}           # купленные мета-улучшения (id → уровень, сохраняется)
+var run_cores := 0       # ядра, заработанные за текущий забег (для экрана смерти)
 var _second_used := false  # «Второе дыхание» израсходовано на этом уровне
 var _detonating := false   # защита от рекурсии «Детонатора»
 var chain_bolts := []    # визуал «Цепи молний» [{x1,y1,x2,y2,life}]
@@ -505,6 +519,7 @@ func _on_ui(key: String) -> void:
 		"resume": _set_state("play")
 		"quit": _set_state("menu")
 		"shop_continue": shop_continue()
+		"meta": _set_state("meta")
 		"toggle_shake": toggle_shake()
 		"toggle_bloom": toggle_bloom()
 		"toggle_crt": toggle_crt()
@@ -514,6 +529,8 @@ func _on_ui(key: String) -> void:
 				var i := int(key.substr(4))
 				if i < offer.size():
 					choose_upgrade(offer[i])
+			elif key.begins_with("mbuy_"):
+				buy_meta(key.substr(5))
 			elif key.begins_with("shop"):
 				var i := int(key.substr(4))
 				if i < shop_items.size():
@@ -1152,6 +1169,8 @@ func start_run(s: int, label: String) -> void:
 	_hp_ghost = P.hp
 	_prev_wi = 0
 	relics = {}
+	apply_meta()   # постоянные мета-улучшения
+	_hp_ghost = P.hp
 	start_level()
 	_set_state("play")
 
@@ -1290,6 +1309,45 @@ func random_unowned_relic() -> String:
 		return ""
 	return pool[rng.randi_range(0, pool.size() - 1)]
 
+func meta_level(id: String) -> int:
+	return int(meta.get(id, 0))
+
+func meta_cost(id: String) -> int:
+	# цена следующего уровня улучшения; -1 если максимум
+	var lvl_cur := meta_level(id)
+	var costs: Array = META[id].cost
+	if lvl_cur >= int(META[id].max):
+		return -1
+	return int(costs[lvl_cur])
+
+func buy_meta(id: String) -> bool:
+	var c := meta_cost(id)
+	if c < 0 or meta_cores < c:
+		return false
+	meta_cores -= c
+	meta[id] = meta_level(id) + 1
+	play_sfx("select")
+	_save_settings()
+	return true
+
+func apply_meta() -> void:
+	# применяем купленные мета-улучшения в начале забега
+	var v := meta_level("vitality")
+	if v > 0:
+		P.maxhp += 20 * v
+		P.hp = P.maxhp
+	var pw := meta_level("power")
+	if pw > 0:
+		P.stats.dmg_mul *= 1.0 + 0.06 * pw
+	var sw := meta_level("swift")
+	if sw > 0:
+		P.stats.spd_mul *= 1.0 + 0.05 * sw
+	coins = 5 * meta_level("fortune")
+	if meta_level("munitions") > 0:
+		give_weapon(pick_rng(WEAPON_DROPS))
+	if meta_level("relic_start") > 0:
+		grant_random_relic()
+
 func choose_upgrade(u: Dictionary) -> void:
 	apply_upgrade_stats(u)
 	play_sfx("select")
@@ -1319,6 +1377,11 @@ func build_shop() -> Array:
 	var rid := random_unowned_relic()
 	if rid != "":
 		items.append({ "id": "relic", "icon": RELICS[rid].icon, "name": RELICS[rid].name, "desc": RELICS[rid].desc, "price": 28, "sold": false, "relic": rid })
+	# мета-скидка на цены
+	var disc := 1.0 - 0.12 * meta_level("discount")
+	if disc < 1.0:
+		for it in items:
+			it.price = maxi(1, roundi(it.price * disc))
 	return items
 
 func pick_rng(arr: Array):
@@ -1415,6 +1478,10 @@ func die() -> void:
 	if score > best:
 		best = score
 		_save_best(best)
+	# мета-валюта: ядра за забег (по очкам и пройденным уровням)
+	run_cores = maxi(1, int(score / 250.0) + (lvl - 1))
+	meta_cores += run_cores
+	_save_settings()
 	_stop_music()
 	_set_state("dead")
 
@@ -4262,14 +4329,15 @@ func _draw_overlays() -> void:
 			_text(Vector2(cx, 150), "GUNFALL", 72, Color("#ffce5a"), true)
 			_text(Vector2(cx, 190), "Платформер-рогалик: каждый забег — новая карта", 16, Color("#aab3d6"), true)
 			_text(Vector2(cx, 250), "A/D — бег · W/Пробел — прыжок · S+прыжок — вниз", 14, Color("#8d97bd"), true)
-			_text(Vector2(cx, 274), "Мышь — прицел · ЛКМ — огонь · 1–7/колесо — оружие", 14, Color("#8d97bd"), true)
+			_text(Vector2(cx, 274), "Мышь — прицел · ЛКМ — огонь · 1–8/колесо — оружие", 14, Color("#8d97bd"), true)
 			_text(Vector2(cx, 298), "Shift/ПКМ — рывок · Q — перегрузка · Esc — пауза · M — звук", 14, Color("#8d97bd"), true)
-			_text(Vector2(cx, 322), "Каждый 5-й уровень — БОСС", 13, Color("#ff8fc4"), true)
-			_btn(Rect2(cx - 90, 344, 180, 50), "Играть", "play")
+			_text(Vector2(cx, 318), "Каждый 5-й уровень — БОСС", 13, Color("#ff8fc4"), true)
+			_btn(Rect2(cx - 90, 336, 180, 46), "Играть", "play")
+			_btn(Rect2(cx - 120, 388, 240, 32), "Мастерская   ◉ %d" % meta_cores, "meta", false)
 			var bl := "Рекорд: %d очков" % best if best > 0 else "Удачного первого забега!"
-			_text(Vector2(cx, 410), bl, 14, Color("#6f7aa3"), true)
-			_text(Vector2(cx, 430), "Достижения: %d / %d  ·  Enter / клик — старт" % [unlocked.size(), ACHIEVEMENTS.size()], 13, Color("#6f7aa3"), true)
-			_draw_volume(cx, 458)
+			_text(Vector2(cx, 430), bl, 13, Color("#6f7aa3"), true)
+			_text(Vector2(cx, 448), "Достижения: %d / %d  ·  Enter / клик — старт" % [unlocked.size(), ACHIEVEMENTS.size()], 12, Color("#6f7aa3"), true)
+			_draw_volume(cx, 470)
 		"pause":
 			_text(Vector2(cx, 108), "Пауза", 38, Color("#eaf0ff"), true)
 			_btn(Rect2(cx - 90, 150, 180, 42), "Продолжить", "resume")
@@ -4351,6 +4419,28 @@ func _draw_overlays() -> void:
 					_text(Vector2(ccx, rect.position.y + 176), "● %d" % it.price, 16, pc, true)
 				_text(Vector2(ccx, rect.position.y + 198), "[%d]" % (i + 1), 13, Color("#8d97bd"), true)
 			_btn(Rect2(cx - 110, 396, 220, 48), "Дальше →", "shop_continue")
+		"meta":
+			_text(Vector2(cx, 64), "Мастерская", 34, Color("#ffe9b0"), true)
+			_text(Vector2(cx, 96), "Ядра: ◉ %d   (клик — купить улучшение)" % meta_cores, 15, Color("#9be8ff"), true)
+			var my := 126.0
+			for mid in META.keys():
+				var m: Dictionary = META[mid]
+				var mlv := meta_level(mid)
+				var mcost := meta_cost(mid)
+				var rect := Rect2(cx - 300, my, 600, 42)
+				var afford: bool = mcost >= 0 and meta_cores >= mcost
+				_ci.draw_rect(rect, Color(1, 1, 1, 0.05))
+				_ci.draw_rect(rect, Color(1, 0.85, 0.42, 0.5) if afford else Color(1, 1, 1, 0.12), false, 1.5)
+				if mcost >= 0:
+					_ui_rects["mbuy_" + mid] = rect
+				_text(Vector2(rect.position.x + 14, my + 27), "%s  %s" % [m.icon, m.name], 16, Color("#ffe9b0"))
+				_text(Vector2(rect.position.x + 180, my + 26), m.desc, 12, Color("#aab3d6"))
+				for pi in range(int(m.max)):   # пипсы уровней
+					_ci.draw_rect(Rect2(rect.position.x + 452 + pi * 14, my + 15, 10, 10), Color("#ffd86b") if pi < mlv else Color(1, 1, 1, 0.15))
+				var cstr := "МАКС" if mcost < 0 else ("◉ %d" % mcost)
+				_text(Vector2(rect.position.x + 522, my + 27), cstr, 14, Color("#7df2a5") if mcost < 0 else (Color("#ffd86b") if afford else Color("#ff6b5e")))
+				my += 48.0
+			_btn(Rect2(cx - 90, my + 8, 180, 40), "← Назад", "menu", false)
 
 func _draw_volume(cx: float, y: float) -> void:
 	var bw := 160.0
@@ -4441,6 +4531,11 @@ func _load_settings() -> void:
 	var cfg := ConfigFile.new()
 	if cfg.load(_cfg_path()) == OK:
 		best = int(cfg.get_value("progress", "best", 0))
+		meta_cores = int(cfg.get_value("progress", "cores", 0))
+		meta.clear()
+		if cfg.has_section("meta"):
+			for k in cfg.get_section_keys("meta"):
+				meta[k] = int(cfg.get_value("meta", k, 0))
 		volume = clampf(float(cfg.get_value("settings", "volume", 0.8)), 0.0, 1.0)
 		shake_on = bool(cfg.get_value("settings", "shake", true))
 		bloom_on = bool(cfg.get_value("settings", "bloom", true))
@@ -4462,6 +4557,9 @@ func _load_settings() -> void:
 func _save_settings() -> void:
 	var cfg := ConfigFile.new()
 	cfg.set_value("progress", "best", best)
+	cfg.set_value("progress", "cores", meta_cores)
+	for mid in meta.keys():
+		cfg.set_value("meta", mid, int(meta[mid]))
 	cfg.set_value("settings", "volume", volume)
 	cfg.set_value("settings", "shake", shake_on)
 	cfg.set_value("settings", "bloom", bloom_on)
