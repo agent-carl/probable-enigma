@@ -166,12 +166,14 @@ var ui_node: Node2D = null
 var _ci: CanvasItem = null               # активный холст для отрисовки интерфейса
 var aberration := 0.0                    # хром. аберрация при уроне (затухает)
 var _blur := 0.0                         # плавное размытие мира на паузе/оверлеях
+var _radial := 0.0                       # радиальный блюр-всплеск ульта (затухает)
 var _hitmark := 0.0                       # таймер хит-маркера на прицеле
 var _recoil := 0.0                        # отдача — прицел раскрывается при выстреле
 var _hp_ghost := 100.0                    # «призрак» HP (плавно догоняет при уроне)
 var _combo_pop := 0.0                     # всплеск текста серии при убийстве
 var _wswitch := 0.0                       # анимация смены оружия
 var _prev_wi := 0                         # для детекта смены оружия
+var _cracks := []                         # трещины на экране при низком HP
 var ground_tex: ImageTexture = null   # пиксель-текстура камня
 var grass_tex: ImageTexture = null    # текстура травянистой кромки
 var plat_tex: ImageTexture = null     # текстура односторонней платформы
@@ -222,6 +224,7 @@ func _ready() -> void:
 	rng.randomize()
 	_ci = self
 	font = ThemeDB.fallback_font
+	_build_cracks()
 	_build_vignette()
 	_build_light_tex()
 	_build_crate_texture()
@@ -1330,6 +1333,7 @@ func activate_ult() -> void:
 	P.inv = max(P.inv, 40)
 	shake = min(24.0, shake + 16.0)
 	hitstop = 6
+	_radial = 0.85   # радиальный блюр-всплеск
 	burst(cx, cy, 50, Color("#9be8ff"))
 	burst(cx, cy, 30, Color("#ffffff"))
 	shockwaves.append({ "x": cx, "y": cy, "r": 10.0, "max_r": 200.0, "life": 22.0, "col": Color("#9be8ff") })
@@ -1664,6 +1668,10 @@ func try_shoot() -> void:
 	shake = min(12.0, shake + w.kick * 0.55)
 	burst(cx + cos(angle) * 18, cy + sin(angle) * 18, 3, Color("#fff2b0"))
 	_recoil = 1.0   # прицел раскрывается при выстреле
+	# вылетающая гильза (назад-вверх, падает с гравитацией)
+	var ejang := angle + PI + (rng.randf() - 0.5) * 0.6
+	parts.append({ "x": cx, "y": cy - 3.0, "vx": cos(ejang) * 1.6 + (rng.randf() - 0.5),
+		"vy": -1.6 - rng.randf() * 1.4, "life": 28.0, "color": Color("#d9b25a"), "size": 2.0, "grav": 0.18 })
 	muzzles.append({ "x": cx + cos(angle) * 17, "y": cy + sin(angle) * 17, "ang": angle, "life": 5.0, "len": w.len })
 	if slot.id == "shotgun" or is_gren:
 		play_sfx("shotgun")
@@ -2699,6 +2707,7 @@ uniform vec3 grade_add;
 uniform float grade_con;
 uniform float blur;     // размытие мира (фокус на паузе)
 uniform float grain;    // плёночное зерно
+uniform float radial;   // радиальный блюр (всплеск ульта)
 uniform int heat_count;
 uniform vec4 heat_pts[16];   // xy=пиксель, z=радиус, w=сила
 uniform int ripple_count;
@@ -2752,6 +2761,15 @@ void fragment() {
 		col.g = texture(screen_tex, cuv).g;
 		col.b = texture(screen_tex, cuv - vec2(ab, 0.0)).b;
 	}
+	// радиальный блюр-всплеск (ультимейт): смазывание к центру
+	if (radial > 0.001) {
+		vec2 toc = vec2(0.5) - cuv;
+		vec3 racc = texture(screen_tex, cuv + toc * 0.012).rgb;
+		racc += texture(screen_tex, cuv + toc * 0.024).rgb;
+		racc += texture(screen_tex, cuv + toc * 0.036).rgb;
+		racc += texture(screen_tex, cuv + toc * 0.048).rgb;
+		col = mix(col, racc * 0.25, radial);
+	}
 	// цветокоррекция по локации (контраст → тон → подъём)
 	col = (col - 0.5) * grade_con + 0.5;
 	col = col * grade_mul + grade_add;
@@ -2782,6 +2800,7 @@ func _setup_fx() -> void:
 	fx_mat.set_shader_parameter("screen_size", Vector2(VW, VH))
 	fx_mat.set_shader_parameter("grain", 0.045)
 	fx_mat.set_shader_parameter("blur", 0.0)
+	fx_mat.set_shader_parameter("radial", 0.0)
 	_set_grade(-1)   # нейтральный грейдинг по умолчанию
 	fx_rect = ColorRect.new()
 	fx_rect.material = fx_mat
@@ -2854,9 +2873,11 @@ func _update_fx() -> void:
 	aberration = maxf(0.0, aberration - 0.04)
 	var btarget := 1.0 if (state == "pause" or state == "upgrade" or state == "shop" or state == "dead") else 0.0
 	_blur = lerpf(_blur, btarget, 0.22)
+	_radial = maxf(0.0, _radial - 0.06)
 	fx_mat.set_shader_parameter("t", tick * 0.05)
 	fx_mat.set_shader_parameter("aberration", aberration)
 	fx_mat.set_shader_parameter("blur", _blur)
+	fx_mat.set_shader_parameter("radial", _radial)
 	fx_mat.set_shader_parameter("crt", 1.0 if crt_on else 0.0)
 	# тепловое марево над видимыми тайлами лавы
 	var heat := PackedVector4Array()
@@ -2881,6 +2902,23 @@ func _update_fx() -> void:
 	fx_mat.set_shader_parameter("ripple_count", rip.size())
 	if rip.size() > 0:
 		fx_mat.set_shader_parameter("ripples", rip)
+
+func _build_cracks() -> void:
+	# статичный узор трещин «разбитого стекла» от краёв к центру
+	_cracks = []
+	var r := RandomNumberGenerator.new()
+	r.seed = 0x0C0FFEE3
+	var ctr := Vector2(VW / 2.0, VH / 2.0)
+	var anchors := [Vector2(0, 0), Vector2(VW, 0), Vector2(0, VH), Vector2(VW, VH), Vector2(VW * 0.5, 0), Vector2(VW * 0.5, VH)]
+	for a in anchors:
+		var p: Vector2 = a
+		var dir := (ctr - p).normalized()
+		for i in range(6):
+			var np: Vector2 = p + dir.rotated((r.randf() - 0.5) * 1.1) * (28.0 + r.randf() * 64.0)
+			_cracks.append([p, np])
+			if r.randf() < 0.55:   # ответвление
+				_cracks.append([p, p + dir.rotated((r.randf() - 0.5) * 2.2) * (18.0 + r.randf() * 38.0)])
+			p = np
 
 func _build_light_tex() -> void:
 	# мягкий радиальный «фонарик»: яркое ядро → плавное затухание в прозрачность.
@@ -3343,6 +3381,11 @@ func _draw_enemies() -> void:
 		if not en.has("dir"):
 			en["dir"] = 1  # защита отрисовки (на случай неполной записи врага)
 		var flash: bool = en.hurt_t > 84
+		# кольцо-«поп» при свежем попадании (расходится и гаснет)
+		if en.hurt_t > 78 and en.type != "boss":
+			var hpop: float = float(90 - en.hurt_t)
+			var hcen := Vector2(en.x + en.w / 2.0, en.y + en.h / 2.0)
+			draw_arc(hcen, maxf(en.w, en.h) * 0.5 + hpop * 1.6, 0, TAU, 18, Color(1, 1, 1, clampf((en.hurt_t - 78) / 12.0, 0, 1) * 0.6), 2.0)
 		# контактная тень для наземных врагов
 		if not en.get("fly", false) and en.type != "boss":
 			_shadow(en.x + en.w / 2.0, en.y + en.h, en.w)
@@ -3709,6 +3752,13 @@ func _draw_hud() -> void:
 			_ci.draw_rect(Rect2(0, 0, VW, VH), Color(0.9, 0.05, 0.08, pulse * dang * 0.6))
 			if vignette_tex:
 				_ci.draw_texture_rect(vignette_tex, Rect2(0, 0, VW, VH), false, Color(1.0, 0.2, 0.2, pulse * dang * 2.0))
+		# трещины «разбитого стекла» при критическом HP (< 22%)
+		if hpr < 0.22:
+			var ca := (1.0 - hpr / 0.22)
+			var cb := 0.5 + 0.5 * sin(tick * 0.2)
+			for seg in _cracks:
+				_ci.draw_line(seg[0], seg[1], Color(0, 0, 0, 0.45 * ca), 2.5)
+				_ci.draw_line(seg[0], seg[1], Color(1.0, 0.8, 0.8, (0.25 + 0.3 * cb) * ca), 1.2)
 
 	# интро
 	if intro > 0:
