@@ -18,18 +18,19 @@ const T_PLAT := 2
 const T_SPIKE := 3
 const T_EXIT := 4
 const T_CRATE := 5   # разрушаемый ящик (твёрдый, ломается выстрелами/взрывами)
+const T_LAVA := 6    # светящаяся лава/кислота на дне ям (урон + поджиг, не твёрдая)
 
 const THEMES := [
 	{ "name": "Изумрудные пещеры", "sky0": "#0e1830", "sky1": "#1d3250", "hill_far": "#15233c", "hill_near": "#1b2c4a",
-	  "ground": "#2c3a55", "top": "#58c98f", "plat": "#7fdcae", "spike": "#bcd0ff", "weather": "spores", "wcol": "#9ff0c0" },
+	  "ground": "#2c3a55", "top": "#58c98f", "plat": "#7fdcae", "spike": "#bcd0ff", "weather": "spores", "wcol": "#9ff0c0", "lava": "#37e0c0" },
 	{ "name": "Багровые руины", "sky0": "#180d1c", "sky1": "#3a1c33", "hill_far": "#241229", "hill_near": "#301a37",
-	  "ground": "#3d2438", "top": "#e0707a", "plat": "#f29a8e", "spike": "#ffd3c0", "weather": "embers", "wcol": "#ff9a5a" },
+	  "ground": "#3d2438", "top": "#e0707a", "plat": "#f29a8e", "spike": "#ffd3c0", "weather": "embers", "wcol": "#ff9a5a", "lava": "#ff5a2a" },
 	{ "name": "Ледяные шахты", "sky0": "#0b1426", "sky1": "#1d3a55", "hill_far": "#142339", "hill_near": "#1b2f4a",
-	  "ground": "#31415f", "top": "#8fd8f2", "plat": "#b5e8fa", "spike": "#e8f6ff", "weather": "snow", "wcol": "#e8f6ff" },
+	  "ground": "#31415f", "top": "#8fd8f2", "plat": "#b5e8fa", "spike": "#e8f6ff", "weather": "snow", "wcol": "#e8f6ff", "lava": "#3aa0ff" },
 	{ "name": "Токсичные топи", "sky0": "#0d1612", "sky1": "#1d3328", "hill_far": "#13241b", "hill_near": "#1a3124",
-	  "ground": "#2b3d31", "top": "#a8d65c", "plat": "#c6ec85", "spike": "#e9ffc9", "weather": "bubbles", "wcol": "#bff06a" },
+	  "ground": "#2b3d31", "top": "#a8d65c", "plat": "#c6ec85", "spike": "#e9ffc9", "weather": "bubbles", "wcol": "#bff06a", "lava": "#9bff3a" },
 	{ "name": "Пустынный форт", "sky0": "#1a1208", "sky1": "#3d2c14", "hill_far": "#291e0e", "hill_near": "#352813",
-	  "ground": "#4a3a20", "top": "#e6b566", "plat": "#f4ce8d", "spike": "#ffe9c2", "weather": "sand", "wcol": "#f0d29a" },
+	  "ground": "#4a3a20", "top": "#e6b566", "plat": "#f4ce8d", "spike": "#ffe9c2", "weather": "sand", "wcol": "#f0d29a", "lava": "#ff7a1a" },
 ]
 
 const WEAPONS := {
@@ -522,6 +523,7 @@ func generate_level(seed_val: int, level_num: int) -> Dictionary:
 	for x in range(8):
 		ground_y[x] = h
 	var spike_cols := {}
+	var lava_cols := {}   # ямы, залитые лавой/кислотой (подмножество spike_cols)
 	var x := 8
 	var last_pit_end := -99
 
@@ -530,10 +532,14 @@ func generate_level(seed_val: int, level_num: int) -> Dictionary:
 		if rv < 0.16 and x - last_pit_end > 7 and h + 3 < max_h:
 			var pw := _rr(r, 2, 4)
 			var depth := _rr(r, 2, 3)
+			# с уровнем растёт шанс, что яма — лавовая (опасная зона со светом)
+			var is_lava := r.randf() < minf(0.25 + 0.05 * level_num, 0.6)
 			var i := 0
 			while i < pw and x < W - 10:
 				ground_y[x] = h + depth
 				spike_cols[x] = true
+				if is_lava:
+					lava_cols[x] = true
 				i += 1
 				x += 1
 			last_pit_end = x
@@ -552,11 +558,16 @@ func generate_level(seed_val: int, level_num: int) -> Dictionary:
 				and ground_y[sx] == ground_y[sx - 1] and ground_y[sx] == ground_y[sx + 1]:
 			spike_cols[sx] = true
 
-	# заливка земли и шипов
+	# заливка земли, лавы и шипов
+	var lava_cells := []   # центры тайлов лавы (для динамического света)
 	for tx in range(W):
 		for ty in range(ground_y[tx], H):
 			grid[ty * W + tx] = T_SOLID
-		if spike_cols.has(tx):
+		if lava_cols.has(tx):
+			# поверхность дна ямы — лава; ниже остаётся твёрдый камень
+			_setc(grid, W, H, tx, ground_y[tx], T_LAVA)
+			lava_cells.append(Vector2(tx * TILE + TILE / 2.0, ground_y[tx] * TILE + TILE / 2.0))
+		elif spike_cols.has(tx):
 			_setc(grid, W, H, tx, ground_y[tx] - 1, T_SPIKE)
 
 	# --- односторонние платформы ---
@@ -895,6 +906,7 @@ func generate_level(seed_val: int, level_num: int) -> Dictionary:
 		"spawn": Vector2(2 * TILE + 6, ground_y[2] * TILE - 31),
 		"exit_px": exit_px, "enemies": enemy_list, "pickups": pickup_list,
 		"has_boss": is_boss_level, "crate_hp": crate_hp, "movers": movers, "hazards": hazards,
+		"lava_cells": lava_cells,
 	}
 
 # ============================== Доступ к карте (рантайм) ==============================
@@ -1772,6 +1784,14 @@ func update_player() -> void:
 	if P.inv <= 0 and overlaps_tile(P, T_SPIKE):
 		P.vy = -9.0
 		hurt_player(15, 0)
+	if P.inv <= 0 and overlaps_tile(P, T_LAVA):
+		P.vy = -8.0   # выталкивает наверх, чтобы можно было выбраться
+		hurt_player(12, 0)
+		var lcol: Color = th.get("lava", Color("#ff5a2a"))
+		for _i in range(6):
+			parts.append({ "x": P.x + P.w / 2.0 + (rng.randf() - 0.5) * P.w, "y": P.y + P.h,
+				"vx": (rng.randf() - 0.5) * 1.5, "vy": -1.5 - rng.randf() * 2.0,
+				"life": 16.0 + rng.randf() * 8.0, "color": lcol, "size": 2.0 + rng.randf() * 2.0, "grav": 0.06 })
 	if overlaps_tile(P, T_EXIT):
 		if boss_alive:
 			if tick % 45 == 0:
@@ -2552,6 +2572,12 @@ func _draw_lighting(_c: Vector2) -> void:
 	# чтобы свет-пятна читались как настоящее освещение (не размывая HUD)
 	var amb: Color = th.get("amb", Color(0.04, 0.05, 0.10))
 	draw_rect(Rect2(0, 0, VW, VH), Color(amb.r, amb.g, amb.b, 0.16))
+	# лава/кислота — тёплый свет от каждого тайла (с отсечением за экраном)
+	if not level.is_empty():
+		var lcol: Color = th.get("lava", Color(1, 0.45, 0.2))
+		var lflick := 0.42 + 0.08 * sin(tick * 0.2)
+		for lp in level.get("lava_cells", []):
+			_light(lp, 44.0, lcol, lflick)
 	# портал — крупный пульсирующий маяк
 	if not level.is_empty():
 		var ep: Vector2 = level.exit_px
@@ -2669,6 +2695,20 @@ func _draw_tiles(c: Vector2) -> void:
 				draw_line(Vector2(px, py + TILE), Vector2(px + 8, py + 6), lit, 1.5)
 				draw_line(Vector2(px + 16, py + TILE), Vector2(px + 24, py + 6), lit, 1.5)
 				draw_rect(Rect2(px, py + TILE - 3, TILE, 3), th.ground.darkened(0.12))
+			elif t == T_LAVA:
+				var lc: Color = th.get("lava", Color("#ff5a2a"))
+				# тело лавы (тёмное снизу → яркое сверху)
+				draw_rect(Rect2(px, py, TILE, TILE), lc.darkened(0.45))
+				draw_rect(Rect2(px, py + 6, TILE, TILE - 6), lc.darkened(0.25))
+				# волнистая светящаяся поверхность
+				var wob := sin(tick * 0.12 + tx * 0.9) * 2.0
+				draw_rect(Rect2(px, py + 4 + wob, TILE, 4), lc)
+				draw_rect(Rect2(px, py + 3 + wob, TILE, 2), lc.lightened(0.4))
+				# пузырьки
+				var bx := px + 6 + fmod(tx * 11 + tick * 0.2, TILE - 12)
+				var bb := 2.0 + sin(tick * 0.18 + tx) * 1.2
+				if bb > 1.6:
+					draw_circle(Vector2(bx, py + 9 + wob), bb, lc.lightened(0.5))
 			elif t == T_CRATE:
 				var idx: int = ty * level.W + tx
 				var chp: float = level.crate_hp.get(idx, 24)

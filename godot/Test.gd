@@ -44,9 +44,11 @@ func _init() -> void:
 
 			# проходимость: перепады и ямы
 			var run_start := -1
+			var T_LAVA_g := 6
 			for x in range(1, W):
-				var spike_here := grid[(gy[x] - 1) * W + x] == T_SPIKE
-				var spike_prev := grid[(gy[x - 1] - 1) * W + (x - 1)] == T_SPIKE
+				# опасная колонка-яма: шип над землёй ИЛИ лава на поверхности дна
+				var spike_here := grid[(gy[x] - 1) * W + x] == T_SPIKE or grid[gy[x] * W + x] == T_LAVA_g
+				var spike_prev := grid[(gy[x - 1] - 1) * W + (x - 1)] == T_SPIKE or grid[gy[x - 1] * W + (x - 1)] == T_LAVA_g
 				if spike_here and not spike_prev:
 					run_start = x
 				if not spike_here and spike_prev and run_start > 0:
@@ -865,6 +867,49 @@ func _init() -> void:
 	_ok(front.hp < 100, "flamethrower damages enemy in cone")
 	_ok(int(front.burn) > 0, "flamethrower ignites enemy in cone")
 	_ok(behind.hp == 100, "flamethrower spares enemy outside cone")
+
+	# ---------- 30. Лава/кислота (генерация + свойства тайла + урон) ----------
+	var T_LAVA := 6
+	var T_SOLID_l := 1
+	var lava_levels := 0
+	var lava_cell_ok := true
+	var sample_level: Dictionary = {}
+	for s in range(1, 121):
+		var L: Dictionary = game.generate_level(s * 6311 + 3, 3 + (s % 4))
+		var lc: Array = L.get("lava_cells", [])
+		if lc.size() > 0:
+			lava_levels += 1
+			if sample_level.is_empty():
+				sample_level = L
+			# каждый записанный центр лавы реально является тайлом лавы,
+			# не твёрдый, и под ним камень (нельзя провалиться насквозь)
+			for p in lc:
+				var tx := int(p.x / 32)
+				var ty := int(p.y / 32)
+				var W: int = L.W
+				if L.grid[ty * W + tx] != T_LAVA:
+					lava_cell_ok = false
+				if L.grid[(ty + 1) * W + tx] != T_SOLID_l:
+					lava_cell_ok = false
+	_ok(lava_levels > 0, "lava pits generate across seeds (%d/120 levels)" % lava_levels)
+	_ok(lava_cell_ok, "every lava cell is T_LAVA with solid floor below")
+	_ok(not game.is_blocking(T_LAVA), "lava is not a blocking tile (player can fall in)")
+	# определение пересечения игрока с лавой
+	if not sample_level.is_empty():
+		game.level = sample_level
+		var lp0: Vector2 = sample_level.lava_cells[0]
+		var pl: Dictionary = game.make_player()
+		pl.x = lp0.x - pl.w / 2.0
+		pl.y = lp0.y - pl.h / 2.0
+		_ok(game.overlaps_tile(pl, T_LAVA), "overlaps_tile detects player in lava")
+		var pl2: Dictionary = game.make_player()
+		pl2.x = lp0.x + 4000.0
+		pl2.y = lp0.y
+		_ok(not game.overlaps_tile(pl2, T_LAVA), "player far from lava does not overlap")
+	# детерминизм лавы
+	var La: Dictionary = game.generate_level(987654, 4)
+	var Lb: Dictionary = game.generate_level(987654, 4)
+	_ok(La.lava_cells.size() == Lb.lava_cells.size(), "lava generation is deterministic")
 
 	if failures == 0:
 		print("\nALL TESTS PASSED")
