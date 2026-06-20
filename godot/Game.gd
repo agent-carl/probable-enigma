@@ -154,6 +154,8 @@ var vignette_tex: GradientTexture2D = null  # затемнение по края
 var light_tex: GradientTexture2D = null  # мягкий радиальный «фонарик» для динамического света
 var world_env: WorldEnvironment = null   # HDR-bloom (свечение ярких источников)
 var bloom_on := true                     # переключатель свечения (в паузе)
+var crt_on := false                      # ретро CRT-фильтр (в паузе)
+var fullscreen_on := false               # полноэкранный режим (сохраняется)
 var fx_layer: CanvasLayer = null         # слой полноэкранного пост-эффекта (искажения)
 var fx_rect: ColorRect = null
 var fx_mat: ShaderMaterial = null
@@ -214,6 +216,7 @@ func _ready() -> void:
 	if DisplayServer.get_name() != "headless":
 		_setup_bloom()
 		_setup_fx()
+		_apply_fullscreen()
 	_apply_volume()
 	if not test_mode and DisplayServer.get_name() != "headless":
 		_setup_audio()
@@ -420,6 +423,8 @@ func _unhandled_input(event: InputEvent) -> void:
 					_stop_music()
 				elif state == "play":
 					_play_music((lvl - 1) % 5, boss_alive)
+			KEY_F11:
+				toggle_fullscreen()
 			KEY_MINUS, KEY_KP_SUBTRACT:
 				set_volume(volume - 0.1)
 			KEY_EQUAL, KEY_KP_ADD:
@@ -465,6 +470,8 @@ func _on_ui(key: String) -> void:
 		"shop_continue": shop_continue()
 		"toggle_shake": toggle_shake()
 		"toggle_bloom": toggle_bloom()
+		"toggle_crt": toggle_crt()
+		"toggle_fullscreen": toggle_fullscreen()
 		_:
 			if key.begins_with("card"):
 				var i := int(key.substr(4))
@@ -2636,6 +2643,7 @@ uniform sampler2D screen_tex : hint_screen_texture, filter_linear;
 uniform vec2 screen_size;
 uniform float t;
 uniform float aberration;
+uniform float crt;
 uniform int heat_count;
 uniform vec4 heat_pts[16];   // xy=пиксель, z=радиус, w=сила
 uniform int ripple_count;
@@ -2664,11 +2672,26 @@ void fragment() {
 		}
 	}
 	vec2 duv = off / screen_size;
+	vec2 cuv = uv + duv;
+	if (crt > 0.5) {
+		// лёгкая бочкообразная дисторсия CRT
+		vec2 q = cuv - 0.5;
+		cuv = cuv + q * dot(q, q) * 0.06;
+	}
 	float ab = aberration * 0.005 + length(off) * 0.0006;
 	vec3 col;
-	col.r = texture(screen_tex, uv + duv + vec2(ab, 0.0)).r;
-	col.g = texture(screen_tex, uv + duv).g;
-	col.b = texture(screen_tex, uv + duv - vec2(ab, 0.0)).b;
+	col.r = texture(screen_tex, cuv + vec2(ab, 0.0)).r;
+	col.g = texture(screen_tex, cuv).g;
+	col.b = texture(screen_tex, cuv - vec2(ab, 0.0)).b;
+	if (crt > 0.5) {
+		float scan = 0.82 + 0.18 * sin(cuv.y * screen_size.y * 3.14159);
+		col *= scan;
+		float mask = 0.9 + 0.1 * sin(cuv.x * screen_size.x * 3.14159);
+		col *= mask;
+		vec2 vq = cuv - 0.5;
+		col *= smoothstep(0.9, 0.35, length(vq)) * 0.5 + 0.6;
+		if (cuv.x < 0.0 || cuv.x > 1.0 || cuv.y < 0.0 || cuv.y > 1.0) col = vec3(0.0);
+	}
 	COLOR = vec4(col, 1.0);
 }
 """
@@ -2697,6 +2720,7 @@ func _update_fx() -> void:
 	aberration = maxf(0.0, aberration - 0.04)
 	fx_mat.set_shader_parameter("t", tick * 0.05)
 	fx_mat.set_shader_parameter("aberration", aberration)
+	fx_mat.set_shader_parameter("crt", 1.0 if crt_on else 0.0)
 	# тепловое марево над видимыми тайлами лавы
 	var heat := PackedVector4Array()
 	if not level.is_empty():
@@ -3568,6 +3592,20 @@ func toggle_bloom() -> void:
 	_apply_bloom()
 	_save_settings()
 
+func toggle_crt() -> void:
+	crt_on = not crt_on
+	_save_settings()
+
+func toggle_fullscreen() -> void:
+	fullscreen_on = not fullscreen_on
+	_apply_fullscreen()
+	_save_settings()
+
+func _apply_fullscreen() -> void:
+	if DisplayServer.get_name() == "headless":
+		return
+	DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN if fullscreen_on else DisplayServer.WINDOW_MODE_WINDOWED)
+
 func _start_slowmo(factor: float, real_secs: float) -> void:
 	# кратковременное замедление времени; восстановление по реальному времени
 	if test_mode:
@@ -3595,13 +3633,16 @@ func _draw_overlays() -> void:
 			_text(Vector2(cx, 430), "Достижения: %d / %d  ·  Enter / клик — старт" % [unlocked.size(), ACHIEVEMENTS.size()], 13, Color("#6f7aa3"), true)
 			_draw_volume(cx, 458)
 		"pause":
-			_text(Vector2(cx, 150), "Пауза", 40, Color("#eaf0ff"), true)
-			_btn(Rect2(cx - 90, 196, 180, 46), "Продолжить", "resume")
-			_btn(Rect2(cx - 130, 252, 260, 38), "Тряска экрана: %s" % ("Вкл" if shake_on else "Выкл"), "toggle_shake", false)
-			_btn(Rect2(cx - 130, 298, 260, 38), "Свечение (bloom): %s" % ("Вкл" if bloom_on else "Выкл"), "toggle_bloom", false)
-			_btn(Rect2(cx - 90, 344, 180, 40), "В меню", "quit", false)
-			_text(Vector2(cx, 404), "Геймпад поддерживается", 12, Color("#6f7aa3"), true)
-			_draw_volume(cx, 424)
+			_text(Vector2(cx, 108), "Пауза", 38, Color("#eaf0ff"), true)
+			_btn(Rect2(cx - 90, 150, 180, 42), "Продолжить", "resume")
+			# опции в две колонки
+			_btn(Rect2(cx - 168, 204, 160, 36), "Тряска: %s" % ("Вкл" if shake_on else "Выкл"), "toggle_shake", false)
+			_btn(Rect2(cx + 8, 204, 160, 36), "Bloom: %s" % ("Вкл" if bloom_on else "Выкл"), "toggle_bloom", false)
+			_btn(Rect2(cx - 168, 246, 160, 36), "CRT-фильтр: %s" % ("Вкл" if crt_on else "Выкл"), "toggle_crt", false)
+			_btn(Rect2(cx + 8, 246, 160, 36), "Экран: %s" % ("Полный" if fullscreen_on else "Окно"), "toggle_fullscreen", false)
+			_btn(Rect2(cx - 90, 296, 180, 38), "В меню", "quit", false)
+			_text(Vector2(cx, 352), "Геймпад поддерживается · F11 — полноэкран", 12, Color("#6f7aa3"), true)
+			_draw_volume(cx, 372)
 		"dead":
 			_text(Vector2(cx, 120), "Вы погибли", 44, Color("#ff6b5e"), true)
 			var is_record := score >= best and score > 0
@@ -3765,6 +3806,8 @@ func _load_settings() -> void:
 		volume = clampf(float(cfg.get_value("settings", "volume", 0.8)), 0.0, 1.0)
 		shake_on = bool(cfg.get_value("settings", "shake", true))
 		bloom_on = bool(cfg.get_value("settings", "bloom", true))
+		crt_on = bool(cfg.get_value("settings", "crt", false))
+		fullscreen_on = bool(cfg.get_value("settings", "fullscreen", false))
 		unlocked.clear()
 		if cfg.has_section("achievements"):
 			for k in cfg.get_section_keys("achievements"):
@@ -3784,6 +3827,8 @@ func _save_settings() -> void:
 	cfg.set_value("settings", "volume", volume)
 	cfg.set_value("settings", "shake", shake_on)
 	cfg.set_value("settings", "bloom", bloom_on)
+	cfg.set_value("settings", "crt", crt_on)
+	cfg.set_value("settings", "fullscreen", fullscreen_on)
 	for id in unlocked.keys():
 		cfg.set_value("achievements", id, true)
 	cfg.save(_cfg_path())
