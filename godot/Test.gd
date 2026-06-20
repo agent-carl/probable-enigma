@@ -1115,6 +1115,21 @@ func _init() -> void:
 	game.adjust_sfx(-0.9)
 	_ok(absf(game.sfx_vol) < 1e-4, "sfx volume clamps at 0.0")
 
+	# ---------- 37. Сложность (Ascension) ----------
+	game.difficulty = 0
+	var asc_L0: Dictionary = game.generate_level(555, 3)
+	var asc_hp0 := 0
+	for en in asc_L0.enemies:
+		asc_hp0 += int(en.maxhp)
+	game.difficulty = 2
+	var asc_L2: Dictionary = game.generate_level(555, 3)
+	var asc_hp2 := 0
+	for en in asc_L2.enemies:
+		asc_hp2 += int(en.maxhp)
+	_ok(asc_hp2 > asc_hp0, "higher difficulty = tougher enemies (%d -> %d total HP)" % [asc_hp0, asc_hp2])
+	_ok(game._diff_name(0) == "Норма" and game._diff_name(3) == "Преисподняя", "difficulty names map")
+	game.difficulty = 0
+
 	if failures == 0:
 		print("\nALL TESTS PASSED")
 	else:

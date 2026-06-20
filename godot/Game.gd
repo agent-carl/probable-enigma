@@ -149,6 +149,9 @@ var relics := {}         # реликвии забега (id → true)
 var meta_cores := 0      # постоянная валюта мета-прогрессии (сохраняется)
 var meta := {}           # купленные мета-улучшения (id → уровень, сохраняется)
 var run_cores := 0       # ядра, заработанные за текущий забег (для экрана смерти)
+var difficulty := 0      # выбранная сложность (Ascension): 0..3
+var max_difficulty := 0  # макс. открытая сложность (сохраняется)
+var daily_run := false   # текущий забег — «сид дня»
 var tutorial_seen := false  # обучающие подсказки показаны (сохраняется)
 var tut := { "move": false, "jump": false, "shoot": false, "dash": false }  # выполненные действия
 var _second_used := false  # «Второе дыхание» израсходовано на этом уровне
@@ -565,6 +568,9 @@ func _on_ui(key: String) -> void:
 		"help": _set_state("help")
 		"achievements": _set_state("achievements")
 		"settings": _settings_back = state; _set_state("settings")
+		"daily": start_daily()
+		"diff_dn": difficulty = maxi(0, difficulty - 1); _save_settings()
+		"diff_up": difficulty = mini(max_difficulty, difficulty + 1); _save_settings()
 		"settings_back": _set_state(_settings_back)
 		"vol_master_dn": set_volume(volume - 0.1)
 		"vol_master_up": set_volume(volume + 0.1)
@@ -860,9 +866,11 @@ func generate_level(seed_val: int, level_num: int) -> Dictionary:
 				"x": hcx, "y": hcy, "spin": r.randf() * TAU,
 			})
 
-	# --- враги ---
-	var hp_mul := 1.0 + 0.25 * (level_num - 1)
-	var dmg_add := 2 * (level_num - 1)
+	# --- враги --- (масштаб по уровню и выбранной сложности Ascension)
+	var diff_hp := 1.0 + 0.35 * difficulty
+	var diff_crowd := 1.0 + 0.18 * difficulty
+	var hp_mul := (1.0 + 0.25 * (level_num - 1)) * diff_hp
+	var dmg_add := 2 * (level_num - 1) + 3 * difficulty
 	var enemy_list := []
 	var used_x := []
 
@@ -902,7 +910,7 @@ func generate_level(seed_val: int, level_num: int) -> Dictionary:
 		})
 
 	var is_boss_level := level_num % 5 == 0
-	var crowd := 0.5 if is_boss_level else 1.0   # на боссах меньше рядовых
+	var crowd := (0.5 if is_boss_level else 1.0) * diff_crowd   # на боссах меньше рядовых
 	var counts := {
 		"walker": int(mini(4 + level_num, 12) * crowd),
 		"shooter": int(mini(1 + int(level_num * 0.8), 8) * crowd),
@@ -955,7 +963,7 @@ func generate_level(seed_val: int, level_num: int) -> Dictionary:
 				break
 		if bx < 0:
 			bx = W - 20
-		var boss_hp := 500 + 90 * level_num
+		var boss_hp := int((500 + 90 * level_num) * diff_hp)
 		var by: float = ground_y[bx] * TILE - bb.h - 1
 		if boss_variant == "air" or boss_variant == "summoner" or boss_variant == "artillery":
 			# парящие боссы держатся над землёй
@@ -1201,8 +1209,18 @@ func make_player() -> Dictionary:
 	}
 
 func start_from_menu() -> void:
+	daily_run = false
 	var s := rng.randi() & 0xFFFFFFFF
 	start_run(s, str(s))
+
+func start_daily() -> void:
+	# «сид дня»: одинаковая карта для всех в этот день
+	daily_run = true
+	var ds := Time.get_date_string_from_system()   # напр. "2026-06-20"
+	start_run(int(hash(ds)) & 0xFFFFFFFF, "Сид дня " + ds)
+
+func _diff_name(d: int) -> String:
+	return ["Норма", "Ветеран", "Кошмар", "Преисподняя"][clampi(d, 0, 3)]
 
 func start_run(s: int, label: String) -> void:
 	run_seed = s & 0xFFFFFFFF
@@ -1535,8 +1553,8 @@ func die() -> void:
 	if score > best:
 		best = score
 		_save_best(best)
-	# мета-валюта: ядра за забег (по очкам и пройденным уровням)
-	run_cores = maxi(1, int(score / 250.0) + (lvl - 1))
+	# мета-валюта: ядра за забег (по очкам и уровням, бонус за сложность)
+	run_cores = int(maxi(1, int(score / 250.0) + (lvl - 1)) * (1.0 + 0.5 * difficulty))
 	meta_cores += run_cores
 	_save_settings()
 	_stop_music()
@@ -1654,6 +1672,10 @@ func hurt_enemy(en: Dictionary, dmg: int, crit: bool, silent := false) -> void:
 			play_sfx("portal")
 			unlock("boss_slayer")
 			grant_random_relic()   # награда за босса — реликвия
+			if difficulty >= max_difficulty and max_difficulty < 3:
+				max_difficulty = difficulty + 1   # открыта новая сложность
+				toasts.append({ "text": "Открыта сложность: " + _diff_name(max_difficulty), "life": 240.0 })
+				_save_settings()
 		elif en.get("type", "") == "exploder":
 			explode(en.x + en.w / 2.0, en.y + en.h / 2.0, en.get("radius", 62), int(round(en.dmg * 0.8)), "e")
 		else:
@@ -4212,6 +4234,8 @@ func _draw_hud() -> void:
 	var title := "Уровень %d · %s" % [lvl, level.theme.name]
 	if boss_alive:
 		title = "Уровень %d · %s" % [lvl, boss_name if boss_name != "" else "БОСС"]
+	if difficulty > 0:
+		title += "  ·  %s" % _diff_name(difficulty)
 	_text(Vector2(VW / 2.0, 24), title, 14, Color("#dfe5ff"), true)
 
 	# полоса здоровья босса
@@ -4481,17 +4505,24 @@ func _draw_overlays() -> void:
 	var cx := VW / 2.0
 	match state:
 		"menu":
-			_text(Vector2(cx, 156), "GUNFALL", 72, Color("#ffce5a"), true)
-			_text(Vector2(cx, 198), "Платформер-рогалик: каждый забег — новая карта", 16, Color("#aab3d6"), true)
-			_text(Vector2(cx, 224), "Каждый 5-й уровень — БОСС", 13, Color("#ff8fc4"), true)
-			_btn(Rect2(cx - 90, 244, 180, 48), "Играть", "play")
-			_btn(Rect2(cx - 186, 302, 180, 34), "Управление", "help", false)
-			_btn(Rect2(cx + 6, 302, 180, 34), "Достижения  %d/%d" % [unlocked.size(), ACHIEVEMENTS.size()], "achievements", false)
-			_btn(Rect2(cx - 186, 342, 180, 34), "Настройки", "settings", false)
-			_btn(Rect2(cx + 6, 342, 180, 34), "Мастерская  ◉ %d" % meta_cores, "meta", false)
+			_text(Vector2(cx, 132), "GUNFALL", 66, Color("#ffce5a"), true)
+			_text(Vector2(cx, 170), "Платформер-рогалик: каждый забег — новая карта", 15, Color("#aab3d6"), true)
+			# выбор сложности (Ascension)
+			_btn(Rect2(cx - 150, 192, 30, 28), "◄", "diff_dn", false)
+			var dcol := Color("#ff8f8f") if difficulty >= 2 else Color("#eaf0ff")
+			_text(Vector2(cx, 211), "Сложность: %s" % _diff_name(difficulty), 16, dcol, true)
+			_btn(Rect2(cx + 120, 192, 30, 28), "►", "diff_up", false)
+			if max_difficulty < 3:
+				_text(Vector2(cx, 232), "(побеждай боссов, чтобы открыть сложнее)", 11, Color("#6f7aa3"), true)
+			_btn(Rect2(cx - 90, 248, 180, 44), "Играть", "play")
+			_btn(Rect2(cx - 90, 300, 180, 30), "Сид дня", "daily", false)
+			_btn(Rect2(cx - 186, 338, 180, 30), "Управление", "help", false)
+			_btn(Rect2(cx + 6, 338, 180, 30), "Достижения  %d/%d" % [unlocked.size(), ACHIEVEMENTS.size()], "achievements", false)
+			_btn(Rect2(cx - 186, 372, 180, 30), "Настройки", "settings", false)
+			_btn(Rect2(cx + 6, 372, 180, 30), "Мастерская  ◉ %d" % meta_cores, "meta", false)
 			var bl := "Рекорд: %d очков" % best if best > 0 else "Удачного первого забега!"
-			_text(Vector2(cx, 392), bl, 13, Color("#6f7aa3"), true)
-			_text(Vector2(cx, 410), "Enter / клик — старт · ↑↓ — выбор", 12, Color("#6f7aa3"), true)
+			_text(Vector2(cx, 414), bl, 12, Color("#6f7aa3"), true)
+			_text(Vector2(cx, 430), "Enter / клик — старт · ↑↓ — выбор", 11, Color("#6f7aa3"), true)
 		"help":
 			_text(Vector2(cx, 56), "Управление", 34, Color("#ffe9b0"), true)
 			var binds := [
@@ -4741,6 +4772,8 @@ func _load_settings() -> void:
 	if cfg.load(_cfg_path()) == OK:
 		best = int(cfg.get_value("progress", "best", 0))
 		meta_cores = int(cfg.get_value("progress", "cores", 0))
+		max_difficulty = clampi(int(cfg.get_value("progress", "maxdiff", 0)), 0, 3)
+		difficulty = clampi(int(cfg.get_value("progress", "diff", 0)), 0, max_difficulty)
 		meta.clear()
 		if cfg.has_section("meta"):
 			for k in cfg.get_section_keys("meta"):
@@ -4770,6 +4803,8 @@ func _save_settings() -> void:
 	var cfg := ConfigFile.new()
 	cfg.set_value("progress", "best", best)
 	cfg.set_value("progress", "cores", meta_cores)
+	cfg.set_value("progress", "maxdiff", max_difficulty)
+	cfg.set_value("progress", "diff", difficulty)
 	cfg.set_value("progress", "tutorial", tutorial_seen)
 	for mid in meta.keys():
 		cfg.set_value("meta", mid, int(meta[mid]))
