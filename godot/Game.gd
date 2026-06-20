@@ -159,6 +159,7 @@ var fullscreen_on := false               # полноэкранный режим
 var fx_layer: CanvasLayer = null         # слой полноэкранного пост-эффекта (искажения)
 var fx_rect: ColorRect = null
 var fx_mat: ShaderMaterial = null
+var world_fx: Node2D = null              # слой движковых частиц, следует за камерой
 var aberration := 0.0                    # хром. аберрация при уроне (затухает)
 var ground_tex: ImageTexture = null   # пиксель-текстура камня
 var grass_tex: ImageTexture = null    # текстура травянистой кромки
@@ -1393,6 +1394,7 @@ func hurt_enemy(en: Dictionary, dmg: int, crit: bool, silent := false) -> void:
 			score += 500
 			hitstop = 24
 			shake = 16.0
+			_burst_particles(Vector2(en.x + en.w / 2.0, en.y + en.h / 2.0), Color(1.0, 0.85, 0.35), 80, 280.0, 1.0)
 			_start_slowmo(0.32, 0.75)   # эффектное замедление времени при гибели босса
 			burst(en.x + en.w / 2.0, en.y + en.h / 2.0, 60, Color("#ffd86b"))
 			shockwaves.append({ "x": en.x + en.w / 2.0, "y": en.y + en.h / 2.0, "r": 12.0, "max_r": 160.0, "life": 26.0, "col": Color("#ffd86b") })
@@ -1435,6 +1437,7 @@ func explode(x: float, y: float, radius: float, dmg: int, from: String) -> void:
 		dmg = int(round(dmg * P.stats.blast_mul))
 	burst(x, y, 26, Color("#ffd06b"))
 	burst(x, y, 14, Color("#ff7a4d"))
+	_burst_particles(Vector2(x, y), Color(1.0, 0.55, 0.2), 36, 200.0, 0.7)
 	shockwaves.append({ "x": x, "y": y, "r": 8.0, "max_r": radius, "life": 16.0, "col": Color("#ffd06b") })
 	shake = min(20.0, shake + 9.0)
 	play_sfx("boom")
@@ -2722,11 +2725,49 @@ func _setup_fx() -> void:
 	fx_layer.layer = 3   # выше мира, ниже... (HUD пока в _draw мира — допустимо)
 	fx_layer.add_child(fx_rect)
 	add_child(fx_layer)
+	world_fx = Node2D.new()   # частицы в мировых координатах (сдвигается на -камеру)
+	add_child(world_fx)
+
+func _burst_particles(world_pos: Vector2, color: Color, amount: int, vel := 150.0, life := 0.6) -> void:
+	# одноразовый GPU-подобный всплеск искр (движковый CPUParticles2D), аддитивный
+	if world_fx == null or world_fx.get_child_count() > 28:
+		return
+	var p := CPUParticles2D.new()
+	p.position = world_pos
+	p.local_coords = false           # частицы живут в мире, движутся с камерой-слоем
+	p.one_shot = true
+	p.explosiveness = 1.0
+	p.amount = amount
+	p.lifetime = life
+	p.direction = Vector2(0, -1)
+	p.spread = 180.0
+	p.gravity = Vector2(0, 220)
+	p.initial_velocity_min = vel * 0.35
+	p.initial_velocity_max = vel
+	p.texture = light_tex            # мягкая светящаяся точка вместо 1px
+	p.scale_amount_min = 0.05
+	p.scale_amount_max = 0.13
+	p.damping_min = 20.0
+	p.damping_max = 60.0
+	var e := 1.7 if bloom_on else 1.0
+	p.color = Color(color.r * e, color.g * e, color.b * e)
+	var ramp := Gradient.new()
+	ramp.set_color(0, Color(1, 1, 1, 1))
+	ramp.set_color(1, Color(color.r, color.g, color.b, 0))
+	p.color_ramp = ramp
+	var mat := CanvasItemMaterial.new()
+	mat.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
+	p.material = mat
+	p.emitting = true
+	world_fx.add_child(p)
+	get_tree().create_timer(life + 0.4).timeout.connect(p.queue_free)
 
 func _update_fx() -> void:
 	# обновляем параметры искажения каждый кадр (источники → uniform-массивы)
 	if fx_mat == null:
 		return
+	if world_fx:
+		world_fx.position = -_cam_draw   # держим слой частиц в кадре мира
 	aberration = maxf(0.0, aberration - 0.04)
 	fx_mat.set_shader_parameter("t", tick * 0.05)
 	fx_mat.set_shader_parameter("aberration", aberration)
