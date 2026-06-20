@@ -2498,9 +2498,31 @@ func _draw() -> void:
 		_draw_hurt_dirs()
 		_draw_hud()
 		if fade > 0.0:
-			draw_rect(Rect2(0, 0, VW, VH), Color(0, 0, 0, fade))
+			_draw_iris(fade)   # круговой ирис-переход (открывается на игроке)
 	# меню/пауза/смерть/магазин рисуются всегда (в т.ч. когда уровня ещё нет)
 	_draw_overlays()
+
+func _draw_iris(f: float) -> void:
+	# чёрный экран с растущим круглым «окном» на игроке: f=1 закрыто, f=0 открыто
+	draw_set_transform(Vector2.ZERO)
+	var center := Vector2(VW / 2.0, VH / 2.0)
+	if not level.is_empty() and state != "dead":
+		center = Vector2(P.x + P.w / 2.0, P.y + P.h / 2.0) - _cam_draw
+	var hole := (1.0 - f) * 860.0
+	var outer := 980.0
+	if hole >= outer:
+		return
+	var n := 56
+	var black := Color(0, 0, 0, 1)
+	for i in range(n):
+		var a0 := i * TAU / n
+		var a1 := (i + 1) * TAU / n
+		var d0 := Vector2(cos(a0), sin(a0))
+		var d1 := Vector2(cos(a1), sin(a1))
+		# кольцевой сегмент-четырёхугольник (надёжно через draw_colored_polygon)
+		draw_colored_polygon(PackedVector2Array([
+			center + d0 * hole, center + d0 * outer,
+			center + d1 * outer, center + d1 * hole]), black)
 
 func _draw_fx() -> void:
 	# расходящиеся кольца взрывов
@@ -3422,9 +3444,24 @@ func _draw_hud() -> void:
 		draw_rect(Rect2(sx, VH - 42, 22, 22), Color(1, 0.85, 0.42, 0.85) if i == P.wi else Color(1, 1, 1, 0.15))
 		_text(Vector2(sx + 7, VH - 26), str(i + 1), 12, Color("#2a1c04") if i == P.wi else Color("#cfd6f5"))
 
+	# пульс при низком здоровье
+	if state == "play":
+		var hpr: float = P.hp / maxf(1.0, P.maxhp)
+		if hpr < 0.3:
+			var pulse := 0.18 + 0.16 * (0.5 + 0.5 * sin(tick * 0.18))
+			var dang := (1.0 - hpr / 0.3)   # чем меньше HP, тем сильнее
+			draw_rect(Rect2(0, 0, VW, VH), Color(0.9, 0.05, 0.08, pulse * dang * 0.6))
+			if vignette_tex:
+				draw_texture_rect(vignette_tex, Rect2(0, 0, VW, VH), false, Color(1.0, 0.2, 0.2, pulse * dang * 2.0))
+
 	# интро
 	if intro > 0:
 		var a := clampf((150 - intro) / 30.0 if intro > 120 else intro / 60.0, 0, 1)
+		# кинематографичный леттербокс на боссовых уровнях
+		if boss_alive:
+			var bar := 46.0 * a
+			draw_rect(Rect2(0, 0, VW, bar), Color(0, 0, 0, 0.9))
+			draw_rect(Rect2(0, VH - bar, VW, bar), Color(0, 0, 0, 0.9))
 		_text(Vector2(VW / 2.0, VH / 2.0 - 60), intro_text, 30, Color(1, 0.91, 0.69, a), true)
 		_text(Vector2(VW / 2.0, VH / 2.0 - 30), "Доберитесь до портала →", 15, Color(0.67, 0.70, 0.84, a), true)
 
