@@ -1056,7 +1056,7 @@ func make_player() -> Dictionary:
 		"on_ground": false, "hit_wall": false,
 		"coyote": 0, "buffer": 0, "air_jumps": 0, "drop": 0,
 		"inv": 0, "cd": 0, "face": 1, "aim": 0.0,
-		"dash_cd": 0, "dash_t": 0, "dash_dir": 1.0,
+		"dash_cd": 0, "dash_t": 0, "dash_dir": 1.0, "squash": 0.0,
 		"shield": 0.0, "max_shield": 0.0, "ride_id": -1,
 		"weapons": [{ "id": "pistol", "ammo": INF }], "wi": 0,
 		"stats": {
@@ -1118,6 +1118,8 @@ func start_level() -> void:
 	combo = 0
 	combo_t = 0
 	hitstop = 0
+	if not test_mode:
+		Engine.time_scale = 1.0   # на всякий случай снимаем замедление при старте уровня
 	boss_alive = level.get("has_boss", false)
 	boss_name = ""
 	if boss_alive:
@@ -1138,6 +1140,8 @@ func start_level() -> void:
 
 func _set_state(s: String) -> void:
 	state = s
+	if not test_mode and (s == "menu" or s == "dead" or s == "play"):
+		Engine.time_scale = 1.0   # снимаем слоу-мо при смене состояния
 	if s == "menu":
 		_stop_music()
 	queue_redraw()
@@ -1380,6 +1384,7 @@ func hurt_enemy(en: Dictionary, dmg: int, crit: bool, silent := false) -> void:
 			score += 500
 			hitstop = 24
 			shake = 16.0
+			_start_slowmo(0.32, 0.75)   # эффектное замедление времени при гибели босса
 			burst(en.x + en.w / 2.0, en.y + en.h / 2.0, 60, Color("#ffd86b"))
 			shockwaves.append({ "x": en.x + en.w / 2.0, "y": en.y + en.h / 2.0, "r": 12.0, "max_r": 160.0, "life": 26.0, "col": Color("#ffd86b") })
 			flash = 0.7
@@ -1785,6 +1790,7 @@ func update_player() -> void:
 	check_hazards()
 	# пыль при приземлении после падения
 	if P.on_ground and not was_grounded and pre_vy > 4.5:
+		P.squash = minf(1.0, pre_vy / 13.0)   # присед тем сильнее, чем жёстче падение
 		for _i in range(5):
 			var sx := (rng.randf() - 0.5) * 4.0
 			parts.append({ "x": P.x + P.w / 2.0 + (rng.randf() - 0.5) * P.w, "y": P.y + P.h,
@@ -1818,6 +1824,8 @@ func update_player() -> void:
 		P.inv -= 1
 	if P.cd > 0:
 		P.cd -= 1
+	if P.squash > 0.0:
+		P.squash = maxf(0.0, P.squash - 0.12)
 	if low_ammo_t > 0:
 		low_ammo_t -= 1
 
@@ -3237,6 +3245,18 @@ func _draw_player() -> void:
 		return
 	var pcx: float = P.x + P.w / 2.0
 	_glow(Vector2(pcx, P.y + P.h / 2.0), P.w * 1.05, Color("#3ec6a8"))
+	# squash & stretch: сжатие при приземлении, вытягивание в полёте
+	var sqx := 1.0
+	var sqy := 1.0
+	if P.squash > 0.0:
+		sqy = 1.0 - 0.26 * P.squash
+		sqx = 1.0 + 0.22 * P.squash
+	elif not P.on_ground:
+		var sp := clampf(absf(P.vy) / 14.0, 0.0, 1.0)
+		sqy = 1.0 + 0.22 * sp
+		sqx = 1.0 - 0.14 * sp
+	var piv := Vector2(pcx, P.y + P.h)   # опора — ноги
+	draw_set_transform(Vector2(piv.x - _cam_draw.x - sqx * piv.x, piv.y - _cam_draw.y - sqy * piv.y), 0.0, Vector2(sqx, sqy))
 	# анимированные ноги при беге
 	var moving: bool = P.on_ground and absf(P.vx) > 0.4
 	var ph := tick * 0.45
@@ -3250,6 +3270,7 @@ func _draw_player() -> void:
 	draw_rect(Rect2(P.x, P.y + P.h - 7, P.w, 7), Color("#2c917b"))
 	draw_rect(Rect2(P.x + (8 if P.face > 0 else 2), P.y + 8, 10, 5), Color("#e9f4ff"))
 	draw_rect(Rect2(P.x + (13 if P.face > 0 else 3), P.y + 9, 4, 3), Color("#1c3a4a"))
+	draw_set_transform(-_cam_draw)   # сброс squash перед оружием
 	# оружие, повёрнутое к прицелу
 	var w: Dictionary = WEAPONS[P.weapons[P.wi].id]
 	var gx: float = P.x + P.w / 2.0 - _cam_draw.x
@@ -3493,6 +3514,14 @@ func toggle_bloom() -> void:
 	bloom_on = not bloom_on
 	_apply_bloom()
 	_save_settings()
+
+func _start_slowmo(factor: float, real_secs: float) -> void:
+	# кратковременное замедление времени; восстановление по реальному времени
+	if test_mode:
+		return
+	Engine.time_scale = factor
+	var tmr := get_tree().create_timer(real_secs, true, false, true)  # ignore_time_scale
+	tmr.timeout.connect(func() -> void: Engine.time_scale = 1.0)
 
 func _draw_overlays() -> void:
 	if state == "play":
