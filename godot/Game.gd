@@ -160,6 +160,7 @@ var crate_tex: ImageTexture = null    # текстура дерева ящика
 var _cam_draw := Vector2.ZERO   # текущее смещение камеры в кадре (с тряской)
 var afterimages := []  # следы рывка [{x,y,life}]
 var ambient := []      # атмосферные частицы по теме (экранное пространство)
+var motes := []        # пылинки, ловящие свет (экранное пространство)
 var weather := "spores"
 var weather_col := Color.WHITE
 var hurt_dirs := []    # индикаторы источника урона по краям экрана [{ang, life}]
@@ -2398,6 +2399,12 @@ func _init_ambient() -> void:
 	ambient = []
 	for _i in range(_ambient_cap()):
 		ambient.append(_new_ambient_particle(true))
+	motes = []
+	for _i in range(46):
+		motes.append({
+			"x": rng.randf() * VW, "y": rng.randf() * VH,
+			"vx": (rng.randf() - 0.5) * 0.25, "vy": -0.08 - rng.randf() * 0.18,
+			"phase": rng.randf() * TAU, "size": 1.0 + rng.randf() * 1.4 })
 
 func update_ambient() -> void:
 	for p in ambient:
@@ -2417,6 +2424,14 @@ func update_ambient() -> void:
 			p.vy = np.vy
 			p.size = np.size
 			p.alpha = np.alpha
+	for m in motes:
+		m.phase += 0.04
+		m.x += m.vx + sin(m.phase) * 0.18
+		m.y += m.vy
+		if m.x < -4: m.x = VW + 4
+		elif m.x > VW + 4: m.x = -4
+		if m.y < -4: m.y = VH + 4
+		elif m.y > VH + 4: m.y = -4
 
 func _make_hills(r: RandomNumberGenerator, base_y: float, amp: float) -> PackedVector2Array:
 	var pts := PackedVector2Array()
@@ -2556,11 +2571,14 @@ func _setup_bloom() -> void:
 	env.set_glow_level(3, 1.0)
 	env.set_glow_level(4, 0.5)
 	env.set_glow_level(5, 0.0)
+	# AgX-тонмаппинг: мягкий «киношный» спад ярких пятен (bloom не выжигает)
+	env.tonemap_mode = Environment.TONE_MAPPER_AGX
+	env.tonemap_exposure = 1.15
 	# лёгкая кинематографичная цветокоррекция (контраст + насыщенность)
 	env.adjustment_enabled = true
 	env.adjustment_brightness = 1.0
 	env.adjustment_contrast = 1.07
-	env.adjustment_saturation = 1.12
+	env.adjustment_saturation = 1.18
 	world_env = WorldEnvironment.new()
 	world_env.environment = env
 	add_child(world_env)
@@ -2717,6 +2735,7 @@ func _draw_lighting(_c: Vector2) -> void:
 		var ep: Vector2 = level.exit_px
 		var ppulse := 0.85 + sin(tick * 0.07) * 0.15
 		_light(Vector2(ep.x, ep.y + TILE / 2.0), 110.0 * ppulse, Color(0.55, 0.74, 1.0), 0.6, 2.0)
+		_draw_godrays(Vector2(ep.x, ep.y + TILE / 2.0), 150.0 * ppulse, Color(0.6, 0.8, 1.0))
 	# игрок — мягкая аура, ярче в рывке
 	if state != "dead":
 		var pdash := 0.0
@@ -2749,6 +2768,44 @@ func _draw_lighting(_c: Vector2) -> void:
 	for pk in pickups:
 		var pcol: Color = { "weapon": Color(1, 0.85, 0.42), "med": Color(1, 0.42, 0.48), "ammo": Color(0.79, 0.65, 0.29), "coin": Color(1, 0.85, 0.42), "shield": Color(0.5, 0.83, 1.0) }.get(pk.kind, Color(1, 1, 1))
 		_light(Vector2(pk.x + pk.w / 2.0, pk.y + pk.h / 2.0), 34.0, pcol, 0.4, 1.5)
+	_draw_motes()
+
+func _draw_godrays(world_pos: Vector2, length: float, col: Color) -> void:
+	# объёмные лучи: вращающиеся аддитивные HDR-шафты из яркого источника
+	var c := world_pos - _cam_draw
+	if c.x + length < 0.0 or c.x - length > VW or c.y + length < 0.0 or c.y - length > VH:
+		return
+	var e := 1.6 if bloom_on else 1.0
+	var rot := tick * 0.006
+	var n := 9
+	for i in range(n):
+		var a := rot + i * TAU / n
+		var dir := Vector2(cos(a), sin(a))
+		var perp := Vector2(-dir.y, dir.x)
+		var beat := 0.5 + 0.5 * sin(tick * 0.05 + i * 1.7)   # мерцание длины
+		var ln := length * (0.55 + 0.45 * beat)
+		var w := 5.0 + 3.0 * beat
+		var base := Color(col.r * e, col.g * e, col.b * e, 0.16 + 0.10 * beat)
+		var tip := Color(col.r, col.g, col.b, 0.0)
+		var pts := PackedVector2Array([c - perp * w, c + perp * w, c + dir * ln])
+		var cls := PackedColorArray([base, base, tip])   # градиент: ярко у основания → прозрачно у конца
+		var idx := PackedInt32Array([0, 1, 2])
+		RenderingServer.canvas_item_add_triangle_array(get_canvas_item(), idx, pts, cls)
+
+func _draw_motes() -> void:
+	# пылинки, ловящие свет: ярче рядом с игроком/источниками
+	if motes.is_empty():
+		return
+	var pc := Vector2(-9999, -9999)
+	if state != "dead" and not level.is_empty():
+		pc = Vector2(P.x + P.w / 2.0, P.y + P.h / 2.0) - _cam_draw
+	for m in motes:
+		var mp := Vector2(m.x, m.y)
+		var lit := clampf(1.0 - mp.distance_to(pc) / 150.0, 0.0, 1.0)
+		var tw := 0.10 + 0.06 * sin(m.phase * 1.7)
+		var a := tw + lit * 0.5
+		var br := 1.0 + lit * 1.6 if bloom_on else 1.0   # ловят свет → HDR-искорка
+		draw_circle(mp, m.size, Color(0.85 * br, 0.92 * br, 1.0 * br, a))
 
 func _glow(c: Vector2, r: float, col: Color) -> void:
 	# мягкое свечение из нескольких полупрозрачных кругов
