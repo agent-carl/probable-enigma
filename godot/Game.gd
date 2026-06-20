@@ -164,6 +164,9 @@ var ui_layer: CanvasLayer = null         # HUD/оверлеи поверх по�
 var ui_node: Node2D = null
 var _ci: CanvasItem = null               # активный холст для отрисовки интерфейса
 var aberration := 0.0                    # хром. аберрация при уроне (затухает)
+var _blur := 0.0                         # плавное размытие мира на паузе/оверлеях
+var _hitmark := 0.0                       # таймер хит-маркера на прицеле
+var _recoil := 0.0                        # отдача — прицел раскрывается при выстреле
 var ground_tex: ImageTexture = null   # пиксель-текстура камня
 var grass_tex: ImageTexture = null    # текстура травянистой кромки
 var plat_tex: ImageTexture = null     # текстура односторонней платформы
@@ -1372,6 +1375,7 @@ func hurt_enemy(en: Dictionary, dmg: int, crit: bool, silent := false) -> void:
 	if not silent:
 		add_text(en.x + en.w / 2.0, en.y - 4, str(dmg), Color("#ffd86b") if crit else Color.WHITE)
 		burst(en.x + en.w / 2.0, en.y + en.h / 2.0, 7 if crit else 4, Color("#ffd1a8"))
+		_hitmark = 12.0   # хит-маркер на прицеле
 		play_sfx("hit")
 	if en.hp <= 0:
 		en.dead = true
@@ -1388,6 +1392,7 @@ func hurt_enemy(en: Dictionary, dmg: int, crit: bool, silent := false) -> void:
 		burst(en.x + en.w / 2.0, en.y + en.h / 2.0, 16, Color("#ff9d6b"))
 		if not en.get("boss", false):
 			shockwaves.append({ "x": en.x + en.w / 2.0, "y": en.y + en.h / 2.0, "r": 4.0, "max_r": en.w * 1.3, "life": 10.0, "col": Color("#ffd1a8") })
+			_burst_particles(Vector2(en.x + en.w / 2.0, en.y + en.h / 2.0), Color(1.0, 0.55, 0.45), 16, 130.0, 0.5)  # гибы
 		var label := "+%d" % gained
 		if mult > 1.0:
 			label += " x%.1f" % mult
@@ -1486,6 +1491,7 @@ func damage_crate(tx: int, ty: int, dmg: int) -> void:
 		level.grid[idx] = T_EMPTY
 		burst(px, py, 14, Color("#c79a5b"))
 		burst(px, py, 8, _col(level.theme.top))
+		_burst_particles(Vector2(px, py), Color(0.78, 0.58, 0.32), 14, 110.0, 0.6)  # щепки
 		play_sfx("hit")
 		# из ящика выпадает лут
 		var rv := rng.randf()
@@ -1646,6 +1652,7 @@ func try_shoot() -> void:
 	P.vx = clampf(P.vx - cos(angle) * w.kick * 0.35, -9, 9)
 	shake = min(12.0, shake + w.kick * 0.55)
 	burst(cx + cos(angle) * 18, cy + sin(angle) * 18, 3, Color("#fff2b0"))
+	_recoil = 1.0   # прицел раскрывается при выстреле
 	muzzles.append({ "x": cx + cos(angle) * 17, "y": cy + sin(angle) * 17, "ang": angle, "life": 5.0, "len": w.len })
 	if slot.id == "shotgun" or is_gren:
 		play_sfx("shotgun")
@@ -1842,6 +1849,10 @@ func update_player() -> void:
 		P.cd -= 1
 	if P.squash > 0.0:
 		P.squash = maxf(0.0, P.squash - 0.12)
+	if _hitmark > 0.0:
+		_hitmark -= 1.0
+	if _recoil > 0.0:
+		_recoil = maxf(0.0, _recoil - 0.12)
 	if low_ammo_t > 0:
 		low_ammo_t -= 1
 
@@ -2654,6 +2665,8 @@ uniform float crt;
 uniform vec3 grade_mul;
 uniform vec3 grade_add;
 uniform float grade_con;
+uniform float blur;     // размытие мира (фокус на паузе)
+uniform float grain;    // плёночное зерно
 uniform int heat_count;
 uniform vec4 heat_pts[16];   // xy=пиксель, z=радиус, w=сила
 uniform int ripple_count;
@@ -2690,12 +2703,31 @@ void fragment() {
 	}
 	float ab = aberration * 0.005 + length(off) * 0.0006;
 	vec3 col;
-	col.r = texture(screen_tex, cuv + vec2(ab, 0.0)).r;
-	col.g = texture(screen_tex, cuv).g;
-	col.b = texture(screen_tex, cuv - vec2(ab, 0.0)).b;
+	if (blur > 0.001) {
+		// размытие мира (9 отсчётов) — эффект фокуса на паузе
+		vec2 r = vec2(blur * 5.0) / screen_size;
+		col  = texture(screen_tex, cuv).rgb * 0.25;
+		col += texture(screen_tex, cuv + vec2(r.x, 0.0)).rgb * 0.125;
+		col += texture(screen_tex, cuv - vec2(r.x, 0.0)).rgb * 0.125;
+		col += texture(screen_tex, cuv + vec2(0.0, r.y)).rgb * 0.125;
+		col += texture(screen_tex, cuv - vec2(0.0, r.y)).rgb * 0.125;
+		col += texture(screen_tex, cuv + r).rgb * 0.0625;
+		col += texture(screen_tex, cuv - r).rgb * 0.0625;
+		col += texture(screen_tex, cuv + vec2(r.x, -r.y)).rgb * 0.0625;
+		col += texture(screen_tex, cuv + vec2(-r.x, r.y)).rgb * 0.0625;
+	} else {
+		col.r = texture(screen_tex, cuv + vec2(ab, 0.0)).r;
+		col.g = texture(screen_tex, cuv).g;
+		col.b = texture(screen_tex, cuv - vec2(ab, 0.0)).b;
+	}
 	// цветокоррекция по локации (контраст → тон → подъём)
 	col = (col - 0.5) * grade_con + 0.5;
 	col = col * grade_mul + grade_add;
+	// плёночное зерно
+	if (grain > 0.001) {
+		float gn = fract(sin(dot(uv * (1.0 + fract(t)), vec2(12.9898, 78.233))) * 43758.5453);
+		col += (gn - 0.5) * grain;
+	}
 	if (crt > 0.5) {
 		float scan = 0.82 + 0.18 * sin(cuv.y * screen_size.y * 3.14159);
 		col *= scan;
@@ -2716,6 +2748,8 @@ func _setup_fx() -> void:
 	fx_mat = ShaderMaterial.new()
 	fx_mat.shader = sh
 	fx_mat.set_shader_parameter("screen_size", Vector2(VW, VH))
+	fx_mat.set_shader_parameter("grain", 0.045)
+	fx_mat.set_shader_parameter("blur", 0.0)
 	_set_grade(-1)   # нейтральный грейдинг по умолчанию
 	fx_rect = ColorRect.new()
 	fx_rect.material = fx_mat
@@ -2786,8 +2820,11 @@ func _update_fx() -> void:
 	if world_fx:
 		world_fx.position = -_cam_draw   # держим слой частиц в кадре мира
 	aberration = maxf(0.0, aberration - 0.04)
+	var btarget := 1.0 if (state == "pause" or state == "upgrade" or state == "shop" or state == "dead") else 0.0
+	_blur = lerpf(_blur, btarget, 0.22)
 	fx_mat.set_shader_parameter("t", tick * 0.05)
 	fx_mat.set_shader_parameter("aberration", aberration)
+	fx_mat.set_shader_parameter("blur", _blur)
 	fx_mat.set_shader_parameter("crt", 1.0 if crt_on else 0.0)
 	# тепловое марево над видимыми тайлами лавы
 	var heat := PackedVector4Array()
@@ -3609,11 +3646,22 @@ func _draw_hud() -> void:
 
 	_draw_toasts()
 
-	# прицел
+	# прицел — реагирует на выстрел и попадание
 	if state == "play":
 		var m := get_local_mouse_position()
-		_ci.draw_arc(m, 7, 0, TAU, 20, Color(1, 1, 1, 0.9), 1.5)
+		var rad := 7.0 + _recoil * 6.0                      # раскрытие от отдачи
+		var wcol: Color = _col(WEAPONS[P.weapons[P.wi].id].color)
+		var cc := wcol.lerp(Color.WHITE, 0.4)
+		_ci.draw_arc(m, rad, 0, TAU, 20, Color(cc.r, cc.g, cc.b, 0.9), 1.5)
 		_ci.draw_rect(Rect2(m.x - 1, m.y - 1, 2, 2), Color(1, 1, 1, 0.9))
+		if _hitmark > 0.0:                                   # хит-маркер «X» при попадании
+			var ha := clampf(_hitmark / 12.0, 0.0, 1.0)
+			var hs := rad + 4.0
+			var hm := Color(1.0, 0.85, 0.35, ha)
+			_ci.draw_line(m + Vector2(-hs, -hs), m + Vector2(-hs + 4, -hs + 4), hm, 2.0)
+			_ci.draw_line(m + Vector2(hs, -hs), m + Vector2(hs - 4, -hs + 4), hm, 2.0)
+			_ci.draw_line(m + Vector2(-hs, hs), m + Vector2(-hs + 4, hs - 4), hm, 2.0)
+			_ci.draw_line(m + Vector2(hs, hs), m + Vector2(hs - 4, hs - 4), hm, 2.0)
 
 func _draw_toasts() -> void:
 	var ty := 100.0
