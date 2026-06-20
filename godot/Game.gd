@@ -147,6 +147,8 @@ var relics := {}         # реликвии забега (id → true)
 var meta_cores := 0      # постоянная валюта мета-прогрессии (сохраняется)
 var meta := {}           # купленные мета-улучшения (id → уровень, сохраняется)
 var run_cores := 0       # ядра, заработанные за текущий забег (для экрана смерти)
+var tutorial_seen := false  # обучающие подсказки показаны (сохраняется)
+var tut := { "move": false, "jump": false, "shoot": false, "dash": false }  # выполненные действия
 var _second_used := false  # «Второе дыхание» израсходовано на этом уровне
 var _detonating := false   # защита от рекурсии «Детонатора»
 var chain_bolts := []    # визуал «Цепи молний» [{x1,y1,x2,y2,life}]
@@ -520,6 +522,7 @@ func _on_ui(key: String) -> void:
 		"quit": _set_state("menu")
 		"shop_continue": shop_continue()
 		"meta": _set_state("meta")
+		"help": _set_state("help")
 		"toggle_shake": toggle_shake()
 		"toggle_bloom": toggle_bloom()
 		"toggle_crt": toggle_crt()
@@ -1169,6 +1172,7 @@ func start_run(s: int, label: String) -> void:
 	_hp_ghost = P.hp
 	_prev_wi = 0
 	relics = {}
+	tut = { "move": false, "jump": false, "shoot": false, "dash": false }
 	apply_meta()   # постоянные мета-улучшения
 	_hp_ghost = P.hp
 	start_level()
@@ -1205,6 +1209,9 @@ func start_level() -> void:
 	combo_t = 0
 	hitstop = 0
 	_second_used = false   # «Второе дыхание» восстанавливается каждый уровень
+	if lvl > 1 and not tutorial_seen:
+		tutorial_seen = true   # дошёл до 2-го уровня — обучение пройдено
+		_save_settings()
 	if not test_mode:
 		Engine.time_scale = 1.0   # на всякий случай снимаем замедление при старте уровня
 	boss_alive = level.get("has_boss", false)
@@ -1798,6 +1805,7 @@ func try_shoot() -> void:
 	if is_finite(slot.ammo):
 		slot.ammo -= 1
 	P.cd = max(3, roundi(w.cd * P.stats.cd_mul * (0.6 if adrenaline_active() else 1.0)))
+	tut.shoot = true
 	var cx: float = P.x + P.w / 2.0
 	var cy: float = P.y + P.h / 2.0 - 2
 	var angle: float = (input.aim - Vector2(cx, cy)).angle()
@@ -1960,6 +1968,8 @@ func sim_step() -> void:
 func update_player() -> void:
 	var st: Dictionary = P.stats
 	var dir: int = input.move
+	if dir != 0:
+		tut.move = true
 	var target: float = dir * 4.3 * st.spd_mul * (1.4 if adrenaline_active() else 1.0)
 	var accel := 0.8 if P.on_ground else 0.45
 	P.vx += clampf(target - P.vx, -accel, accel)
@@ -2009,6 +2019,7 @@ func update_player() -> void:
 		P.dash_cd = int(round(55 * st.dash_cd_mul))
 		P.dash_dir = float(input.move) if input.move != 0 else float(P.face)
 		P.inv = max(P.inv, 12)
+		tut.dash = true
 		play_sfx("dash")
 		afterimages.append({ "x": P.x, "y": P.y, "life": 12.0 })
 
@@ -2100,6 +2111,7 @@ func do_jump() -> void:
 	P.vy = -12.2 * P.stats.jump_mul
 	P.coyote = 0
 	P.buffer = 0
+	tut.jump = true
 	play_sfx("jump")
 	burst(P.x + P.w / 2.0, P.y + P.h, 4, Color("#aab8d8"))
 
@@ -4201,6 +4213,29 @@ func _draw_hud() -> void:
 			_ci.draw_line(m + Vector2(hs, -hs), m + Vector2(hs - 4, -hs + 4), hm, 2.0)
 			_ci.draw_line(m + Vector2(-hs, hs), m + Vector2(-hs + 4, hs - 4), hm, 2.0)
 			_ci.draw_line(m + Vector2(hs, hs), m + Vector2(hs - 4, hs - 4), hm, 2.0)
+	_draw_tutorial()
+
+func _draw_tutorial() -> void:
+	# контекстная подсказка над игроком на 1-м уровне, пока действие не выполнено
+	if tutorial_seen or state != "play" or lvl != 1:
+		return
+	var order := [["move", "← → / A D — движение"], ["jump", "W / Пробел — прыжок"], ["shoot", "Мышь + ЛКМ — стрельба"], ["dash", "Shift / ПКМ — рывок"]]
+	var hint := ""
+	for o in order:
+		if not bool(tut[o[0]]):
+			hint = o[1]
+			break
+	if hint == "":
+		tutorial_seen = true   # все базовые действия освоены
+		_save_settings()
+		return
+	var sx: float = P.x + P.w / 2.0 - _cam_draw.x
+	var sy: float = P.y - _cam_draw.y - 14.0
+	var tw := font.get_string_size(hint, HORIZONTAL_ALIGNMENT_LEFT, -1, 13).x + 16.0
+	var pulse := 0.6 + 0.4 * sin(tick * 0.12)
+	_ci.draw_rect(Rect2(sx - tw / 2.0, sy - 16.0, tw, 20.0), Color(0.05, 0.06, 0.12, 0.8))
+	_ci.draw_rect(Rect2(sx - tw / 2.0, sy - 16.0, tw, 20.0), Color(1, 0.85, 0.42, 0.5 * pulse), false, 1.0)
+	_text(Vector2(sx, sy - 2.0), hint, 13, Color("#ffe9b0"), true)
 
 func _draw_toasts() -> void:
 	var ty := 100.0
@@ -4326,18 +4361,39 @@ func _draw_overlays() -> void:
 	var cx := VW / 2.0
 	match state:
 		"menu":
-			_text(Vector2(cx, 150), "GUNFALL", 72, Color("#ffce5a"), true)
-			_text(Vector2(cx, 190), "Платформер-рогалик: каждый забег — новая карта", 16, Color("#aab3d6"), true)
-			_text(Vector2(cx, 250), "A/D — бег · W/Пробел — прыжок · S+прыжок — вниз", 14, Color("#8d97bd"), true)
-			_text(Vector2(cx, 274), "Мышь — прицел · ЛКМ — огонь · 1–8/колесо — оружие", 14, Color("#8d97bd"), true)
-			_text(Vector2(cx, 298), "Shift/ПКМ — рывок · Q — перегрузка · Esc — пауза · M — звук", 14, Color("#8d97bd"), true)
-			_text(Vector2(cx, 318), "Каждый 5-й уровень — БОСС", 13, Color("#ff8fc4"), true)
-			_btn(Rect2(cx - 90, 336, 180, 46), "Играть", "play")
-			_btn(Rect2(cx - 120, 388, 240, 32), "Мастерская   ◉ %d" % meta_cores, "meta", false)
+			_text(Vector2(cx, 156), "GUNFALL", 72, Color("#ffce5a"), true)
+			_text(Vector2(cx, 198), "Платформер-рогалик: каждый забег — новая карта", 16, Color("#aab3d6"), true)
+			_text(Vector2(cx, 224), "Каждый 5-й уровень — БОСС", 13, Color("#ff8fc4"), true)
+			_btn(Rect2(cx - 90, 250, 180, 48), "Играть", "play")
+			_btn(Rect2(cx - 90, 308, 180, 36), "Управление", "help", false)
+			_btn(Rect2(cx - 120, 352, 240, 34), "Мастерская   ◉ %d" % meta_cores, "meta", false)
 			var bl := "Рекорд: %d очков" % best if best > 0 else "Удачного первого забега!"
-			_text(Vector2(cx, 430), bl, 13, Color("#6f7aa3"), true)
-			_text(Vector2(cx, 448), "Достижения: %d / %d  ·  Enter / клик — старт" % [unlocked.size(), ACHIEVEMENTS.size()], 12, Color("#6f7aa3"), true)
-			_draw_volume(cx, 470)
+			_text(Vector2(cx, 404), bl, 13, Color("#6f7aa3"), true)
+			_text(Vector2(cx, 424), "Достижения: %d / %d  ·  Enter / клик — старт" % [unlocked.size(), ACHIEVEMENTS.size()], 12, Color("#6f7aa3"), true)
+			_draw_volume(cx, 450)
+		"help":
+			_text(Vector2(cx, 56), "Управление", 34, Color("#ffe9b0"), true)
+			var binds := [
+				["Бег", "A / D  или  ← / →"],
+				["Прыжок", "W / ↑ / Пробел"],
+				["Спрыгнуть с платформы", "S + прыжок"],
+				["Прицел / огонь", "Мышь / ЛКМ"],
+				["Рывок (i-кадры)", "Shift / ПКМ"],
+				["Ультимейт «Перегрузка»", "Q"],
+				["Смена оружия", "1–8 / колесо мыши"],
+				["Громкость", "− / +"],
+				["Пауза", "Esc / P"],
+				["Звук вкл/выкл", "M"],
+				["Полный экран", "F11"],
+			]
+			var hy := 100.0
+			for b in binds:
+				var lwx := font.get_string_size(b[0], HORIZONTAL_ALIGNMENT_LEFT, -1, 15).x
+				_text(Vector2(cx - 20 - lwx, hy), b[0], 15, Color("#aab3d6"))
+				_text(Vector2(cx + 20, hy), b[1], 15, Color("#eaf0ff"))
+				hy += 28.0
+			_text(Vector2(cx, hy + 4), "Геймпад: стики — движение/прицел, A — прыжок, RT/RB — огонь, LT/B — рывок, Y — ульта, LB — оружие", 12, Color("#6f7aa3"), true)
+			_btn(Rect2(cx - 90, hy + 26, 180, 40), "← Назад", "menu", false)
 		"pause":
 			_text(Vector2(cx, 108), "Пауза", 38, Color("#eaf0ff"), true)
 			_btn(Rect2(cx - 90, 150, 180, 42), "Продолжить", "resume")
@@ -4542,6 +4598,7 @@ func _load_settings() -> void:
 		bloom_on = bool(cfg.get_value("settings", "bloom", true))
 		crt_on = bool(cfg.get_value("settings", "crt", false))
 		fullscreen_on = bool(cfg.get_value("settings", "fullscreen", false))
+		tutorial_seen = bool(cfg.get_value("progress", "tutorial", false))
 		unlocked.clear()
 		if cfg.has_section("achievements"):
 			for k in cfg.get_section_keys("achievements"):
@@ -4559,6 +4616,7 @@ func _save_settings() -> void:
 	var cfg := ConfigFile.new()
 	cfg.set_value("progress", "best", best)
 	cfg.set_value("progress", "cores", meta_cores)
+	cfg.set_value("progress", "tutorial", tutorial_seen)
 	for mid in meta.keys():
 		cfg.set_value("meta", mid, int(meta[mid]))
 	cfg.set_value("settings", "volume", volume)
