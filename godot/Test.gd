@@ -943,6 +943,36 @@ func _init() -> void:
 	_ok(absf(far_reach - 100.0) < 0.5, "open light reaches full radius")
 	game.level = {}   # сброс, чтобы пост-тестовая отрисовка не падала
 
+	# ---------- 32. Новые враги: таран и лекарь ----------
+	var has_charger := false
+	var has_healer := false
+	for s in range(1, 70):
+		var Lc: Dictionary = game.generate_level(s * 101 + 6, 6)   # ур.6 — не боссовый
+		for en in Lc.enemies:
+			if en.type == "charger":
+				has_charger = true
+			elif en.type == "healer":
+				has_healer = true
+	_ok(has_charger, "charger spawns in generated levels")
+	_ok(has_healer, "healer spawns in generated levels")
+	# лекарь восстанавливает HP ближнему раненому врагу
+	game.start_run(8801, "heal")
+	var heal_e: Dictionary = game._spawn_enemy("healer", game.P.x + 320.0, game.P.y)
+	var hurt_e: Dictionary = game._spawn_enemy("walker", game.P.x + 336.0, game.P.y)
+	hurt_e.hp = 8
+	var hhp0: int = hurt_e.hp
+	game.enemies = [heal_e, hurt_e]
+	game.update_enemies()
+	_ok(hurt_e.hp > hhp0, "healer heals a nearby damaged enemy (%d -> %d)" % [hhp0, hurt_e.hp])
+	# таран разгоняется и устремляется к игроку
+	game.start_run(8802, "charge")
+	var chg: Dictionary = game._spawn_enemy("charger", game.P.x + 130.0, game.P.y)
+	game.enemies = [chg]
+	var chx0: float = chg.x
+	for _i in range(64):
+		game.update_enemies()
+	_ok(absf(chg.x - chx0) > 40.0, "charger winds up and rushes (dx=%.0f)" % (chg.x - chx0))
+
 	if failures == 0:
 		print("\nALL TESTS PASSED")
 	else:

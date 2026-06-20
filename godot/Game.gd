@@ -82,6 +82,8 @@ const ENEMY_BASE := {
 	"exploder": { "w": 22, "h": 24, "hp": 18, "spd": 1.9, "dmg": 24, "score": 18, "cd": 0, "fly": false, "radius": 62 },
 	"sniper":  { "w": 26, "h": 30, "hp": 34, "spd": 0.0, "dmg": 26, "score": 30, "cd": 0, "fly": false },
 	"splitter": { "w": 30, "h": 30, "hp": 52, "spd": 0.9, "dmg": 12, "score": 25, "cd": 0, "fly": false },
+	"charger": { "w": 34, "h": 32, "hp": 95, "spd": 0.7, "dmg": 18, "score": 35, "cd": 0, "fly": false },
+	"healer":  { "w": 24, "h": 24, "hp": 36, "spd": 1.5, "dmg": 6, "score": 45, "cd": 150, "fly": true },
 	"shard":   { "w": 14, "h": 16, "hp": 10, "spd": 2.4, "dmg": 8, "score": 5, "cd": 0, "fly": false },
 	"boss":    { "w": 70, "h": 74, "hp": 900, "spd": 0.9, "dmg": 18, "score": 300, "cd": 70, "fly": false },
 }
@@ -804,6 +806,8 @@ func generate_level(seed_val: int, level_num: int) -> Dictionary:
 		"exploder": int((mini(1 + int((level_num - 1) / 2.0), 5) if level_num >= 2 else 0) * crowd),
 		"splitter": int((mini(1 + int((level_num - 1) / 2.0), 4) if level_num >= 2 else 0) * crowd),
 		"sniper": int((mini(1 + int((level_num - 2) / 2.0), 4) if level_num >= 3 else 0) * crowd),
+		"charger": int((mini(1 + int((level_num - 2) / 2.0), 4) if level_num >= 3 else 0) * crowd),
+		"healer": int((mini(int((level_num - 3) / 2.0), 3) if level_num >= 4 else 0) * crowd),
 	}
 	for type in counts.keys():
 		for _i in range(counts[type]):
@@ -2150,6 +2154,86 @@ func update_enemies() -> void:
 							_eshot(ecx, ecy, base_a + k * 0.18, 5.6, en.dmg, "#ff7a6b")
 				else:
 					en.cd = 20
+		elif en.type == "charger":
+			en.vy = min(en.vy + GRAV, MAX_FALL)
+			var stun: int = en.get("stun", 0)
+			var rush: int = en.get("rush", 0)
+			if stun > 0:
+				en["stun"] = stun - 1
+				en.vx = 0.0
+				collide_entity(en)
+			elif rush > 0:
+				en["rush"] = rush - 1
+				en.vx = en.dir * 7.2
+				en.phase += 0.7
+				collide_entity(en)
+				if en.hit_wall:
+					en["rush"] = 0
+					en["stun"] = 48   # врезался в стену — оглушён
+					shake = max(shake, 8.0)
+					burst(ecx + en.dir * en.w / 2.0, ecy, 8, Color("#ffd0a0"))
+			elif en.charge > 0:
+				en.charge += 1   # разгон-телеграф: стоит и трясётся
+				en.vx = 0.0
+				en.dir = 1 if pcx > ecx else -1
+				en.phase += 0.5
+				collide_entity(en)
+				if en.charge >= 36:
+					en.charge = 0
+					en["rush"] = 46   # рывок!
+					play_sfx("hurt")
+			else:
+				var aligned := absf(pcy - ecy) < 56.0 and dist < 330.0 and line_of_sight(ecx, ecy, pcx, pcy)
+				if aligned:
+					en.dir = 1 if pcx > ecx else -1
+					en.charge = 1
+					en.vx = 0.0
+				else:
+					en.vx = en.dir * en.spd
+				collide_entity(en)
+				if en.hit_wall:
+					en.dir *= -1
+				elif en.on_ground:
+					var ahead_x: float = en.x + en.w + 2 if en.dir > 0 else en.x - 2
+					var foot_tx := int(floor(ahead_x / TILE))
+					var foot_ty := int(floor((en.y + en.h + 4) / TILE))
+					var below := tile_at(foot_tx, foot_ty)
+					if not is_blocking(below) and below != T_PLAT:
+						en.dir *= -1
+		elif en.type == "healer":
+			en.phase += 0.05
+			if dist < 210.0:   # держится подальше от игрока
+				en.vx += clampf(ecx - pcx, -1, 1) * 0.09
+				en.vy += clampf(ecy - pcy, -1, 1) * 0.06
+			else:
+				en.vx += cos(en.phase) * 0.045
+				en.vy += sin(en.phase * 1.2) * 0.045
+			var hsp := Vector2(en.vx, en.vy).length()
+			if hsp > en.spd:
+				en.vx *= en.spd / hsp
+				en.vy *= en.spd / hsp
+			var hpvx: float = en.vx
+			var hpvy: float = en.vy
+			collide_entity(en)
+			if en.vx == 0 and hpvx != 0:
+				en.vx = -hpvx * 0.5
+			if en.vy == 0 and hpvy != 0:
+				en.vy = -hpvy * 0.5
+			en.dir = 1 if pcx > ecx else -1
+			en.cd -= 1
+			if en.cd <= 0:
+				en.cd = en.cd_max
+				var healed := false
+				for e2 in enemies:
+					if e2 == en or e2.dead or e2.type == "healer":
+						continue
+					if Vector2(e2.x + e2.w / 2.0 - ecx, e2.y + e2.h / 2.0 - ecy).length() < 150.0 and e2.hp < e2.maxhp:
+						e2.hp = min(e2.maxhp, int(e2.hp) + 14)
+						healed = true
+						add_text(e2.x + e2.w / 2.0, e2.y - 6, "+14", Color("#7df2a5"))
+				if healed:
+					shockwaves.append({ "x": ecx, "y": ecy, "r": 6.0, "max_r": 150.0, "life": 16.0, "col": Color("#7df2a5") })
+					burst(ecx, ecy, 10, Color("#7df2a5"))
 
 		if en.hurt_t > 0:
 			en.hurt_t -= 1
@@ -3450,6 +3534,32 @@ func _draw_enemies() -> void:
 			draw_rect(Rect2(en.x + en.w / 2.0 - 2, en.y - 4, 4, 4), Color("#ffe14d"))  # фитиль
 			draw_rect(Rect2(en.x + 4, en.y + 8, 4, 4), Color("#2a0f0e"))
 			draw_rect(Rect2(en.x + en.w - 8, en.y + 8, 4, 4), Color("#2a0f0e"))
+		elif en.type == "charger":
+			var winding: bool = en.charge > 0
+			var rushing: bool = en.get("rush", 0) > 0
+			var bcol := Color("#7a6b8a")
+			if flash:
+				bcol = Color.WHITE
+			elif winding:
+				bcol = Color("#7a6b8a").lerp(Color("#ffd0a0"), 0.5 + 0.5 * sin(en.phase))
+			draw_rect(Rect2(en.x, en.y, en.w, en.h), bcol)
+			var hx: float = en.x + en.w if en.dir > 0 else en.x
+			var hs: float = 1.0 if en.dir > 0 else -1.0
+			draw_colored_polygon(PackedVector2Array([
+				Vector2(hx, en.y + 2), Vector2(hx + hs * 11.0, en.y + en.h / 2.0), Vector2(hx, en.y + en.h - 2)]),
+				Color.WHITE if flash else Color("#3a3145"))
+			draw_rect(Rect2(en.x + en.w / 2.0 + en.dir * 4 - 6, en.y + 8, 12, 4), Color("#ff5050") if (winding or rushing) else Color("#c0c0d0"))
+			if rushing:
+				for i in range(3):
+					draw_line(Vector2(en.x - en.dir * (i * 8 + 4), en.y + 6 + i * 8), Vector2(en.x - en.dir * (i * 8 + 20), en.y + 6 + i * 8), Color(1, 1, 1, 0.4), 2.0)
+		elif en.type == "healer":
+			var hc := Vector2(en.x + en.w / 2.0, en.y + en.h / 2.0)
+			var pul := 0.5 + 0.5 * sin(en.phase * 2.0)
+			draw_circle(hc, en.w * 0.7 + pul * 4.0, Color(0.5, 1.0, 0.6, 0.16))
+			draw_arc(hc, en.w * 0.7, 0, TAU, 18, Color(0.5, 1.0, 0.6, 0.5), 1.5)
+			draw_circle(hc, en.w / 2.0, Color.WHITE if flash else Color("#3fae6a"))
+			draw_rect(Rect2(hc.x - 2, hc.y - 6, 4, 12), Color("#eafff0"))
+			draw_rect(Rect2(hc.x - 6, hc.y - 2, 12, 4), Color("#eafff0"))
 		elif en.type == "boss" and en.get("variant", "ground") == "summoner":
 			var ecs := Vector2(en.x + en.w / 2.0, en.y + en.h / 2.0)
 			draw_circle(ecs, en.w * 0.85 + sin(tick * 0.1) * 5, Color(0.75, 0.55, 1.0, 0.18))
