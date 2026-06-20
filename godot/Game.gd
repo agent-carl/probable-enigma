@@ -153,6 +153,10 @@ var vignette_tex: GradientTexture2D = null  # затемнение по края
 var light_tex: GradientTexture2D = null  # мягкий радиальный «фонарик» для динамического света
 var world_env: WorldEnvironment = null   # HDR-bloom (свечение ярких источников)
 var bloom_on := true                     # переключатель свечения (в паузе)
+var fx_layer: CanvasLayer = null         # слой полноэкранного пост-эффекта (искажения)
+var fx_rect: ColorRect = null
+var fx_mat: ShaderMaterial = null
+var aberration := 0.0                    # хром. аберрация при уроне (затухает)
 var ground_tex: ImageTexture = null   # пиксель-текстура камня
 var grass_tex: ImageTexture = null    # текстура травянистой кромки
 var plat_tex: ImageTexture = null     # текстура односторонней платформы
@@ -208,6 +212,7 @@ func _ready() -> void:
 	_load_settings()
 	if DisplayServer.get_name() != "headless":
 		_setup_bloom()
+		_setup_fx()
 	_apply_volume()
 	if not test_mode and DisplayServer.get_name() != "headless":
 		_setup_audio()
@@ -248,6 +253,7 @@ func _physics_process(_delta: float) -> void:
 		return
 	gather_input()
 	sim_step()
+	_update_fx()
 	queue_redraw()
 
 func _demo_step() -> void:
@@ -326,6 +332,7 @@ func _demo_step() -> void:
 		shop_continue()
 	if state == "dead" and not ("--dead" in OS.get_cmdline_args()):
 		start_run(12345 + demo_frame, "DEMO")
+	_update_fx()
 	queue_redraw()
 	demo_frame += 1
 	if demo_frame in [90, 150, 210]:
@@ -1254,6 +1261,7 @@ func hurt_player(dmg: float, from_dir: float, src := Vector2.INF) -> void:
 	P.vx = clampf(P.vx + from_dir * 4.0, -8, 8)
 	P.vy = min(P.vy, -4.0)
 	shake = min(14.0, shake + 7.0)
+	aberration = min(1.0, aberration + 0.9)
 	play_sfx("hurt")
 	# индикатор направления источника урона
 	var ang: float
@@ -2587,6 +2595,97 @@ func _setup_bloom() -> void:
 func _apply_bloom() -> void:
 	if world_env and world_env.environment:
 		world_env.environment.glow_enabled = bloom_on
+
+const FX_SHADER := """
+shader_type canvas_item;
+uniform sampler2D screen_tex : hint_screen_texture, filter_linear;
+uniform vec2 screen_size;
+uniform float t;
+uniform float aberration;
+uniform int heat_count;
+uniform vec4 heat_pts[16];   // xy=пиксель, z=радиус, w=сила
+uniform int ripple_count;
+uniform vec4 ripples[8];     // xy=центр, z=радиус, w=сила
+void fragment() {
+	vec2 uv = SCREEN_UV;
+	vec2 px = uv * screen_size;
+	vec2 off = vec2(0.0);
+	for (int i = 0; i < heat_count; i++) {
+		vec4 h = heat_pts[i];
+		float d = distance(px, h.xy);
+		if (d < h.z) {
+			float f = 1.0 - d / h.z;
+			off.x += sin(px.y * 0.13 + t * 4.2) * f * h.w;
+			off.y += cos(px.x * 0.11 + t * 3.1) * f * h.w * 0.6;
+		}
+	}
+	for (int i = 0; i < ripple_count; i++) {
+		vec4 r = ripples[i];
+		float d = distance(px, r.xy);
+		float ring = abs(d - r.z);
+		if (ring < 22.0 && d > 0.001) {
+			vec2 dir = (px - r.xy) / d;
+			float amp = (1.0 - ring / 22.0) * r.w;
+			off += dir * amp * sin((d - r.z) * 0.35);
+		}
+	}
+	vec2 duv = off / screen_size;
+	float ab = aberration * 0.005 + length(off) * 0.0006;
+	vec3 col;
+	col.r = texture(screen_tex, uv + duv + vec2(ab, 0.0)).r;
+	col.g = texture(screen_tex, uv + duv).g;
+	col.b = texture(screen_tex, uv + duv - vec2(ab, 0.0)).b;
+	COLOR = vec4(col, 1.0);
+}
+"""
+
+func _setup_fx() -> void:
+	# полноэкранный экранный пост-эффект: марево, рябь взрывов, аберрация урона
+	var sh := Shader.new()
+	sh.code = FX_SHADER
+	fx_mat = ShaderMaterial.new()
+	fx_mat.shader = sh
+	fx_mat.set_shader_parameter("screen_size", Vector2(VW, VH))
+	fx_rect = ColorRect.new()
+	fx_rect.material = fx_mat
+	fx_rect.set_anchors_preset(Control.PRESET_FULL_RECT)
+	fx_rect.size = Vector2(VW, VH)
+	fx_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	fx_layer = CanvasLayer.new()
+	fx_layer.layer = 3   # выше мира, ниже... (HUD пока в _draw мира — допустимо)
+	fx_layer.add_child(fx_rect)
+	add_child(fx_layer)
+
+func _update_fx() -> void:
+	# обновляем параметры искажения каждый кадр (источники → uniform-массивы)
+	if fx_mat == null:
+		return
+	aberration = maxf(0.0, aberration - 0.04)
+	fx_mat.set_shader_parameter("t", tick * 0.05)
+	fx_mat.set_shader_parameter("aberration", aberration)
+	# тепловое марево над видимыми тайлами лавы
+	var heat := PackedVector4Array()
+	if not level.is_empty():
+		for lp in level.get("lava_cells", []):
+			var sp: Vector2 = lp - _cam_draw
+			if sp.x > -40.0 and sp.x < VW + 40.0 and sp.y > -40.0 and sp.y < VH + 40.0:
+				heat.append(Vector4(sp.x, sp.y - 6.0, 70.0, 1.6))
+				if heat.size() >= 16:
+					break
+	fx_mat.set_shader_parameter("heat_count", heat.size())
+	if heat.size() > 0:
+		fx_mat.set_shader_parameter("heat_pts", heat)
+	# рябь от ударных волн взрывов
+	var rip := PackedVector4Array()
+	for s in shockwaves:
+		var sp2: Vector2 = Vector2(s.x, s.y) - _cam_draw
+		var stren: float = clampf(s.life / 16.0, 0.0, 1.0) * 6.0
+		rip.append(Vector4(sp2.x, sp2.y, s.r, stren))
+		if rip.size() >= 8:
+			break
+	fx_mat.set_shader_parameter("ripple_count", rip.size())
+	if rip.size() > 0:
+		fx_mat.set_shader_parameter("ripples", rip)
 
 func _build_light_tex() -> void:
 	# мягкий радиальный «фонарик»: яркое ядро → плавное затухание в прозрачность.
