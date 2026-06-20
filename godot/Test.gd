@@ -973,6 +973,58 @@ func _init() -> void:
 		game.update_enemies()
 	_ok(absf(chg.x - chx0) > 40.0, "charger winds up and rushes (dx=%.0f)" % (chg.x - chx0))
 
+	# ---------- 33. Реликвии ----------
+	game.start_run(9001, "relic")
+	_ok(not game.has_relic("glass"), "no relics at run start")
+	var rlc_dm0: float = game.P.stats.dmg_mul
+	var rlc_mh0: int = game.P.maxhp
+	game.grant_relic("glass")
+	_ok(game.has_relic("glass"), "grant_relic adds the relic")
+	_ok(absf(game.P.stats.dmg_mul - rlc_dm0 * 1.6) < 1e-4, "glass cannon boosts damage +60%")
+	_ok(game.P.maxhp < rlc_mh0, "glass cannon reduces max HP")
+	_ok(not game.grant_relic("glass"), "duplicate relic rejected")
+	# вампиризм-реликвия лечит при убийстве
+	game.start_run(9002, "vmp")
+	game.grant_relic("vampire")
+	game.P.hp = 40.0
+	var rlc_ve: Dictionary = game._spawn_enemy("walker", game.P.x + 60.0, game.P.y)
+	rlc_ve.hp = 1
+	game.enemies = [rlc_ve]
+	var rlc_vhp0: float = game.P.hp
+	game.hurt_enemy(rlc_ve, 50, false)
+	_ok(rlc_ve.dead and game.P.hp > rlc_vhp0, "vampire relic heals on kill (%.0f -> %.0f)" % [rlc_vhp0, game.P.hp])
+	# Мидас даёт лишнюю монету
+	game.start_run(9003, "mid")
+	game.grant_relic("midas")
+	var rlc_me: Dictionary = game._spawn_enemy("walker", game.P.x + 60.0, game.P.y)
+	rlc_me.hp = 1
+	game.enemies = [rlc_me]
+	var rlc_c0: int = game.coins
+	game.hurt_enemy(rlc_me, 50, false)
+	_ok(game.coins >= rlc_c0 + 1, "midas grants an extra coin on kill")
+	# детонатор бьёт соседнего врага
+	game.start_run(9004, "det")
+	game.grant_relic("detonate")
+	var rlc_da: Dictionary = game._spawn_enemy("walker", 400.0, 300.0)
+	rlc_da.hp = 1
+	var rlc_db: Dictionary = game._spawn_enemy("walker", 422.0, 300.0)
+	rlc_db.hp = 300
+	game.enemies = [rlc_da, rlc_db]
+	var rlc_db0: int = rlc_db.hp
+	game.hurt_enemy(rlc_da, 50, false)
+	_ok(rlc_db.hp < rlc_db0, "detonate explosion damages a nearby enemy")
+	# «Второе дыхание» переживает смертельный удар
+	game.start_run(9005, "sw")
+	game.grant_relic("second")
+	game.P.hp = 5.0
+	game.P.inv = 0
+	game.hurt_player(999, 0)
+	_ok(game.state == "play" and int(game.P.hp) == 1, "second wind survives a lethal hit at 1 HP")
+	game.P.inv = 0
+	game.hurt_player(999, 0)
+	_ok(game.state == "dead", "second wind consumed -> next lethal hit kills")
+	game.level = {}
+
 	if failures == 0:
 		print("\nALL TESTS PASSED")
 	else:

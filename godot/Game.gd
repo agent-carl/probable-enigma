@@ -63,6 +63,19 @@ const UPGRADES := [
 	{ "id": "cryo", "icon": "❄", "name": "Крио-патроны", "desc": "Пули с шансом замораживают врагов (замедление)" },
 ]
 
+const RELICS := {
+	"glass":      { "icon": "🔺", "name": "Стеклянная пушка", "desc": "+60% урона, но −30% к макс. HP" },
+	"vampire":    { "icon": "🩸", "name": "Кровавый клык", "desc": "+10 HP за каждое убийство" },
+	"detonate":   { "icon": "💣", "name": "Детонатор", "desc": "Убитые враги взрываются" },
+	"chain":      { "icon": "⚡", "name": "Цепь молний", "desc": "Попадания бьют током по ближнему врагу" },
+	"midas":      { "icon": "🪙", "name": "Касание Мидаса", "desc": "+1 монета за каждое убийство" },
+	"adrenaline": { "icon": "💉", "name": "Адреналин", "desc": "При HP < 35%: +40% к скорострельности и бегу" },
+	"thorns":     { "icon": "🌵", "name": "Шипы", "desc": "Получив урон, ранит окружающих врагов" },
+	"second":     { "icon": "🕊", "name": "Второе дыхание", "desc": "Раз за уровень переживает смертельный удар (1 HP)" },
+	"overcharge": { "icon": "🔋", "name": "Сверхзаряд", "desc": "Ультимейт заряжается на 60% быстрее" },
+	"frost":      { "icon": "❄", "name": "Морозная аура", "desc": "Близкие враги замедляются" },
+}
+
 const ACHIEVEMENTS := [
 	{ "id": "first_blood", "name": "Первая кровь", "desc": "Убить первого врага" },
 	{ "id": "combo_master", "name": "Мастер серий", "desc": "Серия из 10 убийств" },
@@ -117,6 +130,10 @@ var volume := 0.8        # громкость (0..1), сохраняется
 var shake_on := true     # тряска экрана (опция доступности), сохраняется
 var ult := 0.0           # заряд ультимейта (0..ULT_MAX)
 const ULT_MAX := 300.0
+var relics := {}         # реликвии забега (id → true)
+var _second_used := false  # «Второе дыхание» израсходовано на этом уровне
+var _detonating := false   # защита от рекурсии «Детонатора»
+var chain_bolts := []    # визуал «Цепи молний» [{x1,y1,x2,y2,life}]
 
 # статистика забега
 var run_ticks := 0       # прожитые кадры (время)
@@ -457,7 +474,7 @@ func _unhandled_input(event: InputEvent) -> void:
 				elif state == "shop": shop_continue()
 			KEY_R:
 				if state == "menu": start_from_menu()
-			KEY_1, KEY_2, KEY_3, KEY_4, KEY_5:
+			KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6, KEY_7:
 				var i: int = event.keycode - KEY_1
 				if state == "upgrade" and i < offer.size():
 					choose_upgrade(offer[i])
@@ -1115,6 +1132,7 @@ func start_run(s: int, label: String) -> void:
 	P = make_player()
 	_hp_ghost = P.hp
 	_prev_wi = 0
+	relics = {}
 	start_level()
 	_set_state("play")
 
@@ -1148,6 +1166,7 @@ func start_level() -> void:
 	combo = 0
 	combo_t = 0
 	hitstop = 0
+	_second_used = false   # «Второе дыхание» восстанавливается каждый уровень
 	if not test_mode:
 		Engine.time_scale = 1.0   # на всякий случай снимаем замедление при старте уровня
 	boss_alive = level.get("has_boss", false)
@@ -1219,6 +1238,39 @@ func apply_upgrade_stats(u: Dictionary) -> void:
 		"incend": st.burn_chance = min(0.9, st.burn_chance + 0.35)
 		"cryo": st.chill_chance = min(0.9, st.chill_chance + 0.35)
 
+func has_relic(id: String) -> bool:
+	return relics.has(id)
+
+func adrenaline_active() -> bool:
+	return has_relic("adrenaline") and not P.is_empty() and P.hp < 0.35 * P.maxhp
+
+func grant_relic(id: String) -> bool:
+	# выдать реликвию (один экземпляр на забег); вернуть true, если новая
+	if relics.has(id) or not RELICS.has(id):
+		return false
+	relics[id] = true
+	if id == "glass":   # мгновенный размен: больше урона, меньше HP
+		P.stats.dmg_mul *= 1.6
+		P.maxhp = max(30, int(P.maxhp * 0.7))
+		P.hp = min(P.hp, P.maxhp)
+	toasts.append({ "text": "Реликвия: " + RELICS[id].name, "life": 220.0 })
+	play_sfx("portal")
+	return true
+
+func grant_random_relic() -> void:
+	var rid := random_unowned_relic()
+	if rid != "":
+		grant_relic(rid)
+
+func random_unowned_relic() -> String:
+	var pool := []
+	for id in RELICS.keys():
+		if not relics.has(id):
+			pool.append(id)
+	if pool.is_empty():
+		return ""
+	return pool[rng.randi_range(0, pool.size() - 1)]
+
 func choose_upgrade(u: Dictionary) -> void:
 	apply_upgrade_stats(u)
 	play_sfx("select")
@@ -1245,6 +1297,9 @@ func build_shop() -> Array:
 		{ "id": "weapon", "icon": "▸", "name": "Оружие", "desc": "Случайный новый ствол", "price": 16, "sold": false, "weapon": pick_rng(WEAPON_DROPS) },
 		{ "id": "upgrade", "icon": "★", "name": "Улучшение", "desc": "Случайная прокачка", "price": 20, "sold": false, "up": _random_upgrade() },
 	]
+	var rid := random_unowned_relic()
+	if rid != "":
+		items.append({ "id": "relic", "icon": RELICS[rid].icon, "name": RELICS[rid].name, "desc": RELICS[rid].desc, "price": 28, "sold": false, "relic": rid })
 	return items
 
 func pick_rng(arr: Array):
@@ -1269,6 +1324,7 @@ func buy_shop_item(i: int) -> void:
 			P.shield = min(P.max_shield, P.shield + 30)
 		"weapon": give_weapon(it.weapon)
 		"upgrade": apply_upgrade_stats(it.up)
+		"relic": grant_relic(it.relic)
 	play_sfx("pickup")
 
 func _refill_all_ammo() -> void:
@@ -1316,7 +1372,20 @@ func hurt_player(dmg: float, from_dir: float, src := Vector2.INF) -> void:
 		P.hp -= real
 		add_text(P.x + P.w / 2.0, P.y - 6, "-%d" % real, Color("#ff6b5e"))
 		burst(P.x + P.w / 2.0, P.y + P.h / 2.0, 8, Color("#ff6b5e"))
+		if has_relic("thorns"):   # ответный удар по окружающим врагам
+			var pc := Vector2(P.x + P.w / 2.0, P.y + P.h / 2.0)
+			for en in enemies:
+				if not en.dead and Vector2(en.x + en.w / 2.0 - pc.x, en.y + en.h / 2.0 - pc.y).length() < 90.0:
+					hurt_enemy(en, 25, false)
 	if P.hp <= 0:
+		if has_relic("second") and not _second_used:   # «Второе дыхание»
+			_second_used = true
+			P.hp = 1
+			P.inv = max(P.inv, 100)
+			flash = maxf(flash, 0.5)
+			flash_color = Color("#7df2a5")
+			toasts.append({ "text": "Второе дыхание!", "life": 150.0 })
+			return
 		P.hp = 0
 		die()
 
@@ -1386,12 +1455,14 @@ func hurt_enemy(en: Dictionary, dmg: int, crit: bool, silent := false) -> void:
 	en.hp -= dmg
 	en.hurt_t = 90
 	damage_dealt += dmg
-	ult = min(ULT_MAX, ult + dmg)  # урон заряжает ультимейт
+	ult = min(ULT_MAX, ult + dmg * (1.6 if has_relic("overcharge") else 1.0))  # урон заряжает ультимейт
 	if not silent:
 		add_text(en.x + en.w / 2.0, en.y - 4, str(dmg), Color("#ffd86b") if crit else Color.WHITE)
 		burst(en.x + en.w / 2.0, en.y + en.h / 2.0, 7 if crit else 4, Color("#ffd1a8"))
 		_hitmark = 12.0   # хит-маркер на прицеле
 		play_sfx("hit")
+		if has_relic("chain"):
+			_chain_arc(en, dmg)
 	if en.hp <= 0:
 		en.dead = true
 		kills += 1
@@ -1408,6 +1479,14 @@ func hurt_enemy(en: Dictionary, dmg: int, crit: bool, silent := false) -> void:
 		score += gained
 		if P.stats.lifesteal > 0:
 			P.hp = min(P.maxhp, P.hp + P.stats.lifesteal)
+		if has_relic("vampire"):
+			P.hp = min(P.maxhp, P.hp + 10)
+		if has_relic("midas"):
+			coins += 1
+		if has_relic("detonate") and not en.get("boss", false) and not _detonating:
+			_detonating = true   # труп взрывается (без цепной рекурсии)
+			explode(en.x + en.w / 2.0, en.y + en.h / 2.0, 58.0, 18, "p")
+			_detonating = false
 		burst(en.x + en.w / 2.0, en.y + en.h / 2.0, 16, Color("#ff9d6b"))
 		if not en.get("boss", false):
 			shockwaves.append({ "x": en.x + en.w / 2.0, "y": en.y + en.h / 2.0, "r": 4.0, "max_r": en.w * 1.3, "life": 10.0, "col": Color("#ffd1a8") })
@@ -1431,6 +1510,7 @@ func hurt_enemy(en: Dictionary, dmg: int, crit: bool, silent := false) -> void:
 			add_text(en.x + en.w / 2.0, en.y - 30, "БОСС ПОВЕРЖЕН! +500", Color("#ffd86b"))
 			play_sfx("portal")
 			unlock("boss_slayer")
+			grant_random_relic()   # награда за босса — реликвия
 		elif en.get("type", "") == "exploder":
 			explode(en.x + en.w / 2.0, en.y + en.h / 2.0, en.get("radius", 62), int(round(en.dmg * 0.8)), "e")
 		else:
@@ -1525,6 +1605,24 @@ func combo_mult() -> float:
 	# x1.0 при серии 0–2, далее растёт до x4.0
 	return clampf(1.0 + max(0, combo - 2) * 0.25, 1.0, 4.0)
 
+func _chain_arc(src: Dictionary, dmg: int) -> void:
+	# «Цепь молний»: разряд по ближайшему другому врагу
+	var sx: float = src.x + src.w / 2.0
+	var sy: float = src.y + src.h / 2.0
+	var best = null
+	var bestd := 160.0
+	for e2 in enemies:
+		if e2 == src or e2.dead:
+			continue
+		var d := Vector2(e2.x + e2.w / 2.0 - sx, e2.y + e2.h / 2.0 - sy).length()
+		if d < bestd:
+			bestd = d
+			best = e2
+	if best == null:
+		return
+	chain_bolts.append({ "x1": sx, "y1": sy, "x2": best.x + best.w / 2.0, "y2": best.y + best.h / 2.0, "life": 6.0 })
+	hurt_enemy(best, max(1, int(dmg * 0.4)), false, true)
+
 # ============================== Движущиеся платформы ==============================
 
 func update_moving_platforms() -> void:
@@ -1613,7 +1711,7 @@ func try_shoot() -> void:
 		return
 	if is_finite(slot.ammo):
 		slot.ammo -= 1
-	P.cd = max(3, roundi(w.cd * P.stats.cd_mul))
+	P.cd = max(3, roundi(w.cd * P.stats.cd_mul * (0.6 if adrenaline_active() else 1.0)))
 	var cx: float = P.x + P.w / 2.0
 	var cy: float = P.y + P.h / 2.0 - 2
 	var angle: float = (input.aim - Vector2(cx, cy)).angle()
@@ -1773,7 +1871,7 @@ func sim_step() -> void:
 func update_player() -> void:
 	var st: Dictionary = P.stats
 	var dir: int = input.move
-	var target: float = dir * 4.3 * st.spd_mul
+	var target: float = dir * 4.3 * st.spd_mul * (1.4 if adrenaline_active() else 1.0)
 	var accel := 0.8 if P.on_ground else 0.45
 	P.vx += clampf(target - P.vx, -accel, accel)
 	if abs(P.vx) < 0.05:
@@ -1922,6 +2020,10 @@ func update_enemies() -> void:
 		var ecx: float = en.x + en.w / 2.0
 		var ecy: float = en.y + en.h / 2.0
 		var dist := Vector2(pcx - ecx, pcy - ecy).length()
+
+		# реликвия «Морозная аура»: близкие враги постоянно подмёрзшие
+		if has_relic("frost") and dist < 115.0 and en.type != "boss":
+			en["chill"] = maxi(int(en.get("chill", 0)), 18)
 
 		# статусы: заморозка замедляет, горение наносит урон по времени
 		if int(en.get("chill", 0)) > 0:
@@ -2406,6 +2508,12 @@ func update_effects() -> void:
 		if h.life > 0:
 			hd.append(h)
 	hurt_dirs = hd
+	var cb := []
+	for b in chain_bolts:
+		b.life -= 1
+		if b.life > 0:
+			cb.append(b)
+	chain_bolts = cb
 	var mz := []
 	for m in muzzles:
 		m.life -= 1
@@ -2678,6 +2786,22 @@ func _draw_iris(f: float) -> void:
 			center + d1 * outer, center + d1 * hole]), black)
 
 func _draw_fx() -> void:
+	# разряды «Цепи молний» — ломаная между врагами
+	for b in chain_bolts:
+		var a0 := Vector2(b.x1, b.y1)
+		var a1 := Vector2(b.x2, b.y2)
+		var ba := clampf(b.life / 6.0, 0.0, 1.0)
+		var seg := 4
+		var pts := PackedVector2Array()
+		for i in range(seg + 1):
+			var tt := float(i) / seg
+			var mid := a0.lerp(a1, tt)
+			if i > 0 and i < seg:
+				var perp := (a1 - a0).orthogonal().normalized()
+				mid += perp * (rng.randf() - 0.5) * 14.0
+			pts.append(mid)
+		draw_polyline(pts, Color(0.7, 0.85, 1.0, 0.5 * ba), 4.0)
+		draw_polyline(pts, Color(2.0, 2.2, 2.6, ba), 1.6)
 	# расходящиеся кольца взрывов
 	for s in shockwaves:
 		var a := clampf(s.life / 16.0, 0.0, 1.0)
@@ -3785,6 +3909,15 @@ func _draw_hud() -> void:
 	_ci.draw_rect(Rect2(13, uy + 1, 118 * ufrac, 6), ucol)
 	_text(Vector2(136, uy + 8), "ПЕРЕГРУЗКА (Q)" if ready else "перегрузка (Q)", 10, Color("#ffd86b") if ready else Color("#8d97bd"))
 
+	# реликвии забега — ряд иконок
+	if relics.size() > 0:
+		var rx := 12.0
+		for rid in relics.keys():
+			_ci.draw_rect(Rect2(rx, 62, 18, 18), Color(0.12, 0.10, 0.18, 0.7))
+			_ci.draw_rect(Rect2(rx, 62, 18, 18), Color(1, 0.85, 0.42, 0.5), false, 1.0)
+			_text(Vector2(rx + 3, 76), RELICS[rid].icon, 13, Color("#ffe9b0"))
+			rx += 22.0
+
 	# серия убийств
 	if combo >= 3:
 		var m := combo_mult()
@@ -4091,10 +4224,10 @@ func _draw_overlays() -> void:
 				_text(Vector2(ccx, rect.position.y + 188), "[%d]" % (i + 1), 14, Color("#8d97bd"), true)
 		"shop":
 			_text(Vector2(cx, 80), "Магазин", 36, Color("#ffe9b0"), true)
-			_text(Vector2(cx, 116), "Монеты: ● %d   (цифры 1–5 или клик — купить)" % coins, 16, Color("#ffd86b"), true)
+			_text(Vector2(cx, 116), "Монеты: ● %d   (цифры или клик — купить)" % coins, 16, Color("#ffd86b"), true)
 			var n := shop_items.size()
-			var cw := 165.0
 			var gap := 14.0
+			var cw: float = minf(165.0, (VW - 40.0 - (n - 1) * gap) / n)   # сжимаем под число товаров
 			var total := n * cw + (n - 1) * gap
 			var sx := cx - total / 2.0
 			for i in range(n):
