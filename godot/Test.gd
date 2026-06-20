@@ -1025,6 +1025,57 @@ func _init() -> void:
 	_ok(game.state == "dead", "second wind consumed -> next lethal hit kills")
 	game.level = {}
 
+	# ---------- 34. Контент-дроп: рикошет, пружина, босс-артиллерист ----------
+	# рикошет отражается от стены и не исчезает
+	game.start_run(7100, "ric")
+	var rgrid := PackedByteArray()
+	rgrid.resize(20 * 10)
+	for yy in range(10):
+		rgrid[yy * 20 + 8] = 1   # стена в колонке 8
+	game.level = { "W": 20, "H": 10, "grid": rgrid, "px_w": 20 * 32, "px_h": 10 * 32 }
+	game.enemies = []
+	game.P.x = -9999.0
+	game.P.y = -9999.0
+	game.bullets = [{ "x": 250.0, "y": 165.0, "vx": 8.0, "vy": 0.0, "dmg": 10, "crit": false, "from": "p", "life": 150, "color": Color.WHITE, "bounce": 3 }]
+	game.update_bullets()
+	var rb: Dictionary = game.bullets[0] if game.bullets.size() > 0 else {}
+	_ok(not rb.is_empty() and rb.vx < 0.0, "ricochet bullet bounces off a wall (vx reversed)")
+	_ok(not rb.is_empty() and int(rb.get("bounce", 9)) == 2, "ricochet decrements bounce count")
+	# пружины генерируются и стоят на камне; тайл твёрдый
+	var spring_found := false
+	var spring_solid := true
+	for s in range(1, 60):
+		var Ls: Dictionary = game.generate_level(s * 131 + 4, 4)
+		var Wl: int = Ls.W
+		for idx in range(Ls.grid.size()):
+			if Ls.grid[idx] == 7:   # T_SPRING
+				spring_found = true
+				if Ls.grid[idx + Wl] != 1:
+					spring_solid = false
+	_ok(spring_found, "spring tiles generate in levels")
+	_ok(spring_solid, "springs sit on solid ground")
+	_ok(game.is_blocking(7), "spring is a solid tile")
+	# 4-й босс — артиллерист (ур.20) и ведёт огонь
+	var L20: Dictionary = game.generate_level(20 * 7 + 1, 20)
+	var bossv := ""
+	var boss20 = null
+	for en in L20.enemies:
+		if en.get("boss", false):
+			bossv = en.variant
+			boss20 = en
+	_ok(bossv == "artillery", "artillery boss appears on level 20 (got '%s')" % bossv)
+	if boss20 != null:
+		game.level = L20
+		game.P = game.make_player()
+		game.P.x = boss20.x
+		game.P.y = boss20.y + 200.0
+		boss20.cd = 0
+		game.enemies = [boss20]
+		game.bullets = []
+		game.update_enemies()
+		_ok(game.bullets.size() > 0, "artillery boss fires a volley")
+	game.level = {}
+
 	if failures == 0:
 		print("\nALL TESTS PASSED")
 	else:

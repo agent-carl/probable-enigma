@@ -19,6 +19,7 @@ const T_SPIKE := 3
 const T_EXIT := 4
 const T_CRATE := 5   # разрушаемый ящик (твёрдый, ломается выстрелами/взрывами)
 const T_LAVA := 6    # светящаяся лава/кислота на дне ям (урон + поджиг, не твёрдая)
+const T_SPRING := 7  # пружина-батут: подбрасывает игрока вверх (твёрдая)
 
 const THEMES := [
 	{ "name": "Изумрудные пещеры", "sky0": "#0e1830", "sky1": "#1d3250", "hill_far": "#15233c", "hill_near": "#1b2c4a",
@@ -41,8 +42,9 @@ const WEAPONS := {
 	"grenade": { "name": "Гранатомёт", "dmg": 34, "cd": 52, "spd": 9.5, "spread": 0.02, "pellets": 1, "auto": false, "ammo": 18, "color": "#9ef07f", "kick": 4.0, "len": 20, "gren": true, "radius": 80, "fuse": 80 },
 	"railgun": { "name": "Рельса", "dmg": 55, "cd": 50, "spd": 22.0, "spread": 0.0, "pellets": 1, "auto": false, "ammo": 20, "color": "#7fd4ff", "kick": 3.6, "len": 25, "pierce": true },
 	"flame":   { "name": "Огнемёт", "dmg": 4, "cd": 2, "spd": 0.0, "spread": 0.0, "pellets": 0, "auto": true, "ammo": 240, "color": "#ff7a3d", "kick": 0.6, "len": 18, "flame": true, "range": 132.0, "cone": 0.5 },
+	"ricochet": { "name": "Рикошет", "dmg": 11, "cd": 9, "spd": 13.0, "spread": 0.05, "pellets": 1, "auto": true, "ammo": 96, "color": "#b9ff6b", "kick": 1.4, "len": 18, "bounce": 3 },
 }
-const WEAPON_DROPS := ["smg", "shotgun", "rifle", "grenade", "railgun", "flame"]
+const WEAPON_DROPS := ["smg", "shotgun", "rifle", "grenade", "railgun", "flame", "ricochet"]
 
 const UPGRADES := [
 	{ "id": "hp", "icon": "♥", "name": "Живучесть", "desc": "+25 к максимуму здоровья и лечение на 25" },
@@ -429,7 +431,7 @@ func gather_input() -> void:
 	else:
 		input.aim = get_local_mouse_position() + cam
 	input.switch_to = -1
-	for i in range(7):
+	for i in range(8):
 		if Input.is_key_pressed(KEY_1 + i) and not _prev_keys.get("d%d" % i, false):
 			input.switch_to = i
 	# смена оружия бамперами геймпада
@@ -442,7 +444,7 @@ func gather_input() -> void:
 	_prev_keys["jump"] = jump_now
 	_prev_keys["dash"] = dash_now
 	_prev_keys["ult"] = ult_now
-	for i in range(7):
+	for i in range(8):
 		_prev_keys["d%d" % i] = Input.is_key_pressed(KEY_1 + i)
 	_prev_mouse = shoot_now
 
@@ -625,6 +627,23 @@ func generate_level(seed_val: int, level_num: int) -> Dictionary:
 			lava_cells.append(Vector2(tx * TILE + TILE / 2.0, ground_y[tx] * TILE + TILE / 2.0))
 		elif spike_cols.has(tx):
 			_setc(grid, W, H, tx, ground_y[tx] - 1, T_SPIKE)
+
+	# --- пружины-батуты на ровных участках (помогают добраться до высот) ---
+	var springs := mini(1 + int(level_num / 3.0), 3)
+	var spring_tries := 0
+	while springs > 0 and spring_tries < 60:
+		spring_tries += 1
+		var stx := _rr(r, 16, W - 16)
+		# ровный пятачок, не у спавна, без шипов/лавы/ящиков/платформ рядом
+		if spike_cols.has(stx) or lava_cols.has(stx) or stx < 12:
+			continue
+		if ground_y[stx] != ground_y[stx - 1] or ground_y[stx] != ground_y[stx + 1]:
+			continue
+		var gtop: int = ground_y[stx]
+		if _cell(grid, W, H, stx, gtop) != T_SOLID or _cell(grid, W, H, stx, gtop - 1) != T_EMPTY:
+			continue
+		_setc(grid, W, H, stx, gtop, T_SPRING)
+		springs -= 1
 
 	# --- односторонние платформы ---
 	var platforms := []
@@ -850,9 +869,9 @@ func generate_level(seed_val: int, level_num: int) -> Dictionary:
 	# --- босс на каждом 5-м уровне (чередуем наземного и летающего) ---
 	if is_boss_level:
 		var bb: Dictionary = ENEMY_BASE["boss"]
-		# три варианта босса по кругу: наземный (ур.5), летающий (10), призыватель (15)
-		var bvi := (int(level_num / 5) - 1) % 3
-		var boss_variant: String = ["ground", "air", "summoner"][bvi]
+		# четыре варианта босса по кругу: наземный, летающий, призыватель, артиллерист
+		var bvi := (int(level_num / 5) - 1) % 4
+		var boss_variant: String = ["ground", "air", "summoner", "artillery"][bvi]
 		var bspan := 3
 		var bx := -1
 		# ровная площадка ближе к выходу
@@ -869,7 +888,7 @@ func generate_level(seed_val: int, level_num: int) -> Dictionary:
 			bx = W - 20
 		var boss_hp := 500 + 90 * level_num
 		var by: float = ground_y[bx] * TILE - bb.h - 1
-		if boss_variant == "air" or boss_variant == "summoner":
+		if boss_variant == "air" or boss_variant == "summoner" or boss_variant == "artillery":
 			# парящие боссы держатся над землёй
 			by = max(2 * TILE, ground_y[bx] * TILE - 7 * TILE)
 		enemy_list.append({
@@ -878,7 +897,7 @@ func generate_level(seed_val: int, level_num: int) -> Dictionary:
 			"hp": boss_hp, "maxhp": boss_hp,
 			"vx": 0.0, "vy": 0.0, "dir": -1,
 			"spd": bb.spd, "dmg": bb.dmg + dmg_add, "score": bb.score,
-			"fly": boss_variant != "ground", "cd": 90, "cd_max": bb.cd,
+			"fly": boss_variant != "ground", "cd": 90, "cd_max": bb.cd, "mortars": 0,
 			"hurt_t": 0, "phase": 0.0, "atk": 0, "atk_t": 120,
 			"on_ground": false, "hit_wall": false, "drop": 0, "dead": false,
 		})
@@ -981,8 +1000,8 @@ func tile_at(tx: int, ty: int) -> int:
 	return level.grid[ty * level.W + tx]
 
 func is_blocking(t: int) -> bool:
-	# твёрдые для движения тайлы: камень и разрушаемый ящик
-	return t == T_SOLID or t == T_CRATE
+	# твёрдые для движения тайлы: камень, ящик и пружина
+	return t == T_SOLID or t == T_CRATE or t == T_SPRING
 
 func solid_px(px: float, py: float) -> bool:
 	return is_blocking(tile_at(int(floor(px / TILE)), int(floor(py / TILE))))
@@ -1174,7 +1193,7 @@ func start_level() -> void:
 	if boss_alive:
 		for en in enemies:
 			if en.get("boss", false):
-				boss_name = { "ground": "СТРАЖ ЗЕМЛИ", "air": "НЕБЕСНЫЙ СТРАЖ", "summoner": "ПРИЗЫВАТЕЛЬ" }.get(en.get("variant", "ground"), "БОСС")
+				boss_name = { "ground": "СТРАЖ ЗЕМЛИ", "air": "НЕБЕСНЫЙ СТРАЖ", "summoner": "ПРИЗЫВАТЕЛЬ", "artillery": "АРТИЛЛЕРИСТ" }.get(en.get("variant", "ground"), "БОСС")
 				break
 	cam.x = clampf(P.x - VW / 2.0, 0, max(0, level.px_w - VW))
 	cam.y = clampf(P.y - VH / 2.0, 0, max(0, level.px_h - VH))
@@ -1764,6 +1783,9 @@ func try_shoot() -> void:
 		if is_pierce:
 			b["pierce"] = true
 			b["hit_ids"] = []
+		if w.get("bounce", 0) > 0:
+			b["bounce"] = w.bounce
+			b["life"] = 150
 		bullets.append(b)
 		shots_fired += 1
 	P.vx = clampf(P.vx - cos(angle) * w.kick * 0.35, -9, 9)
@@ -1932,6 +1954,16 @@ func update_player() -> void:
 	collide_entity(P)
 	ride_moving_platforms()
 	check_hazards()
+	# пружина-батут: подбрасывает игрока вверх при касании сверху
+	if P.on_ground and P.vy >= -2.0:
+		var ftx := int(floor((P.x + P.w / 2.0) / TILE))
+		var fty := int(floor((P.y + P.h + 1.0) / TILE))
+		if tile_at(ftx, fty) == T_SPRING:
+			P.vy = -16.0
+			P.on_ground = false
+			play_sfx("jump")
+			shake = max(shake, 4.0)
+			burst(P.x + P.w / 2.0, P.y + P.h, 8, Color("#8be0ff"))
 	# пыль при приземлении после падения
 	if P.on_ground and not was_grounded and pre_vy > 4.5:
 		P.squash = minf(1.0, pre_vy / 13.0)   # присед тем сильнее, чем жёстче падение
@@ -2009,6 +2041,14 @@ func _eshot(x: float, y: float, a: float, spd: float, dmg: int, color: String) -
 		"x": x + cos(a) * 8, "y": y + sin(a) * 8,
 		"vx": cos(a) * spd, "vy": sin(a) * spd,
 		"dmg": dmg, "crit": false, "from": "e", "life": 320, "color": _col(color),
+	})
+
+func _lob_mortar(sx: float, sy: float, tx: float, dmg: int) -> void:
+	# навесной снаряд-миномёт: дуга под гравитацией, взрыв по площади при падении
+	bullets.append({
+		"x": sx, "y": sy + 10.0, "vx": clampf((tx - sx) / 45.0, -6.0, 6.0), "vy": -5.5,
+		"dmg": dmg, "crit": false, "from": "e", "life": 100, "color": _col("#ffb14d"),
+		"grenade": true, "radius": 70,
 	})
 
 func update_enemies() -> void:
@@ -2219,6 +2259,30 @@ func update_enemies() -> void:
 					for k in range(14):
 						_eshot(ecx, ecy, k * TAU / 14.0 + en.phase, 4.4, en.dmg, "#7fd4ff")
 					shake = max(shake, 5.0)
+		elif en.type == "boss" and en.get("variant", "ground") == "artillery":
+			en.phase += 0.04
+			en.dir = 1 if pcx > ecx else -1
+			# держится высоко, медленно следуя за игроком по горизонтали
+			var hover_y := clampf(3.0 * TILE, 2.0 * TILE, level.px_h - 8.0 * TILE)
+			en.vx += clampf(pcx - ecx, -1, 1) * 0.12
+			en.vy += clampf(hover_y - ecy, -1, 1) * 0.16 + sin(en.phase * 1.5) * 0.05
+			var asp := Vector2(en.vx, en.vy).length()
+			if asp > 2.6:
+				en.vx *= 2.6 / asp
+				en.vy *= 2.6 / asp
+			collide_entity(en)
+			en.cd -= 1
+			if en.cd <= 0:
+				en.atk = (en.atk + 1) % 3
+				if en.atk == 2:
+					en.cd = 96   # радиальный залп
+					for k in range(16):
+						_eshot(ecx, ecy, k * TAU / 16.0 + en.phase, 4.2, en.dmg, "#ffb14d")
+					shake = max(shake, 5.0)
+				else:
+					en.cd = 64   # миномётный залп по площади вокруг игрока
+					for k in range(4):
+						_lob_mortar(ecx, ecy, pcx + (k - 1.5) * 70.0 + (rng.randf() - 0.5) * 30.0, en.dmg)
 		elif en.type == "boss":
 			en.vy = min(en.vy + GRAV, MAX_FALL)
 			en.dir = 1 if pcx > ecx else -1
@@ -2364,16 +2428,34 @@ func update_bullets() -> void:
 			b.x += b.vx / steps
 			b.y += b.vy / steps
 			if solid_px(b.x, b.y):
-				# попадание по разрушаемому ящику — наносим ему урон
 				var htx := int(floor(b.x / TILE))
 				var hty := int(floor(b.y / TILE))
-				if tile_at(htx, hty) == T_CRATE:
-					damage_crate(htx, hty, b.dmg)
-				if not is_gren:
-					burst(b.x, b.y, 2, Color("#cdd6f0"))
-					spark(b.x, b.y, b.vx, b.vy, 5)
-				hit = true
-				break
+				if b.get("bounce", 0) > 0 and tile_at(htx, hty) != T_CRATE:
+					# рикошет: откатываемся и отражаем скорость от стены
+					var px: float = b.x - b.vx / steps
+					var py: float = b.y - b.vy / steps
+					var refx := solid_px(b.x, py)
+					var refy := solid_px(px, b.y)
+					if refx:
+						b.vx = -b.vx
+					if refy:
+						b.vy = -b.vy
+					if not refx and not refy:
+						b.vx = -b.vx
+						b.vy = -b.vy
+					b.x = px
+					b.y = py
+					b["bounce"] = int(b.bounce) - 1
+					spark(b.x, b.y, b.vx, b.vy, 3)
+				else:
+					# попадание по разрушаемому ящику — наносим ему урон
+					if tile_at(htx, hty) == T_CRATE:
+						damage_crate(htx, hty, b.dmg)
+					if not is_gren:
+						burst(b.x, b.y, 2, Color("#cdd6f0"))
+						spark(b.x, b.y, b.vx, b.vy, 5)
+					hit = true
+					break
 			if b.from == "p":
 				for en in enemies:
 					if en.dead:
@@ -3485,6 +3567,15 @@ func _draw_tiles(c: Vector2) -> void:
 				var bb := 2.0 + sin(tick * 0.18 + tx) * 1.2
 				if bb > 1.6:
 					draw_circle(Vector2(bx, py + 9 + wob), bb, lc.lightened(0.5))
+			elif t == T_SPRING:
+				# основание + пружина-гармошка + площадка со стрелками
+				var bob := absf(sin(tick * 0.12)) * 2.0   # лёгкое «дыхание»
+				draw_rect(Rect2(px, py + TILE - 5, TILE, 5), Color("#2b2f44"))
+				for zi in range(3):
+					draw_rect(Rect2(px + 5, py + TILE - 9 - zi * 4 + bob, TILE - 10, 2), Color("#9aa3c8"))
+				draw_rect(Rect2(px + 2, py + 2 + bob, TILE - 4, 6), Color("#6be0ff"))
+				draw_colored_polygon(PackedVector2Array([
+					Vector2(px + TILE / 2.0, py + bob), Vector2(px + TILE / 2.0 + 5, py + 5 + bob), Vector2(px + TILE / 2.0 - 5, py + 5 + bob)]), Color("#eaffff"))
 			elif t == T_CRATE:
 				var idx: int = ty * level.W + tx
 				var chp: float = level.crate_hp.get(idx, 24)
@@ -3713,6 +3804,17 @@ func _draw_enemies() -> void:
 			draw_circle(ecb, en.w / 2.0, Color.WHITE if flash else Color("#2c5f8a"))
 			draw_circle(ecb, en.w / 2.0 - 6, Color.WHITE if flash else Color("#7fd4ff"))
 			draw_circle(Vector2(ecb.x + en.dir * 6, ecb.y), 7, Color("#11314a"))
+		elif en.type == "boss" and en.get("variant", "ground") == "artillery":
+			var eca := Vector2(en.x + en.w / 2.0, en.y + en.h / 2.0)
+			var charging: bool = en.cd < 18   # вот-вот залп
+			draw_circle(eca, en.w * 0.8 + sin(tick * 0.1) * 4, Color(1.0, 0.6, 0.2, 0.34 if charging else 0.2))
+			draw_rect(Rect2(en.x + 4, eca.y - 6, en.w - 8, en.h / 2.0), Color.WHITE if flash else Color("#7a5a3a"))
+			draw_rect(Rect2(en.x + 4, eca.y - 6, en.w - 8, 6), Color.WHITE if flash else Color("#9c7a4a"))
+			for mi in range(3):
+				var mxb: float = en.x + 10 + mi * (en.w - 20) / 2.0
+				draw_rect(Rect2(mxb - 3, en.y - 6, 7, 16), Color.WHITE if flash else Color("#3a2f22"))
+				draw_circle(Vector2(mxb + 0.5, en.y - 6), 4, Color("#ffb14d") if charging else Color("#5a4632"))
+			draw_rect(Rect2(en.x, eca.y + en.h / 2.0 - 6, en.w, 8), Color("#2b2118"))
 		elif en.type == "boss":
 			var ecb := Vector2(en.x + en.w / 2.0, en.y + en.h / 2.0)
 			# аура по фазе атаки
