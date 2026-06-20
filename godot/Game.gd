@@ -1151,6 +1151,7 @@ func _set_state(s: String) -> void:
 	if not test_mode and (s == "menu" or s == "dead" or s == "play"):
 		Engine.time_scale = 1.0   # снимаем слоу-мо при смене состояния
 	if s == "menu":
+		_set_grade(-1)   # нейтральный грейдинг в меню
 		_stop_music()
 	queue_redraw()
 
@@ -2329,6 +2330,7 @@ func _build_background(seed_val: int) -> void:
 	_build_tile_textures(seed_val)
 	weather = level.theme.get("weather", "spores")
 	weather_col = _col(level.theme.get("wcol", "#ffffff"))
+	_set_grade((lvl - 1) % THEMES.size())   # грейдинг под локацию
 	_init_ambient()
 
 func _build_tile_textures(seed_val: int) -> void:
@@ -2644,6 +2646,9 @@ uniform vec2 screen_size;
 uniform float t;
 uniform float aberration;
 uniform float crt;
+uniform vec3 grade_mul;
+uniform vec3 grade_add;
+uniform float grade_con;
 uniform int heat_count;
 uniform vec4 heat_pts[16];   // xy=пиксель, z=радиус, w=сила
 uniform int ripple_count;
@@ -2683,6 +2688,9 @@ void fragment() {
 	col.r = texture(screen_tex, cuv + vec2(ab, 0.0)).r;
 	col.g = texture(screen_tex, cuv).g;
 	col.b = texture(screen_tex, cuv - vec2(ab, 0.0)).b;
+	// цветокоррекция по локации (контраст → тон → подъём)
+	col = (col - 0.5) * grade_con + 0.5;
+	col = col * grade_mul + grade_add;
 	if (crt > 0.5) {
 		float scan = 0.82 + 0.18 * sin(cuv.y * screen_size.y * 3.14159);
 		col *= scan;
@@ -2703,6 +2711,7 @@ func _setup_fx() -> void:
 	fx_mat = ShaderMaterial.new()
 	fx_mat.shader = sh
 	fx_mat.set_shader_parameter("screen_size", Vector2(VW, VH))
+	_set_grade(-1)   # нейтральный грейдинг по умолчанию
 	fx_rect = ColorRect.new()
 	fx_rect.material = fx_mat
 	fx_rect.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -3600,6 +3609,22 @@ func toggle_fullscreen() -> void:
 	fullscreen_on = not fullscreen_on
 	_apply_fullscreen()
 	_save_settings()
+
+func _set_grade(theme_idx: int) -> void:
+	# кинематографичный оттенок по локации (idx<0 — нейтральный)
+	if fx_mat == null:
+		return
+	var grades := [
+		{ "mul": Vector3(0.96, 1.0, 1.08), "add": Vector3(0, 0, 0.012), "con": 1.05 },  # пещеры (холод)
+		{ "mul": Vector3(1.1, 0.95, 0.95), "add": Vector3(0.02, 0, 0.005), "con": 1.06 }, # руины (тепло)
+		{ "mul": Vector3(0.95, 1.02, 1.12), "add": Vector3(0, 0.006, 0.02), "con": 1.04 }, # шахты (лёд)
+		{ "mul": Vector3(0.95, 1.09, 0.95), "add": Vector3(0, 0.012, 0), "con": 1.05 },   # топи (яд)
+		{ "mul": Vector3(1.12, 1.02, 0.88), "add": Vector3(0.02, 0.008, 0), "con": 1.06 }, # форт (янтарь)
+	]
+	var gr: Dictionary = grades[theme_idx % grades.size()] if theme_idx >= 0 else { "mul": Vector3.ONE, "add": Vector3.ZERO, "con": 1.0 }
+	fx_mat.set_shader_parameter("grade_mul", gr.mul)
+	fx_mat.set_shader_parameter("grade_add", gr.add)
+	fx_mat.set_shader_parameter("grade_con", gr.con)
 
 func _apply_fullscreen() -> void:
 	if DisplayServer.get_name() == "headless":
