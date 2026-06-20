@@ -4372,6 +4372,7 @@ func _draw_overlays() -> void:
 				_text(Vector2(cx - 14 - lw, ry), lbl, 14, Color("#8d97bd"))
 				_text(Vector2(cx + 14, ry), row[1], 14, Color("#dfe5ff"))
 				ry += 22
+			_text(Vector2(cx, ry + 6), "Заработано ◉ %d   (всего ◉ %d → Мастерская)" % [run_cores, meta_cores], 14, Color("#9be8ff"), true)
 			_btn(Rect2(cx - 190, 420, 180, 50), "Новый забег", "retry")
 			_btn(Rect2(cx + 10, 420, 180, 50), "В меню", "menu", false)
 		"upgrade":
