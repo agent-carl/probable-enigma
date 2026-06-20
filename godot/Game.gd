@@ -190,6 +190,10 @@ var sky1 := Color.BLACK
 var sky_tex: GradientTexture2D = null   # кэш градиента неба
 var vignette_tex: GradientTexture2D = null  # затемнение по краям экрана
 var light_tex: GradientTexture2D = null  # мягкий радиальный «фонарик» для динамического света
+var menu_sky: GradientTexture2D = null   # фон главного меню (анимированный)
+var menu_hills_far := PackedVector2Array()
+var menu_hills_near := PackedVector2Array()
+var menu_stars := []
 var world_env: WorldEnvironment = null   # HDR-bloom (свечение ярких источников)
 var bloom_on := true                     # переключатель свечения (в паузе)
 var crt_on := false                      # ретро CRT-фильтр (в паузе)
@@ -201,6 +205,8 @@ var world_fx: Node2D = null              # слой движковых част�
 var ui_layer: CanvasLayer = null         # HUD/оверлеи поверх пост-эффекта (не искажаются)
 var ui_node: Node2D = null
 var _ci: CanvasItem = null               # активный холст для отрисовки интерфейса
+var _frame_hover := ""                    # кнопка под курсором в этом кадре
+var _hover_key := ""                      # предыдущая наведённая кнопка (для звука)
 var aberration := 0.0                    # хром. аберрация при уроне (затухает)
 var _blur := 0.0                         # плавное размытие мира на паузе/оверлеях
 var _radial := 0.0                       # радиальный блюр-всплеск ульта (затухает)
@@ -264,6 +270,7 @@ func _ready() -> void:
 	_build_cracks()
 	_build_vignette()
 	_build_light_tex()
+	_build_menu_bg()
 	_build_crate_texture()
 	_load_settings()
 	if DisplayServer.get_name() != "headless":
@@ -523,6 +530,7 @@ func _on_ui(key: String) -> void:
 		"shop_continue": shop_continue()
 		"meta": _set_state("meta")
 		"help": _set_state("help")
+		"achievements": _set_state("achievements")
 		"toggle_shake": toggle_shake()
 		"toggle_bloom": toggle_bloom()
 		"toggle_crt": toggle_crt()
@@ -3191,12 +3199,17 @@ func _setup_fx() -> void:
 
 func _paint_ui() -> void:
 	_ci = ui_node
+	_frame_hover = ""
 	if not level.is_empty():
 		_draw_hurt_dirs()
 		_draw_hud()
 		if fade > 0.0:
 			_draw_iris(fade)
 	_draw_overlays()
+	if _frame_hover != _hover_key:   # звук при наведении на новую кнопку
+		if _frame_hover != "" and state != "play":
+			play_sfx("pickup")
+		_hover_key = _frame_hover
 	_ci = self
 
 func _burst_particles(world_pos: Vector2, color: Color, amount: int, vel := 150.0, life := 0.6) -> void:
@@ -3288,6 +3301,49 @@ func _build_cracks() -> void:
 			if r.randf() < 0.55:   # ответвление
 				_cracks.append([p, p + dir.rotated((r.randf() - 0.5) * 2.2) * (18.0 + r.randf() * 38.0)])
 			p = np
+
+func _build_menu_bg() -> void:
+	# фон главного меню: градиент неба + дрейфующие холмы + звёзды
+	var grad := Gradient.new()
+	grad.set_color(0, Color(0.05, 0.06, 0.13))
+	grad.set_color(1, Color(0.13, 0.09, 0.18))
+	menu_sky = GradientTexture2D.new()
+	menu_sky.gradient = grad
+	menu_sky.width = 1
+	menu_sky.height = VH
+	menu_sky.fill_from = Vector2(0, 0)
+	menu_sky.fill_to = Vector2(0, 1)
+	var r := RandomNumberGenerator.new()
+	r.seed = 0x6A17C0DE
+	menu_hills_far = _make_hills(r, 380, 28)
+	menu_hills_near = _make_hills(r, 448, 36)
+	menu_stars = []
+	for _i in range(80):
+		menu_stars.append(Vector3(r.randf() * VW, r.randf() * VH * 0.7, 0.5 + r.randf() * 1.5))
+
+func _draw_menu_bg() -> void:
+	if menu_sky:
+		_ci.draw_texture_rect(menu_sky, Rect2(0, 0, VW, VH), false)
+	for sv in menu_stars:
+		var tw := 0.35 + 0.4 * sin(tick * 0.04 + sv.x * 0.3)
+		_ci.draw_rect(Rect2(sv.x, sv.y, sv.z, sv.z), Color(1, 1, 1, tw))
+	# дрейфующие угольки
+	for i in range(22):
+		var ex := fmod(i * 97.0 + tick * (0.2 + (i % 3) * 0.1), VW + 20.0) - 10.0
+		var ey := VH - fmod(tick * 0.35 + i * 71.0, VH + 40.0)
+		_ci.draw_rect(Rect2(ex, ey, 2, 2), Color(1.0, 0.7, 0.4, 0.35 + 0.25 * sin(tick * 0.06 + i)))
+	# силуэты холмов с медленным параллаксом
+	_draw_menu_hills(menu_hills_far, Color("#161d31"), tick * 0.25, -40.0)
+	_draw_menu_hills(menu_hills_near, Color("#1e2740"), tick * 0.45, 0.0)
+
+func _draw_menu_hills(pts: PackedVector2Array, color: Color, scroll: float, yoff: float) -> void:
+	if pts.size() < 3:
+		return
+	var ox := -fmod(scroll, 1920.0)
+	for k in [0, 1]:
+		_ci.draw_set_transform(Vector2(ox + k * 1920.0, yoff))
+		_ci.draw_colored_polygon(pts, color)
+	_ci.draw_set_transform(Vector2.ZERO)
 
 func _build_light_tex() -> void:
 	# мягкий радиальный «фонарик»: яркое ядро → плавное затухание в прозрачность.
@@ -4296,10 +4352,20 @@ func _draw_offscreen_arrow(world_pos: Vector2, color: Color) -> void:
 	_ci.draw_set_transform(Vector2.ZERO)
 
 func _btn(rect: Rect2, label: String, key: String, primary := true) -> void:
-	var bg := Color("#ffc24d") if primary else Color(1, 1, 1, 0.10)
+	var hover: bool = rect.has_point(get_local_mouse_position())
+	if hover:
+		_frame_hover = key
+	var bg: Color
+	if primary:
+		bg = Color("#ffd86b") if hover else Color("#ffc24d")
+	else:
+		bg = Color(1, 1, 1, 0.22) if hover else Color(1, 1, 1, 0.10)
 	_ci.draw_rect(rect, bg)
-	var tc := Color("#2a1c04") if primary else Color("#cfd6f5")
-	_text(Vector2(rect.position.x + rect.size.x / 2.0, rect.position.y + rect.size.y / 2.0 + 6), label, 16, tc, true)
+	if hover:   # рамка-подсветка наведения
+		_ci.draw_rect(rect, Color(1, 0.96, 0.74, 0.9), false, 2.0)
+	var tc := Color("#2a1c04") if primary else (Color("#ffffff") if hover else Color("#cfd6f5"))
+	var lift := 1.0 if hover else 0.0   # лёгкий подъём метки при наведении
+	_text(Vector2(rect.position.x + rect.size.x / 2.0, rect.position.y + rect.size.y / 2.0 + 6 - lift), label, 16, tc, true)
 	_ui_rects[key] = rect
 
 func _shake_offset() -> Vector2:
@@ -4357,20 +4423,26 @@ func _start_slowmo(factor: float, real_secs: float) -> void:
 func _draw_overlays() -> void:
 	if state == "play":
 		return
-	_ci.draw_rect(Rect2(0, 0, VW, VH), Color(0.027, 0.031, 0.059, 0.80))
+	# для экранов без игрового мира — живой фон меню; иначе затемнение поверх игры
+	if level.is_empty() and (state == "menu" or state == "help" or state == "meta" or state == "achievements"):
+		_draw_menu_bg()
+		_ci.draw_rect(Rect2(0, 0, VW, VH), Color(0.04, 0.05, 0.10, 0.45))
+	else:
+		_ci.draw_rect(Rect2(0, 0, VW, VH), Color(0.027, 0.031, 0.059, 0.80))
 	var cx := VW / 2.0
 	match state:
 		"menu":
 			_text(Vector2(cx, 156), "GUNFALL", 72, Color("#ffce5a"), true)
 			_text(Vector2(cx, 198), "Платформер-рогалик: каждый забег — новая карта", 16, Color("#aab3d6"), true)
 			_text(Vector2(cx, 224), "Каждый 5-й уровень — БОСС", 13, Color("#ff8fc4"), true)
-			_btn(Rect2(cx - 90, 250, 180, 48), "Играть", "play")
-			_btn(Rect2(cx - 90, 308, 180, 36), "Управление", "help", false)
-			_btn(Rect2(cx - 120, 352, 240, 34), "Мастерская   ◉ %d" % meta_cores, "meta", false)
+			_btn(Rect2(cx - 90, 248, 180, 48), "Играть", "play")
+			_btn(Rect2(cx - 186, 306, 180, 34), "Управление", "help", false)
+			_btn(Rect2(cx + 6, 306, 180, 34), "Достижения  %d/%d" % [unlocked.size(), ACHIEVEMENTS.size()], "achievements", false)
+			_btn(Rect2(cx - 120, 348, 240, 34), "Мастерская   ◉ %d" % meta_cores, "meta", false)
 			var bl := "Рекорд: %d очков" % best if best > 0 else "Удачного первого забега!"
-			_text(Vector2(cx, 404), bl, 13, Color("#6f7aa3"), true)
-			_text(Vector2(cx, 424), "Достижения: %d / %d  ·  Enter / клик — старт" % [unlocked.size(), ACHIEVEMENTS.size()], 12, Color("#6f7aa3"), true)
-			_draw_volume(cx, 450)
+			_text(Vector2(cx, 396), bl, 13, Color("#6f7aa3"), true)
+			_text(Vector2(cx, 414), "Enter / клик — старт", 12, Color("#6f7aa3"), true)
+			_draw_volume(cx, 440)
 		"help":
 			_text(Vector2(cx, 56), "Управление", 34, Color("#ffe9b0"), true)
 			var binds := [
@@ -4394,6 +4466,21 @@ func _draw_overlays() -> void:
 				hy += 28.0
 			_text(Vector2(cx, hy + 4), "Геймпад: стики — движение/прицел, A — прыжок, RT/RB — огонь, LT/B — рывок, Y — ульта, LB — оружие", 12, Color("#6f7aa3"), true)
 			_btn(Rect2(cx - 90, hy + 26, 180, 40), "← Назад", "menu", false)
+		"achievements":
+			_text(Vector2(cx, 56), "Достижения", 34, Color("#ffe9b0"), true)
+			_text(Vector2(cx, 88), "Открыто %d из %d" % [unlocked.size(), ACHIEVEMENTS.size()], 15, Color("#9be8ff"), true)
+			var ay := 118.0
+			for a in ACHIEVEMENTS:
+				var got: bool = unlocked.has(a.id)
+				var rect := Rect2(cx - 280, ay, 560, 38)
+				_ci.draw_rect(rect, Color(0.16, 0.22, 0.14, 0.5) if got else Color(1, 1, 1, 0.04))
+				_ci.draw_rect(rect, Color(0.49, 0.95, 0.55, 0.6) if got else Color(1, 1, 1, 0.1), false, 1.0)
+				_text(Vector2(rect.position.x + 14, ay + 25), "✓" if got else "🔒", 18, Color("#7df2a5") if got else Color("#6f7aa3"))
+				_text(Vector2(rect.position.x + 44, ay + 24), a.name, 15, Color("#eaf0ff") if got else Color("#8d97bd"))
+				var dwx := font.get_string_size(a.desc, HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x
+				_text(Vector2(rect.position.x + 546 - dwx, ay + 24), a.desc, 12, Color("#aab3d6") if got else Color("#5a6385"))
+				ay += 44.0
+			_btn(Rect2(cx - 90, ay + 6, 180, 40), "← Назад", "menu", false)
 		"pause":
 			_text(Vector2(cx, 108), "Пауза", 38, Color("#eaf0ff"), true)
 			_btn(Rect2(cx - 90, 150, 180, 42), "Продолжить", "resume")
