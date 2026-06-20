@@ -139,7 +139,9 @@ var boss_alive := false  # на уровне есть живой босс
 var boss_name := ""      # имя текущего босса
 var _eid_counter := 1000000  # счётчик id для врагов, созданных в рантайме
 var hitstop := 0         # короткая заморозка при крупных событиях
-var volume := 0.8        # громкость (0..1), сохраняется
+var volume := 0.8        # мастер-громкость (0..1), сохраняется
+var music_vol := 0.7     # громкость музыки (относительно мастера), сохраняется
+var sfx_vol := 0.9       # громкость звуков (относительно мастера), сохраняется
 var shake_on := true     # тряска экрана (опция доступности), сохраняется
 var ult := 0.0           # заряд ультимейта (0..ULT_MAX)
 const ULT_MAX := 300.0
@@ -205,8 +207,12 @@ var world_fx: Node2D = null              # слой движковых част�
 var ui_layer: CanvasLayer = null         # HUD/оверлеи поверх пост-эффекта (не искажаются)
 var ui_node: Node2D = null
 var _ci: CanvasItem = null               # активный холст для отрисовки интерфейса
+var _settings_back := "menu"              # куда вернуться из настроек (меню/пауза)
 var _frame_hover := ""                    # кнопка под курсором в этом кадре
 var _hover_key := ""                      # предыдущая наведённая кнопка (для звука)
+var _nav_list := []                       # кнопки текущего экрана (по порядку отрисовки)
+var _nav_keys := []                       # стабильный список кнопок (для навигации)
+var _nav_sel := 0                         # выбранная кнопка (клавиатура/геймпад)
 var aberration := 0.0                    # хром. аберрация при уроне (затухает)
 var _blur := 0.0                         # плавное размытие мира на паузе/оверлеях
 var _radial := 0.0                       # радиальный блюр-всплеск ульта (затухает)
@@ -489,13 +495,19 @@ func _unhandled_input(event: InputEvent) -> void:
 				set_volume(volume - 0.1)
 			KEY_EQUAL, KEY_KP_ADD:
 				set_volume(volume + 0.1)
+			KEY_UP:
+				if state != "play": _nav_move(-1)
+			KEY_DOWN:
+				if state != "play": _nav_move(1)
 			KEY_ENTER, KEY_KP_ENTER:
-				if state == "menu": start_from_menu()
+				if state != "play" and _nav_confirm(): pass
+				elif state == "menu": start_from_menu()
 				elif state == "dead": start_from_menu()
 				elif state == "pause": _set_state("play")
 				elif state == "shop": shop_continue()
 			KEY_SPACE:
-				if state == "menu": start_from_menu()
+				if state != "play" and _nav_confirm(): pass
+				elif state == "menu": start_from_menu()
 				elif state == "shop": shop_continue()
 			KEY_R:
 				if state == "menu": start_from_menu()
@@ -512,6 +524,27 @@ func _unhandled_input(event: InputEvent) -> void:
 			_cycle_weapon(1)
 		elif event.button_index == MOUSE_BUTTON_WHEEL_UP:
 			_cycle_weapon(-1)
+	elif event is InputEventJoypadButton and event.pressed and state != "play":
+		match event.button_index:
+			JOY_BUTTON_DPAD_UP: _nav_move(-1)
+			JOY_BUTTON_DPAD_DOWN: _nav_move(1)
+			JOY_BUTTON_A: _nav_confirm()
+			JOY_BUTTON_B:
+				if state == "pause" or state == "help" or state == "meta" or state == "achievements" or state == "settings":
+					_on_ui("settings_back" if state == "settings" else ("resume" if state == "pause" else "menu"))
+
+func _nav_move(d: int) -> void:
+	if _nav_keys.is_empty():
+		return
+	var n := _nav_keys.size()
+	_nav_sel = (_nav_sel + d + n) % n
+	play_sfx("pickup")
+
+func _nav_confirm() -> bool:
+	if _nav_keys.is_empty() or _nav_sel >= _nav_keys.size():
+		return false
+	_on_ui(_nav_keys[_nav_sel])
+	return true
 
 func _handle_ui_click(m: Vector2) -> void:
 	for key in _ui_rects.keys():
@@ -531,6 +564,14 @@ func _on_ui(key: String) -> void:
 		"meta": _set_state("meta")
 		"help": _set_state("help")
 		"achievements": _set_state("achievements")
+		"settings": _settings_back = state; _set_state("settings")
+		"settings_back": _set_state(_settings_back)
+		"vol_master_dn": set_volume(volume - 0.1)
+		"vol_master_up": set_volume(volume + 0.1)
+		"vol_music_dn": adjust_music(-0.1)
+		"vol_music_up": adjust_music(0.1)
+		"vol_sfx_dn": adjust_sfx(-0.1)
+		"vol_sfx_up": adjust_sfx(0.1)
 		"toggle_shake": toggle_shake()
 		"toggle_bloom": toggle_bloom()
 		"toggle_crt": toggle_crt()
@@ -1242,6 +1283,7 @@ func start_level() -> void:
 
 func _set_state(s: String) -> void:
 	state = s
+	_nav_sel = 0   # навигация начинается с первой кнопки нового экрана
 	if not test_mode and (s == "menu" or s == "dead" or s == "play"):
 		Engine.time_scale = 1.0   # снимаем слоу-мо при смене состояния
 	if s == "menu":
@@ -3200,12 +3242,15 @@ func _setup_fx() -> void:
 func _paint_ui() -> void:
 	_ci = ui_node
 	_frame_hover = ""
+	_nav_list = []
 	if not level.is_empty():
 		_draw_hurt_dirs()
 		_draw_hud()
 		if fade > 0.0:
 			_draw_iris(fade)
 	_draw_overlays()
+	_nav_keys = _nav_list   # фиксируем набор кнопок для навигации
+	_nav_sel = clampi(_nav_sel, 0, maxi(0, _nav_keys.size() - 1))
 	if _frame_hover != _hover_key:   # звук при наведении на новую кнопку
 		if _frame_hover != "" and state != "play":
 			play_sfx("pickup")
@@ -4352,19 +4397,23 @@ func _draw_offscreen_arrow(world_pos: Vector2, color: Color) -> void:
 	_ci.draw_set_transform(Vector2.ZERO)
 
 func _btn(rect: Rect2, label: String, key: String, primary := true) -> void:
+	var idx := _nav_list.size()
+	_nav_list.append(key)
 	var hover: bool = rect.has_point(get_local_mouse_position())
 	if hover:
 		_frame_hover = key
+		_nav_sel = idx   # курсор синхронизируется с мышью
+	var active: bool = hover or idx == _nav_sel   # под курсором или выбран навигацией
 	var bg: Color
 	if primary:
-		bg = Color("#ffd86b") if hover else Color("#ffc24d")
+		bg = Color("#ffd86b") if active else Color("#ffc24d")
 	else:
-		bg = Color(1, 1, 1, 0.22) if hover else Color(1, 1, 1, 0.10)
+		bg = Color(1, 1, 1, 0.22) if active else Color(1, 1, 1, 0.10)
 	_ci.draw_rect(rect, bg)
-	if hover:   # рамка-подсветка наведения
+	if active:   # рамка-подсветка
 		_ci.draw_rect(rect, Color(1, 0.96, 0.74, 0.9), false, 2.0)
-	var tc := Color("#2a1c04") if primary else (Color("#ffffff") if hover else Color("#cfd6f5"))
-	var lift := 1.0 if hover else 0.0   # лёгкий подъём метки при наведении
+	var tc := Color("#2a1c04") if primary else (Color("#ffffff") if active else Color("#cfd6f5"))
+	var lift := 1.0 if active else 0.0
 	_text(Vector2(rect.position.x + rect.size.x / 2.0, rect.position.y + rect.size.y / 2.0 + 6 - lift), label, 16, tc, true)
 	_ui_rects[key] = rect
 
@@ -4435,14 +4484,14 @@ func _draw_overlays() -> void:
 			_text(Vector2(cx, 156), "GUNFALL", 72, Color("#ffce5a"), true)
 			_text(Vector2(cx, 198), "Платформер-рогалик: каждый забег — новая карта", 16, Color("#aab3d6"), true)
 			_text(Vector2(cx, 224), "Каждый 5-й уровень — БОСС", 13, Color("#ff8fc4"), true)
-			_btn(Rect2(cx - 90, 248, 180, 48), "Играть", "play")
-			_btn(Rect2(cx - 186, 306, 180, 34), "Управление", "help", false)
-			_btn(Rect2(cx + 6, 306, 180, 34), "Достижения  %d/%d" % [unlocked.size(), ACHIEVEMENTS.size()], "achievements", false)
-			_btn(Rect2(cx - 120, 348, 240, 34), "Мастерская   ◉ %d" % meta_cores, "meta", false)
+			_btn(Rect2(cx - 90, 244, 180, 48), "Играть", "play")
+			_btn(Rect2(cx - 186, 302, 180, 34), "Управление", "help", false)
+			_btn(Rect2(cx + 6, 302, 180, 34), "Достижения  %d/%d" % [unlocked.size(), ACHIEVEMENTS.size()], "achievements", false)
+			_btn(Rect2(cx - 186, 342, 180, 34), "Настройки", "settings", false)
+			_btn(Rect2(cx + 6, 342, 180, 34), "Мастерская  ◉ %d" % meta_cores, "meta", false)
 			var bl := "Рекорд: %d очков" % best if best > 0 else "Удачного первого забега!"
-			_text(Vector2(cx, 396), bl, 13, Color("#6f7aa3"), true)
-			_text(Vector2(cx, 414), "Enter / клик — старт", 12, Color("#6f7aa3"), true)
-			_draw_volume(cx, 440)
+			_text(Vector2(cx, 392), bl, 13, Color("#6f7aa3"), true)
+			_text(Vector2(cx, 410), "Enter / клик — старт · ↑↓ — выбор", 12, Color("#6f7aa3"), true)
 		"help":
 			_text(Vector2(cx, 56), "Управление", 34, Color("#ffe9b0"), true)
 			var binds := [
@@ -4482,16 +4531,21 @@ func _draw_overlays() -> void:
 				ay += 44.0
 			_btn(Rect2(cx - 90, ay + 6, 180, 40), "← Назад", "menu", false)
 		"pause":
-			_text(Vector2(cx, 108), "Пауза", 38, Color("#eaf0ff"), true)
-			_btn(Rect2(cx - 90, 150, 180, 42), "Продолжить", "resume")
-			# опции в две колонки
-			_btn(Rect2(cx - 168, 204, 160, 36), "Тряска: %s" % ("Вкл" if shake_on else "Выкл"), "toggle_shake", false)
-			_btn(Rect2(cx + 8, 204, 160, 36), "Bloom: %s" % ("Вкл" if bloom_on else "Выкл"), "toggle_bloom", false)
-			_btn(Rect2(cx - 168, 246, 160, 36), "CRT-фильтр: %s" % ("Вкл" if crt_on else "Выкл"), "toggle_crt", false)
-			_btn(Rect2(cx + 8, 246, 160, 36), "Экран: %s" % ("Полный" if fullscreen_on else "Окно"), "toggle_fullscreen", false)
-			_btn(Rect2(cx - 90, 296, 180, 38), "В меню", "quit", false)
-			_text(Vector2(cx, 352), "Геймпад поддерживается · F11 — полноэкран", 12, Color("#6f7aa3"), true)
-			_draw_volume(cx, 372)
+			_text(Vector2(cx, 170), "Пауза", 40, Color("#eaf0ff"), true)
+			_btn(Rect2(cx - 90, 214, 180, 46), "Продолжить", "resume")
+			_btn(Rect2(cx - 90, 270, 180, 40), "Настройки", "settings", false)
+			_btn(Rect2(cx - 90, 320, 180, 40), "В меню", "quit", false)
+			_text(Vector2(cx, 384), "Геймпад поддерживается · F11 — полноэкран", 12, Color("#6f7aa3"), true)
+		"settings":
+			_text(Vector2(cx, 60), "Настройки", 34, Color("#ffe9b0"), true)
+			_vol_row(110, "Громкость (общая)", volume, "vol_master")
+			_vol_row(158, "Музыка", music_vol, "vol_music")
+			_vol_row(206, "Звуки", sfx_vol, "vol_sfx")
+			_btn(Rect2(cx - 168, 262, 160, 38), "Тряска: %s" % ("Вкл" if shake_on else "Выкл"), "toggle_shake", false)
+			_btn(Rect2(cx + 8, 262, 160, 38), "Bloom: %s" % ("Вкл" if bloom_on else "Выкл"), "toggle_bloom", false)
+			_btn(Rect2(cx - 168, 308, 160, 38), "CRT-фильтр: %s" % ("Вкл" if crt_on else "Выкл"), "toggle_crt", false)
+			_btn(Rect2(cx + 8, 308, 160, 38), "Экран: %s" % ("Полный" if fullscreen_on else "Окно"), "toggle_fullscreen", false)
+			_btn(Rect2(cx - 90, 364, 180, 40), "← Назад", "settings_back", false)
 		"dead":
 			_text(Vector2(cx, 120), "Вы погибли", 44, Color("#ff6b5e"), true)
 			var is_record := score >= best and score > 0
@@ -4586,6 +4640,17 @@ func _draw_overlays() -> void:
 				my += 48.0
 			_btn(Rect2(cx - 90, my + 8, 180, 40), "← Назад", "menu", false)
 
+func _vol_row(y: float, label: String, value: float, prefix: String) -> void:
+	var cx := VW / 2.0
+	_text(Vector2(cx - 240, y + 19), label, 15, Color("#cfd6f5"))
+	_btn(Rect2(cx - 30, y, 30, 28), "−", prefix + "_dn", false)
+	var bw := 150.0
+	var bx := cx + 12.0
+	_ci.draw_rect(Rect2(bx, y + 8, bw, 12), Color(0, 0, 0, 0.5))
+	_ci.draw_rect(Rect2(bx + 1, y + 9, (bw - 2) * value, 10), Color("#ffc24d"))
+	_btn(Rect2(bx + bw + 8, y, 30, 28), "+", prefix + "_up", false)
+	_text(Vector2(bx + bw + 48, y + 19), "%d%%" % int(round(value * 100)), 13, Color("#cfd6f5"))
+
 func _draw_volume(cx: float, y: float) -> void:
 	var bw := 160.0
 	var bx := cx - bw / 2.0
@@ -4617,7 +4682,6 @@ func _setup_audio() -> void:
 		add_child(p)
 		_audio_players.append(p)
 	_music_player = AudioStreamPlayer.new()
-	_music_player.volume_db = -9.0  # музыка тише эффектов
 	add_child(_music_player)
 	_sfx_cache = {
 		"shoot": Synth.tone(320, 90, 0.09, "square", 0.30),
@@ -4635,6 +4699,7 @@ func _setup_audio() -> void:
 		"boom": Synth.noise(0.35, 0.6, true),
 		"die": Synth.noise(0.4, 0.55, true),
 	}
+	_apply_volume()   # выставить громкость музыки/звуков на созданных плеерах
 
 func play_sfx(name: String) -> void:
 	if not audio_enabled or _sfx_cache.is_empty():
@@ -4681,6 +4746,8 @@ func _load_settings() -> void:
 			for k in cfg.get_section_keys("meta"):
 				meta[k] = int(cfg.get_value("meta", k, 0))
 		volume = clampf(float(cfg.get_value("settings", "volume", 0.8)), 0.0, 1.0)
+		music_vol = clampf(float(cfg.get_value("settings", "music", 0.7)), 0.0, 1.0)
+		sfx_vol = clampf(float(cfg.get_value("settings", "sfx", 0.9)), 0.0, 1.0)
 		shake_on = bool(cfg.get_value("settings", "shake", true))
 		bloom_on = bool(cfg.get_value("settings", "bloom", true))
 		crt_on = bool(cfg.get_value("settings", "crt", false))
@@ -4707,6 +4774,8 @@ func _save_settings() -> void:
 	for mid in meta.keys():
 		cfg.set_value("meta", mid, int(meta[mid]))
 	cfg.set_value("settings", "volume", volume)
+	cfg.set_value("settings", "music", music_vol)
+	cfg.set_value("settings", "sfx", sfx_vol)
 	cfg.set_value("settings", "shake", shake_on)
 	cfg.set_value("settings", "bloom", bloom_on)
 	cfg.set_value("settings", "crt", crt_on)
@@ -4756,7 +4825,22 @@ func set_volume(v: float) -> void:
 	_apply_volume()
 	_save_settings()
 
+func adjust_music(d: float) -> void:
+	music_vol = clampf(music_vol + d, 0.0, 1.0)
+	_apply_volume()
+	_save_settings()
+
+func adjust_sfx(d: float) -> void:
+	sfx_vol = clampf(sfx_vol + d, 0.0, 1.0)
+	_apply_volume()
+	play_sfx("pickup")   # пример громкости
+	_save_settings()
+
 func _apply_volume() -> void:
-	# мастер-шина 0; в headless AudioServer-заглушка просто игнорирует
+	# мастер-шина 0; музыка/звуки регулируются на самих плеерах (относительно мастера)
 	AudioServer.set_bus_volume_db(0, linear_to_db(maxf(volume, 0.0001)))
 	AudioServer.set_bus_mute(0, volume <= 0.0)
+	if _music_player != null:
+		_music_player.volume_db = linear_to_db(maxf(music_vol, 0.0001))
+	for p in _audio_players:
+		p.volume_db = linear_to_db(maxf(sfx_vol, 0.0001))

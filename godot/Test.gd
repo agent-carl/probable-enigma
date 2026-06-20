@@ -1105,6 +1105,16 @@ func _init() -> void:
 	_ok(game.run_cores >= 1 and game.meta_cores == game.run_cores, "cores earned on death (%d)" % game.run_cores)
 	game.level = {}
 
+	# ---------- 36. Настройки: раздельная громкость музыки/звуков ----------
+	game.music_vol = 0.5
+	game.sfx_vol = 0.5
+	game.adjust_music(0.2)
+	_ok(absf(game.music_vol - 0.7) < 1e-4, "music volume adjusts up")
+	game.adjust_music(1.0)
+	_ok(game.music_vol == 1.0, "music volume clamps at 1.0")
+	game.adjust_sfx(-0.9)
+	_ok(absf(game.sfx_vol) < 1e-4, "sfx volume clamps at 0.0")
+
 	if failures == 0:
 		print("\nALL TESTS PASSED")
 	else:
