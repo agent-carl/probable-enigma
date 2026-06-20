@@ -147,6 +147,7 @@ var stars := []        # [Vector3(x,y,size_alpha)]
 var hill_farther := PackedVector2Array()
 var hill_far := PackedVector2Array()
 var hill_near := PackedVector2Array()
+var fg_props := []     # передний слой: тёмные силуэты у нижней кромки (parallax > 1)
 var sky0 := Color.BLACK
 var sky1 := Color.BLACK
 var sky_tex: GradientTexture2D = null   # кэш градиента неба
@@ -2345,6 +2346,9 @@ func _build_background(seed_val: int) -> void:
 	hill_farther = _make_hills(r, 250, 16)
 	hill_far = _make_hills(r, 330, 26)
 	hill_near = _make_hills(r, 420, 34)
+	fg_props = []
+	for _i in range(11):
+		fg_props.append({ "x": r.randf() * 1920.0, "y": 575.0 + r.randf() * 35.0, "r": 45.0 + r.randf() * 45.0 })
 	_build_tile_textures(seed_val)
 	weather = level.theme.get("weather", "spores")
 	weather_col = _col(level.theme.get("wcol", "#ffffff"))
@@ -2521,6 +2525,7 @@ func _draw() -> void:
 		_draw_texts()
 		draw_set_transform(Vector2.ZERO)
 
+		_draw_foreground(c)
 		_draw_lighting(c)
 		if vignette_tex:
 			draw_texture_rect(vignette_tex, Rect2(0, 0, VW, VH), false)
@@ -2996,7 +3001,7 @@ func _draw_lighting(_c: Vector2) -> void:
 	if not level.is_empty():
 		var ep: Vector2 = level.exit_px
 		var ppulse := 0.85 + sin(tick * 0.07) * 0.15
-		_light(Vector2(ep.x, ep.y + TILE / 2.0), 110.0 * ppulse, Color(0.55, 0.74, 1.0), 0.6, 2.0)
+		_light_shadowed(Vector2(ep.x, ep.y + TILE / 2.0), 110.0 * ppulse, Color(0.55, 0.74, 1.0), 0.6, 2.0)
 		_draw_godrays(Vector2(ep.x, ep.y + TILE / 2.0), 150.0 * ppulse, Color(0.6, 0.8, 1.0))
 	# игрок — мягкая аура, ярче в рывке
 	if state != "dead":
@@ -3031,6 +3036,38 @@ func _draw_lighting(_c: Vector2) -> void:
 		var pcol: Color = { "weapon": Color(1, 0.85, 0.42), "med": Color(1, 0.42, 0.48), "ammo": Color(0.79, 0.65, 0.29), "coin": Color(1, 0.85, 0.42), "shield": Color(0.5, 0.83, 1.0) }.get(pk.kind, Color(1, 1, 1))
 		_light(Vector2(pk.x + pk.w / 2.0, pk.y + pk.h / 2.0), 34.0, pcol, 0.4, 1.5)
 	_draw_motes()
+	_draw_speedlines()
+
+func _draw_foreground(c: Vector2) -> void:
+	# передний слой: тёмные силуэты у нижней кромки, скроллятся быстрее мира
+	if fg_props.is_empty():
+		return
+	var ox := -fmod(c.x * 1.25, 1920.0)
+	var col: Color = th.get("hill_near", Color(0.1, 0.12, 0.18)).darkened(0.55)
+	for k in [-1, 0, 1]:
+		for p in fg_props:
+			var x: float = p.x + ox + k * 1920.0
+			if x < -160.0 or x > VW + 160.0:
+				continue
+			draw_circle(Vector2(x, p.y), p.r, Color(col.r, col.g, col.b, 0.5))
+
+func _draw_speedlines() -> void:
+	# линии скорости при рывке (ярче у краёв, чтобы не мешать в центре)
+	if state == "dead" or P.is_empty():
+		return
+	var dt: int = P.get("dash_t", 0)
+	if dt <= 0:
+		return
+	var a := clampf(float(dt) / 10.0, 0.0, 1.0)
+	var dir: float = P.get("dash_dir", 1.0)
+	for i in range(16):
+		var fy := float((i * 61 + 7) % 100) / 100.0 * VH
+		var phase := fmod(tick * 0.06 + i * 0.37, 1.0)
+		var sx := VW * 0.5 - dir * phase * VW * 0.75
+		var ln := 60.0 + float(i % 3) * 34.0
+		var edge := clampf(absf(fy / VH - 0.5) * 2.0, 0.0, 1.0)
+		var aa := a * 0.2 * (0.25 + 0.75 * edge)
+		draw_line(Vector2(sx, fy), Vector2(sx - dir * ln, fy), Color(1, 1, 1, aa), 2.0)
 
 func _draw_godrays(world_pos: Vector2, length: float, col: Color) -> void:
 	# объёмные лучи: вращающиеся аддитивные HDR-шафты из яркого источника
