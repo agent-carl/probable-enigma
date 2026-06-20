@@ -849,6 +849,23 @@ func _init() -> void:
 	game.update_effects()
 	_ok(game.parts.size() <= 600, "particle count capped (%d)" % game.parts.size())
 
+	# ---------- 29. Огнемёт (конусный урон + поджог) ----------
+	game.start_run(202, "202")
+	game.P.weapons = [{ "id": "flame", "ammo": 240 }]
+	game.P.wi = 0
+	game.P.cd = 0
+	var fcx: float = game.P.x + game.P.w / 2.0
+	var fcy: float = game.P.y + game.P.h / 2.0 - 2
+	game.input.aim = Vector2(fcx + 200, fcy)  # целимся вправо
+	game.input.shoot_held = true
+	var front := { "type": "walker", "x": fcx + 70, "y": fcy - 10, "w": 20, "h": 20, "hp": 100, "maxhp": 100, "score": 10, "dead": false, "hurt_t": 0, "burn": 0, "eid": 1 }
+	var behind := { "type": "walker", "x": fcx - 90, "y": fcy - 10, "w": 20, "h": 20, "hp": 100, "maxhp": 100, "score": 10, "dead": false, "hurt_t": 0, "burn": 0, "eid": 2 }
+	game.enemies = [front, behind]
+	game.try_shoot()
+	_ok(front.hp < 100, "flamethrower damages enemy in cone")
+	_ok(int(front.burn) > 0, "flamethrower ignites enemy in cone")
+	_ok(behind.hp == 100, "flamethrower spares enemy outside cone")
+
 	if failures == 0:
 		print("\nALL TESTS PASSED")
 	else:

@@ -39,8 +39,9 @@ const WEAPONS := {
 	"rifle":   { "name": "Винтовка", "dmg": 36, "cd": 34, "spd": 18.0, "spread": 0.012, "pellets": 1, "auto": false, "ammo": 30, "color": "#d3a4ff", "kick": 3.2, "len": 23 },
 	"grenade": { "name": "Гранатомёт", "dmg": 34, "cd": 52, "spd": 9.5, "spread": 0.02, "pellets": 1, "auto": false, "ammo": 18, "color": "#9ef07f", "kick": 4.0, "len": 20, "gren": true, "radius": 80, "fuse": 80 },
 	"railgun": { "name": "Рельса", "dmg": 55, "cd": 50, "spd": 22.0, "spread": 0.0, "pellets": 1, "auto": false, "ammo": 20, "color": "#7fd4ff", "kick": 3.6, "len": 25, "pierce": true },
+	"flame":   { "name": "Огнемёт", "dmg": 4, "cd": 2, "spd": 0.0, "spread": 0.0, "pellets": 0, "auto": true, "ammo": 240, "color": "#ff7a3d", "kick": 0.6, "len": 18, "flame": true, "range": 132.0, "cone": 0.5 },
 }
-const WEAPON_DROPS := ["smg", "shotgun", "rifle", "grenade", "railgun"]
+const WEAPON_DROPS := ["smg", "shotgun", "rifle", "grenade", "railgun", "flame"]
 
 const UPGRADES := [
 	{ "id": "hp", "icon": "♥", "name": "Живучесть", "desc": "+25 к максимуму здоровья и лечение на 25" },
@@ -226,7 +227,7 @@ func _ready() -> void:
 		elif "--guns" in OS.get_cmdline_args():
 			# все стволы и уровень с камикадзе — для проверки рендера оружия
 			lvl = 4
-			for wid in ["smg", "shotgun", "rifle", "grenade", "railgun"]:
+			for wid in ["smg", "shotgun", "rifle", "grenade", "railgun", "flame"]:
 				P.weapons.append({ "id": wid, "ammo": 999 })
 			start_level()
 	queue_redraw()
@@ -374,7 +375,7 @@ func gather_input() -> void:
 	else:
 		input.aim = get_local_mouse_position() + cam
 	input.switch_to = -1
-	for i in range(4):
+	for i in range(7):
 		if Input.is_key_pressed(KEY_1 + i) and not _prev_keys.get("d%d" % i, false):
 			input.switch_to = i
 	# смена оружия бамперами геймпада
@@ -387,7 +388,7 @@ func gather_input() -> void:
 	_prev_keys["jump"] = jump_now
 	_prev_keys["dash"] = dash_now
 	_prev_keys["ult"] = ult_now
-	for i in range(4):
+	for i in range(7):
 		_prev_keys["d%d" % i] = Input.is_key_pressed(KEY_1 + i)
 	_prev_mouse = shoot_now
 
@@ -1544,6 +1545,33 @@ func try_shoot() -> void:
 	var angle: float = (input.aim - Vector2(cx, cy)).angle()
 	P.aim = angle
 	aim_angle = angle
+	# огнемёт: конусный урон + поджог + частицы пламени (без пуль)
+	if w.get("flame", false):
+		var fdmg: int = max(1, roundi(w.dmg * P.stats.dmg_mul))
+		var hit_any := false
+		for en in enemies:
+			if en.dead:
+				continue
+			var ev := Vector2(en.x + en.w / 2.0 - cx, en.y + en.h / 2.0 - cy)
+			if ev.length() <= w.range and absf(wrapf(ev.angle() - angle, -PI, PI)) <= w.cone:
+				hurt_enemy(en, fdmg, false, true)
+				if not en.dead:
+					apply_burn(en, 64)
+				hit_any = true
+		for _f in range(4):
+			var fa: float = angle + (rng.randf() - 0.5) * w.cone * 2.0
+			var fs := 3.0 + rng.randf() * 5.0
+			var fc := Color("#ffd86b") if rng.randf() < 0.4 else Color("#ff6a2d")
+			parts.append({ "x": cx + cos(angle) * 14, "y": cy + sin(angle) * 14,
+				"vx": cos(fa) * fs + P.vx * 0.3, "vy": sin(fa) * fs, "life": 7.0 + rng.randf() * 8.0,
+				"color": fc, "size": 2.0 + rng.randf() * 2.5, "grav": -0.04 })
+		shots_fired += 1
+		if hit_any:
+			shots_hit += 1
+		P.vx = clampf(P.vx - cos(angle) * 0.2, -9, 9)
+		if tick % 4 == 0:
+			play_sfx("flame")
+		return
 	var is_gren: bool = w.get("gren", false)
 	var is_pierce: bool = w.get("pierce", false)
 	# «Берсерк»: бонус к урону растёт с серией убийств (до +40% при серии 20)
@@ -3057,7 +3085,7 @@ func _draw_overlays() -> void:
 			_text(Vector2(cx, 150), "GUNFALL", 72, Color("#ffce5a"), true)
 			_text(Vector2(cx, 190), "Платформер-рогалик: каждый забег — новая карта", 16, Color("#aab3d6"), true)
 			_text(Vector2(cx, 250), "A/D — бег · W/Пробел — прыжок · S+прыжок — вниз", 14, Color("#8d97bd"), true)
-			_text(Vector2(cx, 274), "Мышь — прицел · ЛКМ — огонь · 1–4/колесо — оружие", 14, Color("#8d97bd"), true)
+			_text(Vector2(cx, 274), "Мышь — прицел · ЛКМ — огонь · 1–7/колесо — оружие", 14, Color("#8d97bd"), true)
 			_text(Vector2(cx, 298), "Shift/ПКМ — рывок · Q — перегрузка · Esc — пауза · M — звук", 14, Color("#8d97bd"), true)
 			_text(Vector2(cx, 322), "Каждый 5-й уровень — БОСС", 13, Color("#ff8fc4"), true)
 			_btn(Rect2(cx - 90, 344, 180, 50), "Играть", "play")
@@ -3188,6 +3216,7 @@ func _setup_audio() -> void:
 		"portal": Synth.tone(330, 760, 0.30, "sine", 0.40),
 		"select": Synth.tone(600, 900, 0.08, "square", 0.24),
 		"dash": Synth.tone(180, 520, 0.16, "sine", 0.30),
+		"flame": Synth.noise(0.14, 0.22, false),
 		"boom": Synth.noise(0.35, 0.6, true),
 		"die": Synth.noise(0.4, 0.55, true),
 	}
