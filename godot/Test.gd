@@ -133,6 +133,29 @@ func _init() -> void:
 	var b10_col := int((b10.x + b10.w / 2.0) / 32)
 	b10_col = clampi(b10_col, 0, L10.W - 1)
 	_ok(b10.y + b10.h < gy10[b10_col] * 32, "air boss spawns above the ground")
+	# третий вариант — призыватель (ур.15), и он спавнит миньонов
+	var L15: Dictionary = game.generate_level(151515, 15)
+	var b15 = null
+	for en in L15.enemies:
+		if en.get("boss", false):
+			b15 = en
+	_ok(b15 != null and b15.variant == "summoner", "level 15 boss is summoner variant")
+	game.start_run(150, "150")
+	game.lvl = 15
+	game.start_level()
+	var n0: int = game.enemies.size()
+	for i in range(260):
+		game.input.aim = Vector2(game.P.x + 60, game.P.y)
+		game.sim_step()
+		if game.state != "play":
+			break
+	_ok(game.enemies.size() > n0, "summoner adds minions over time (%d -> %d)" % [n0, game.enemies.size()])
+	var bs = null
+	for en in game.enemies:
+		if en.get("boss", false):
+			bs = en
+	if bs != null:
+		_ok(is_finite(bs.x) and is_finite(bs.y), "summoner boss stays finite")
 
 	# гейтинг портала и убийство босса
 	game.start_run(7, "7")

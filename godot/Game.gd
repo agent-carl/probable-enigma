@@ -212,9 +212,13 @@ func _ready() -> void:
 		if "--menu" in OS.get_cmdline_args():
 			return  # остаёмся в меню для проверки его отрисовки
 		start_run(12345, "DEMO")
-		if "--boss" in OS.get_cmdline_args() or "--airboss" in OS.get_cmdline_args():
+		if "--boss" in OS.get_cmdline_args() or "--airboss" in OS.get_cmdline_args() or "--summoner" in OS.get_cmdline_args():
 			# прыжок на боссовый уровень с прокачкой — для проверки рендера босса
-			lvl = 10 if "--airboss" in OS.get_cmdline_args() else 5
+			lvl = 5
+			if "--airboss" in OS.get_cmdline_args():
+				lvl = 10
+			elif "--summoner" in OS.get_cmdline_args():
+				lvl = 15
 			P.weapons.append({ "id": "rifle", "ammo": 999 })
 			P.wi = 1
 			P.stats.dmg_mul = 3.0
@@ -246,7 +250,7 @@ func _demo_step() -> void:
 		max_combo = 7
 		P.inv = 0
 		hurt_player(99999, 0)
-	if demo_frame == 60 and ("--boss" in OS.get_cmdline_args() or "--airboss" in OS.get_cmdline_args()) and state == "play":
+	if demo_frame == 60 and ("--boss" in OS.get_cmdline_args() or "--airboss" in OS.get_cmdline_args() or "--summoner" in OS.get_cmdline_args()) and state == "play":
 		for en in enemies:
 			if en.get("boss", false):
 				P.x = en.x - 120
@@ -774,7 +778,9 @@ func generate_level(seed_val: int, level_num: int) -> Dictionary:
 	# --- босс на каждом 5-м уровне (чередуем наземного и летающего) ---
 	if is_boss_level:
 		var bb: Dictionary = ENEMY_BASE["boss"]
-		var boss_variant := "air" if (int(level_num / 5) % 2 == 0) else "ground"
+		# три варианта босса по кругу: наземный (ур.5), летающий (10), призыватель (15)
+		var bvi := (int(level_num / 5) - 1) % 3
+		var boss_variant: String = ["ground", "air", "summoner"][bvi]
 		var bspan := 3
 		var bx := -1
 		# ровная площадка ближе к выходу
@@ -791,8 +797,8 @@ func generate_level(seed_val: int, level_num: int) -> Dictionary:
 			bx = W - 20
 		var boss_hp := 500 + 90 * level_num
 		var by: float = ground_y[bx] * TILE - bb.h - 1
-		if boss_variant == "air":
-			# летающий босс парит над землёй
+		if boss_variant == "air" or boss_variant == "summoner":
+			# парящие боссы держатся над землёй
 			by = max(2 * TILE, ground_y[bx] * TILE - 7 * TILE)
 		enemy_list.append({
 			"type": "boss", "boss": true, "variant": boss_variant,
@@ -800,7 +806,7 @@ func generate_level(seed_val: int, level_num: int) -> Dictionary:
 			"hp": boss_hp, "maxhp": boss_hp,
 			"vx": 0.0, "vy": 0.0, "dir": -1,
 			"spd": bb.spd, "dmg": bb.dmg + dmg_add, "score": bb.score,
-			"fly": boss_variant == "air", "cd": 90, "cd_max": bb.cd,
+			"fly": boss_variant != "ground", "cd": 90, "cd_max": bb.cd,
 			"hurt_t": 0, "phase": 0.0, "atk": 0, "atk_t": 120,
 			"on_ground": false, "hit_wall": false, "drop": 0, "dead": false,
 		})
@@ -1089,7 +1095,7 @@ func start_level() -> void:
 	if boss_alive:
 		for en in enemies:
 			if en.get("boss", false):
-				boss_name = "НЕБЕСНЫЙ СТРАЖ" if en.get("variant", "ground") == "air" else "СТРАЖ ЗЕМЛИ"
+				boss_name = { "ground": "СТРАЖ ЗЕМЛИ", "air": "НЕБЕСНЫЙ СТРАЖ", "summoner": "ПРИЗЫВАТЕЛЬ" }.get(en.get("variant", "ground"), "БОСС")
 				break
 	cam.x = clampf(P.x - VW / 2.0, 0, max(0, level.px_w - VW))
 	cam.y = clampf(P.y - VH / 2.0, 0, max(0, level.px_h - VH))
@@ -1909,8 +1915,41 @@ func update_enemies() -> void:
 			if en.vy == 0 and pvy != 0:
 				en.vy = -pvy * 0.5
 			en.dir = 1 if pcx > ecx else -1
+		elif en.type == "boss" and en.get("variant", "ground") == "summoner":
+			# босс-призыватель: парит, призывает миньонов и стреляет
+			en.phase += 0.05
+			en.dir = 1 if pcx > ecx else -1
+			var hover_y2 := clampf(pcy - 150, 2 * TILE, level.px_h - 6 * TILE)
+			en.vx += clampf(pcx - ecx, -1, 1) * 0.10
+			en.vy += clampf(hover_y2 - ecy, -1, 1) * 0.14 + sin(en.phase * 1.7) * 0.05
+			var sp2 := Vector2(en.vx, en.vy).length()
+			if sp2 > 2.4:
+				en.vx *= 2.4 / sp2
+				en.vy *= 2.4 / sp2
+			collide_entity(en)
+			en.atk_t -= 1
+			if en.atk_t <= 0:
+				en.atk_t = 200
+				# считаем СВОИХ призванных миньонов и докидываем, если их мало
+				var minions := 0
+				for e2 in enemies:
+					if not e2.dead and e2.get("summoned", false):
+						minions += 1
+				if minions < 5:
+					shake = max(shake, 6.0)
+					burst(ecx, ecy, 18, Color("#c08bff"))
+					for s in [-1, 1]:
+						var mtype := "flyer" if rng.randf() < 0.5 else "walker"
+						var m := _spawn_enemy(mtype, ecx + s * 28 - 12, ecy + 10)
+						m["summoned"] = true
+						enemies.append(m)
+			en.cd -= 1
+			if en.cd <= 0 and line_of_sight(ecx, ecy, pcx, pcy):
+				en.cd = 30
+				var ba := (Vector2(pcx, pcy) - Vector2(ecx, ecy)).angle()
+				for k in range(-1, 2):
+					_eshot(ecx, ecy, ba + k * 0.18, 5.5, en.dmg, "#c08bff")
 		elif en.type == "boss" and en.get("variant", "ground") == "air":
-			# летающий босс: парит над игроком, залпы и пикирование
 			en.phase += 0.05
 			en.dir = 1 if pcx > ecx else -1
 			en.atk_t -= 1
@@ -2687,6 +2726,20 @@ func _draw_enemies() -> void:
 			draw_rect(Rect2(en.x + en.w / 2.0 - 2, en.y - 4, 4, 4), Color("#ffe14d"))  # фитиль
 			draw_rect(Rect2(en.x + 4, en.y + 8, 4, 4), Color("#2a0f0e"))
 			draw_rect(Rect2(en.x + en.w - 8, en.y + 8, 4, 4), Color("#2a0f0e"))
+		elif en.type == "boss" and en.get("variant", "ground") == "summoner":
+			var ecs := Vector2(en.x + en.w / 2.0, en.y + en.h / 2.0)
+			draw_circle(ecs, en.w * 0.85 + sin(tick * 0.1) * 5, Color(0.75, 0.55, 1.0, 0.18))
+			for oi in range(5):
+				var oa: float = en.phase * 1.5 + oi * TAU / 5.0
+				draw_circle(ecs + Vector2(cos(oa), sin(oa)) * (en.w * 0.7), 3.0, Color("#d9b3ff"))
+			var rcol := Color.WHITE if flash else Color("#8a4fd0")
+			draw_colored_polygon(PackedVector2Array([
+				ecs + Vector2(0, -en.h / 2.0), ecs + Vector2(en.w / 2.0, 0),
+				ecs + Vector2(0, en.h / 2.0), ecs + Vector2(-en.w / 2.0, 0)]), rcol)
+			draw_colored_polygon(PackedVector2Array([
+				ecs + Vector2(0, -en.h / 3.0), ecs + Vector2(en.w / 3.0, 0),
+				ecs + Vector2(0, en.h / 3.0), ecs + Vector2(-en.w / 3.0, 0)]), Color.WHITE if flash else Color("#c9a0f5"))
+			draw_circle(ecs, 5, Color("#2a1244"))
 		elif en.type == "boss" and en.get("variant", "ground") == "air":
 			var ecb := Vector2(en.x + en.w / 2.0, en.y + en.h / 2.0)
 			var aura: Color = [Color(0.5, 0.83, 1.0, 0.18), Color(0.5, 0.83, 1.0, 0.18), Color(1.0, 0.5, 0.4, 0.22)][en.atk]
