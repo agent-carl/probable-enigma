@@ -144,6 +144,7 @@ var fade := 0.0          # затемнение перехода уровня (1
 # Фон (кэш на уровень)
 var th := {}           # цвета темы (Color)
 var stars := []        # [Vector3(x,y,size_alpha)]
+var hill_farther := PackedVector2Array()
 var hill_far := PackedVector2Array()
 var hill_near := PackedVector2Array()
 var sky0 := Color.BLACK
@@ -2297,6 +2298,7 @@ func _build_background(seed_val: int) -> void:
 		"ground": _col(level.theme.ground), "top": _col(level.theme.top),
 		"plat": _col(level.theme.plat), "spike": _col(level.theme.spike),
 		"hill_far": _col(level.theme.hill_far), "hill_near": _col(level.theme.hill_near),
+		"hill_farther": _col(level.theme.hill_far).darkened(0.28),  # дальний слой глубины
 		"amb": _col(level.theme.sky0).darkened(0.3),  # тёмный тон для атмосферного света
 	}
 	sky0 = _col(level.theme.sky0)
@@ -2314,6 +2316,7 @@ func _build_background(seed_val: int) -> void:
 	stars = []
 	for _i in range(70):
 		stars.append(Vector3(r.randf() * VW, r.randf() * VH * 0.7, 0.4 + r.randf() * 1.2))
+	hill_farther = _make_hills(r, 250, 16)
 	hill_far = _make_hills(r, 330, 26)
 	hill_near = _make_hills(r, 420, 34)
 	_build_tile_textures(seed_val)
@@ -2472,6 +2475,7 @@ func _draw() -> void:
 		_cam_draw = c
 
 		_draw_sky()
+		_draw_hills(hill_farther, th.hill_farther, c, 0.13)
 		_draw_hills(hill_far, th.hill_far, c, 0.25)
 		_draw_hills(hill_near, th.hill_near, c, 0.45)
 
@@ -2955,6 +2959,15 @@ func _shadow(cx: float, by: float, w: float) -> void:
 func _draw_sky() -> void:
 	if sky_tex:
 		draw_texture_rect(sky_tex, Rect2(0, 0, VW, VH), false)
+	# дрейфующие полосы-сияние (мягкие шторы света в небе)
+	var acol: Color = th.get("top", Color(0.6, 0.8, 1.0))
+	for layer in range(3):
+		var pts := PackedVector2Array()
+		for i in range(17):
+			var x := i * VW / 16.0
+			var yy := VH * (0.16 + layer * 0.06) + sin(x * 0.008 + tick * 0.012 + layer * 1.3) * 14.0
+			pts.append(Vector2(x, yy))
+		draw_polyline(pts, Color(acol.r, acol.g, acol.b, 0.05), 26.0 - layer * 5.0)
 	for sv in stars:
 		var tw := 0.45 + 0.35 * sin(tick * 0.05 + sv.x * 0.3)  # мерцание
 		draw_rect(Rect2(sv.x, sv.y, sv.z, sv.z), Color(1, 1, 1, tw))
@@ -3025,6 +3038,9 @@ func _draw_tiles(c: Vector2) -> void:
 				draw_rect(Rect2(px, py + 4 + wob, TILE, 4), lc)
 				var lcr: Color = lc.lightened(0.4)
 				draw_rect(Rect2(px, py + 3 + wob, TILE, 2), Color(lcr.r * 1.7, lcr.g * 1.7, lcr.b * 1.7))
+				# текущий поток: бегущий вправо яркий блик (общая фаза по миру)
+				var fl := fmod(tick * 0.7, float(TILE))
+				draw_rect(Rect2(px + fl - 3, py + 3 + wob, 6, 3), Color(lcr.r * 2.2, lcr.g * 2.2, lcr.b * 2.2, 0.75))
 				# пузырьки
 				var bx := px + 6 + fmod(tx * 11 + tick * 0.2, TILE - 12)
 				var bb := 2.0 + sin(tick * 0.18 + tx) * 1.2
