@@ -149,6 +149,7 @@ var sky0 := Color.BLACK
 var sky1 := Color.BLACK
 var sky_tex: GradientTexture2D = null   # кэш градиента неба
 var vignette_tex: GradientTexture2D = null  # затемнение по краям экрана
+var light_tex: GradientTexture2D = null  # мягкий радиальный «фонарик» для динамического света
 var ground_tex: ImageTexture = null   # пиксель-текстура камня
 var grass_tex: ImageTexture = null    # текстура травянистой кромки
 var plat_tex: ImageTexture = null     # текстура односторонней платформы
@@ -198,6 +199,7 @@ func _ready() -> void:
 	rng.randomize()
 	font = ThemeDB.fallback_font
 	_build_vignette()
+	_build_light_tex()
 	_build_crate_texture()
 	_load_settings()
 	_apply_volume()
@@ -2253,6 +2255,7 @@ func _build_background(seed_val: int) -> void:
 		"ground": _col(level.theme.ground), "top": _col(level.theme.top),
 		"plat": _col(level.theme.plat), "spike": _col(level.theme.spike),
 		"hill_far": _col(level.theme.hill_far), "hill_near": _col(level.theme.hill_near),
+		"amb": _col(level.theme.sky0).darkened(0.3),  # тёмный тон для атмосферного света
 	}
 	sky0 = _col(level.theme.sky0)
 	sky1 = _col(level.theme.sky1)
@@ -2430,6 +2433,7 @@ func _draw() -> void:
 		_draw_texts()
 		draw_set_transform(Vector2.ZERO)
 
+		_draw_lighting(c)
 		if vignette_tex:
 			draw_texture_rect(vignette_tex, Rect2(0, 0, VW, VH), false)
 		if flash > 0.0:
@@ -2508,6 +2512,83 @@ func _build_vignette() -> void:
 	vignette_tex.fill = GradientTexture2D.FILL_RADIAL
 	vignette_tex.fill_from = Vector2(0.5, 0.5)
 	vignette_tex.fill_to = Vector2(1.0, 1.0)
+
+func _build_light_tex() -> void:
+	# мягкий радиальный «фонарик»: яркое ядро → плавное затухание в прозрачность.
+	# Накладывается обычным блендом, осветляя сцену под источником (свет-пятно).
+	var g := Gradient.new()
+	g.set_offset(0, 0.0)
+	g.set_color(0, Color(1, 1, 1, 1.0))
+	g.add_point(0.35, Color(1, 1, 1, 0.55))
+	g.add_point(0.7, Color(1, 1, 1, 0.16))
+	g.set_offset(g.get_point_count() - 1, 1.0)
+	g.set_color(g.get_point_count() - 1, Color(1, 1, 1, 0.0))
+	light_tex = GradientTexture2D.new()
+	light_tex.gradient = g
+	light_tex.width = 128
+	light_tex.height = 128
+	light_tex.fill = GradientTexture2D.FILL_RADIAL
+	light_tex.fill_from = Vector2(0.5, 0.5)
+	light_tex.fill_to = Vector2(1.0, 0.5)
+
+func _light(world_pos: Vector2, radius: float, col: Color, intensity: float) -> void:
+	# свет-пятно в мировых координатах (рисуется в экранном пространстве)
+	if light_tex == null or intensity <= 0.0 or radius <= 0.0:
+		return
+	var sp := world_pos - _cam_draw
+	if sp.x + radius < 0.0 or sp.x - radius > VW or sp.y + radius < 0.0 or sp.y - radius > VH:
+		return  # за экраном — пропускаем
+	var d := radius * 2.0
+	draw_texture_rect(light_tex, Rect2(sp.x - radius, sp.y - radius, d, d), false,
+		Color(col.r, col.g, col.b, clampf(intensity, 0.0, 1.0)))
+
+func _draw_lighting(_c: Vector2) -> void:
+	# Динамический свет: лёгкое атмосферное затемнение мира + светящиеся пятна
+	# от игрока, пуль, вспышек, взрывов, портала, предметов и горящих врагов.
+	# Рисуется в экранном пространстве ПОСЛЕ мира и ДО HUD — интерфейс не тускнеет.
+	if light_tex == null:
+		return
+	# атмосферный тон: чуть приглушаем мир в холодный/тёмный оттенок темы,
+	# чтобы свет-пятна читались как настоящее освещение (не размывая HUD)
+	var amb: Color = th.get("amb", Color(0.04, 0.05, 0.10))
+	draw_rect(Rect2(0, 0, VW, VH), Color(amb.r, amb.g, amb.b, 0.16))
+	# портал — крупный пульсирующий маяк
+	if not level.is_empty():
+		var ep: Vector2 = level.exit_px
+		var ppulse := 0.85 + sin(tick * 0.07) * 0.15
+		_light(Vector2(ep.x, ep.y + TILE / 2.0), 110.0 * ppulse, Color(0.55, 0.74, 1.0), 0.6)
+	# игрок — мягкая аура, ярче в рывке
+	if state != "dead":
+		var pdash := 0.0
+		if P.get("dash_t", 0) > 0:
+			pdash = 0.35
+		_light(Vector2(P.x + P.w / 2.0, P.y + P.h / 2.0), 84.0 + pdash * 60.0,
+			Color(0.36, 0.95, 0.82), 0.4 + pdash)
+	# взрывы — крупная оранжевая вспышка, затухающая по жизни кольца
+	for s in shockwaves:
+		var sa := clampf(s.life / 16.0, 0.0, 1.0)
+		_light(Vector2(s.x, s.y), s.r + 40.0, Color(s.col.r, s.col.g, s.col.b), 0.7 * sa)
+	# дульные вспышки — короткий яркий свет
+	for m in muzzles:
+		var ma := clampf(m.life / 5.0, 0.0, 1.0)
+		_light(Vector2(m.x, m.y), 70.0 * ma + 10.0, Color(1.0, 0.93, 0.7), 0.85 * ma)
+	# пули — небольшие огоньки своим цветом (без перебора — их и так немного)
+	for b in bullets:
+		var br := 30.0
+		if b.get("pierce", false):
+			br = 46.0
+		elif b.get("grenade", false):
+			br = 40.0
+		_light(Vector2(b.x, b.y), br, b.color, 0.5)
+	# горящие враги — мерцающий огонёк
+	for en in enemies:
+		if en.get("burn", 0) > 0:
+			var flick := 0.4 + 0.2 * sin(tick * 0.5 + float(en.get("eid", 0)))
+			_light(Vector2(en.x + en.w / 2.0, en.y + en.h / 2.0), 46.0, Color(1.0, 0.5, 0.2), flick)
+	# предметы — нежный блик по типу
+	for pk in pickups:
+		var pcol: Color = { "weapon": Color(1, 0.85, 0.42), "med": Color(1, 0.42, 0.48), "ammo": Color(0.79, 0.65, 0.29), "coin": Color(1, 0.85, 0.42), "shield": Color(0.5, 0.83, 1.0) }.get(pk.kind, Color(1, 1, 1))
+		_light(Vector2(pk.x + pk.w / 2.0, pk.y + pk.h / 2.0), 34.0, pcol, 0.4)
 
 func _glow(c: Vector2, r: float, col: Color) -> void:
 	# мягкое свечение из нескольких полупрозрачных кругов
@@ -2689,6 +2770,8 @@ func _draw_pickups() -> void:
 
 func _draw_enemies() -> void:
 	for en in enemies:
+		if not en.has("dir"):
+			en["dir"] = 1  # защита отрисовки (на случай неполной записи врага)
 		var flash: bool = en.hurt_t > 84
 		# контактная тень для наземных врагов
 		if not en.get("fly", false) and en.type != "boss":
