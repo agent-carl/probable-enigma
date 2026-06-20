@@ -168,6 +168,10 @@ var aberration := 0.0                    # хром. аберрация при �
 var _blur := 0.0                         # плавное размытие мира на паузе/оверлеях
 var _hitmark := 0.0                       # таймер хит-маркера на прицеле
 var _recoil := 0.0                        # отдача — прицел раскрывается при выстреле
+var _hp_ghost := 100.0                    # «призрак» HP (плавно догоняет при уроне)
+var _combo_pop := 0.0                     # всплеск текста серии при убийстве
+var _wswitch := 0.0                       # анимация смены оружия
+var _prev_wi := 0                         # для детекта смены оружия
 var ground_tex: ImageTexture = null   # пиксель-текстура камня
 var grass_tex: ImageTexture = null    # текстура травянистой кромки
 var plat_tex: ImageTexture = null     # текстура односторонней платформы
@@ -1102,6 +1106,8 @@ func start_run(s: int, label: String) -> void:
 	shots_hit = 0
 	damage_dealt = 0
 	P = make_player()
+	_hp_ghost = P.hp
+	_prev_wi = 0
 	start_level()
 	_set_state("play")
 
@@ -1384,6 +1390,10 @@ func hurt_enemy(en: Dictionary, dmg: int, crit: bool, silent := false) -> void:
 		# серия убийств наращивает множитель очков
 		combo += 1
 		combo_t = 150
+		_combo_pop = 12.0   # всплеск текста серии
+		if combo >= 5 and combo % 5 == 0:   # вспышка на майлстоунах серии
+			flash = maxf(flash, 0.22)
+			flash_color = Color("#ffd86b")
 		max_combo = max(max_combo, combo)
 		var mult := combo_mult()
 		var gained: int = int(round(en.score * mult))
@@ -1854,6 +1864,18 @@ func update_player() -> void:
 		_hitmark -= 1.0
 	if _recoil > 0.0:
 		_recoil = maxf(0.0, _recoil - 0.12)
+	if _combo_pop > 0.0:
+		_combo_pop = maxf(0.0, _combo_pop - 1.0)
+	if _wswitch > 0.0:
+		_wswitch = maxf(0.0, _wswitch - 1.0)
+	if P.wi != _prev_wi:
+		_wswitch = 14.0
+		_prev_wi = P.wi
+	# «призрак» HP: медленно догоняет при уроне, мгновенно — при лечении
+	if _hp_ghost > P.hp:
+		_hp_ghost = maxf(P.hp, _hp_ghost - maxf(0.4, (_hp_ghost - P.hp) * 0.08))
+	else:
+		_hp_ghost = P.hp
 	if low_ammo_t > 0:
 		low_ammo_t -= 1
 
@@ -2242,6 +2264,11 @@ func update_pickups() -> void:
 				score += 5
 				coins += 1
 				add_text(pk.x, pk.y - 6, "+1●", Color("#ffd86b"))
+			# вспышка-сияние при подборе
+			var shc: Color = { "weapon": Color(1, 0.85, 0.42), "med": Color(0.5, 1, 0.65), "ammo": Color(0.82, 0.66, 0.3), "coin": Color(1, 0.85, 0.42), "shield": Color(0.5, 0.83, 1.0) }.get(pk.kind, Color(1, 1, 1))
+			var pcc := Vector2(pk.x + pk.w / 2.0, pk.y + pk.h / 2.0)
+			_burst_particles(pcc, shc, 10, 90.0, 0.4)
+			shockwaves.append({ "x": pcc.x, "y": pcc.y, "r": 3.0, "max_r": 22.0, "life": 8.0, "col": shc })
 			play_sfx("pickup")
 			continue
 		alive.append(pk)
@@ -3575,6 +3602,10 @@ func _draw_hud() -> void:
 	var hpw := 190.0
 	_ci.draw_rect(Rect2(12, 12, hpw + 4, 20), Color(0, 0, 0, 0.45))
 	var frac := clampf(P.hp / P.maxhp, 0, 1)
+	# «призрак» недавнего урона — бледная полоса, плавно догоняющая HP
+	var gfrac := clampf(_hp_ghost / P.maxhp, 0, 1)
+	if gfrac > frac:
+		_ci.draw_rect(Rect2(14, 14, hpw * gfrac, 16), Color(1.0, 0.45, 0.45, 0.7))
 	var hpcol := Color("#56d98b")
 	if frac <= 0.35:
 		hpcol = Color("#ff5e57") if (tick % 30 < 15) else Color("#c93a34")
@@ -3605,7 +3636,9 @@ func _draw_hud() -> void:
 	if combo >= 3:
 		var m := combo_mult()
 		var alpha := clampf(combo_t / 40.0, 0.35, 1.0)
-		_text(Vector2(VW / 2.0, 70), "СЕРИЯ x%d  (очки x%.1f)" % [combo, m], 18, Color(1, 0.85, 0.42, alpha), true)
+		var csz := 18 + int(_combo_pop * 0.8)   # всплеск при свежем убийстве
+		var ccol := Color(1, 0.92, 0.55, alpha) if _combo_pop > 6.0 else Color(1, 0.85, 0.42, alpha)
+		_text(Vector2(VW / 2.0, 70), "СЕРИЯ x%d  (очки x%.1f)" % [combo, m], csz, ccol, true)
 
 	# уровень/тема
 	var title := "Уровень %d · %s" % [lvl, level.theme.name]
@@ -3657,7 +3690,14 @@ func _draw_hud() -> void:
 	_text(Vector2(50, VH - 22), "%s · %s" % [w.name, ammo_str], 13, acol)
 	for i in range(P.weapons.size()):
 		var sx := 232 + i * 26
-		_ci.draw_rect(Rect2(sx, VH - 42, 22, 22), Color(1, 0.85, 0.42, 0.85) if i == P.wi else Color(1, 1, 1, 0.15))
+		if i == P.wi:
+			var gp := _wswitch / 14.0   # вспышка-увеличение при смене
+			var ex := gp * 4.0
+			_ci.draw_rect(Rect2(sx - ex, VH - 42 - ex, 22 + ex * 2.0, 22 + ex * 2.0), Color(1.0, 0.92, 0.55, 0.85 + 0.15 * gp))
+			if gp > 0.0:
+				_ci.draw_rect(Rect2(sx - ex - 1, VH - 43 - ex, 24 + ex * 2.0, 24 + ex * 2.0), Color(1, 1, 1, 0.5 * gp), false, 1.5)
+		else:
+			_ci.draw_rect(Rect2(sx, VH - 42, 22, 22), Color(1, 1, 1, 0.15))
 		_text(Vector2(sx + 7, VH - 26), str(i + 1), 12, Color("#2a1c04") if i == P.wi else Color("#cfd6f5"))
 
 	# пульс при низком здоровье
