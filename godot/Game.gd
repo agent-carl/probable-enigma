@@ -2556,6 +2556,11 @@ func _setup_bloom() -> void:
 	env.set_glow_level(3, 1.0)
 	env.set_glow_level(4, 0.5)
 	env.set_glow_level(5, 0.0)
+	# лёгкая кинематографичная цветокоррекция (контраст + насыщенность)
+	env.adjustment_enabled = true
+	env.adjustment_brightness = 1.0
+	env.adjustment_contrast = 1.07
+	env.adjustment_saturation = 1.12
 	world_env = WorldEnvironment.new()
 	world_env.environment = env
 	add_child(world_env)
@@ -2596,6 +2601,101 @@ func _light(world_pos: Vector2, radius: float, col: Color, intensity: float, ene
 	draw_texture_rect(light_tex, Rect2(sp.x - radius, sp.y - radius, d, d), false,
 		Color(col.r * e, col.g * e, col.b * e, clampf(intensity, 0.0, 1.0)))
 
+func _ray_seg(o: Vector2, dir: Vector2, a: Vector2, b: Vector2) -> float:
+	# расстояние вдоль луча o+dir*t до пересечения с отрезком a-b (>0), иначе -1
+	var s := b - a
+	var denom := dir.x * s.y - dir.y * s.x
+	if absf(denom) < 0.00001:
+		return -1.0  # параллельны
+	var diff := a - o
+	var t := (diff.x * s.y - diff.y * s.x) / denom            # вдоль луча
+	var u := (diff.x * dir.y - diff.y * dir.x) / denom         # вдоль отрезка
+	if t > 0.0 and u >= 0.0 and u <= 1.0:
+		return t
+	return -1.0
+
+func _occluder_segments(c: Vector2, R: float) -> Array:
+	# силуэтные рёбра твёрдых тайлов/ящиков в радиусе R вокруг точки c
+	var segs := []
+	if level.is_empty():
+		return segs
+	var tx0 := int(floor((c.x - R) / TILE))
+	var tx1 := int(floor((c.x + R) / TILE))
+	var ty0 := int(floor((c.y - R) / TILE))
+	var ty1 := int(floor((c.y + R) / TILE))
+	for ty in range(ty0, ty1 + 1):
+		for tx in range(tx0, tx1 + 1):
+			if not is_blocking(tile_at(tx, ty)):
+				continue
+			var px := tx * TILE
+			var py := ty * TILE
+			# ребро добавляем только если соседний тайл с этой стороны — пустой
+			if not is_blocking(tile_at(tx - 1, ty)):
+				segs.append([Vector2(px, py), Vector2(px, py + TILE)])
+			if not is_blocking(tile_at(tx + 1, ty)):
+				segs.append([Vector2(px + TILE, py), Vector2(px + TILE, py + TILE)])
+			if not is_blocking(tile_at(tx, ty - 1)):
+				segs.append([Vector2(px, py), Vector2(px + TILE, py)])
+			if not is_blocking(tile_at(tx, ty + 1)):
+				segs.append([Vector2(px, py + TILE), Vector2(px + TILE, py + TILE)])
+	return segs
+
+func _visibility_polygon(L: Vector2, R: float, segs: Array) -> PackedVector2Array:
+	# полигон видимости: лучи к углам преград (+ опорная окружность), обрезка стенами
+	var angles := []
+	for i in range(24):
+		angles.append(i * TAU / 24.0)            # опорная окружность для открытых направлений
+	for s in segs:
+		for p in [s[0], s[1]]:
+			var base := atan2(p.y - L.y, p.x - L.x)
+			angles.append(base - 0.0003)
+			angles.append(base)
+			angles.append(base + 0.0003)
+	angles.sort()
+	var poly := PackedVector2Array()
+	for ang in angles:
+		var dir := Vector2(cos(ang), sin(ang))
+		var nearest := R
+		for s in segs:
+			var t := _ray_seg(L, dir, s[0], s[1])
+			if t > 0.0 and t < nearest:
+				nearest = t
+		poly.append(L + dir * nearest)
+	return poly
+
+func _light_shadowed(world_pos: Vector2, radius: float, col: Color, intensity: float, energy := 1.0) -> void:
+	# мягкое свет-пятно с динамическими тенями: рисуем полигон видимости,
+	# текстурированный «фонариком» (мягкое затухание + резкие края теней).
+	if light_tex == null or intensity <= 0.0:
+		return
+	var segs := _occluder_segments(world_pos, radius)
+	if segs.is_empty():
+		_light(world_pos, radius, col, intensity, energy)   # нет преград — обычное пятно
+		return
+	var poly := _visibility_polygon(world_pos, radius, segs)
+	var n := poly.size()
+	if n < 3:
+		return
+	var e := energy if bloom_on else 1.0
+	var lcolor := Color(col.r * e, col.g * e, col.b * e, clampf(intensity, 0.0, 1.0))
+	# веер треугольников от центра: явные индексы (без триангуляции — надёжно)
+	var pts := PackedVector2Array()
+	var uvs := PackedVector2Array()
+	var cols := PackedColorArray()
+	pts.append(world_pos - _cam_draw)                        # центр (индекс 0)
+	uvs.append(Vector2(0.5, 0.5))
+	cols.append(lcolor)
+	for p in poly:
+		pts.append(p - _cam_draw)
+		uvs.append((p - world_pos) / (radius * 2.0) + Vector2(0.5, 0.5))
+		cols.append(lcolor)
+	var idx := PackedInt32Array()
+	for i in range(n):
+		idx.append(0)
+		idx.append(1 + i)
+		idx.append(1 + (i + 1) % n)
+	RenderingServer.canvas_item_add_triangle_array(get_canvas_item(), idx, pts, cols, uvs, PackedInt32Array(), PackedFloat32Array(), light_tex.get_rid())
+
 func _draw_lighting(_c: Vector2) -> void:
 	# Динамический свет: лёгкое атмосферное затемнение мира + светящиеся пятна
 	# от игрока, пуль, вспышек, взрывов, портала, предметов и горящих врагов.
@@ -2622,8 +2722,8 @@ func _draw_lighting(_c: Vector2) -> void:
 		var pdash := 0.0
 		if P.get("dash_t", 0) > 0:
 			pdash = 0.35
-		_light(Vector2(P.x + P.w / 2.0, P.y + P.h / 2.0), 84.0 + pdash * 60.0,
-			Color(0.36, 0.95, 0.82), 0.4 + pdash, 1.6 + pdash)
+		_light_shadowed(Vector2(P.x + P.w / 2.0, P.y + P.h / 2.0), 128.0 + pdash * 60.0,
+			Color(0.46, 0.92, 0.86), 0.52 + pdash, 1.6 + pdash)
 	# взрывы — крупная оранжевая вспышка, затухающая по жизни кольца
 	for s in shockwaves:
 		var sa := clampf(s.life / 16.0, 0.0, 1.0)

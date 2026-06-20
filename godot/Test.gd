@@ -911,6 +911,38 @@ func _init() -> void:
 	var Lb: Dictionary = game.generate_level(987654, 4)
 	_ok(La.lava_cells.size() == Lb.lava_cells.size(), "lava generation is deterministic")
 
+	# ---------- 31. Динамические тени (геометрия света) ----------
+	var ro := Vector2(0, 0)
+	_ok(absf(game._ray_seg(ro, Vector2(1, 0), Vector2(10, -5), Vector2(10, 5)) - 10.0) < 0.001, "ray hits perpendicular segment at correct distance")
+	_ok(game._ray_seg(ro, Vector2(1, 0), Vector2(-10, -5), Vector2(-10, 5)) < 0.0, "ray misses segment behind origin")
+	_ok(game._ray_seg(ro, Vector2(0, 1), Vector2(10, -5), Vector2(10, 5)) < 0.0, "ray away from segment misses")
+	# мини-уровень: сплошная стена в столбце справа от света
+	var Wt := 20
+	var Ht := 10
+	var g2 := PackedByteArray()
+	g2.resize(Wt * Ht)
+	for yy in range(Ht):
+		g2[yy * Wt + 5] = 1   # T_SOLID
+	game.level = { "W": Wt, "H": Ht, "grid": g2 }
+	var Lp := Vector2(2 * 32 + 16, 5 * 32 + 16)   # свет слева от стены
+	var segs2: Array = game._occluder_segments(Lp, 220.0)
+	_ok(segs2.size() > 0, "occluder segments found near wall (%d)" % segs2.size())
+	var vpoly: PackedVector2Array = game._visibility_polygon(Lp, 400.0, segs2)
+	_ok(vpoly.size() >= 3, "visibility polygon built (%d pts)" % vpoly.size())
+	var wall_x := 5 * 32.0
+	var maxx := -1.0e9
+	for p in vpoly:
+		if absf(p.y - Lp.y) < 8.0:
+			maxx = maxf(maxx, p.x)
+	_ok(maxx <= wall_x + 1.0, "light blocked by wall on +x (reach=%.1f wall=%.1f)" % [maxx, wall_x])
+	# без преград свет достаёт до радиуса
+	var vopen: PackedVector2Array = game._visibility_polygon(Vector2(0, 0), 100.0, [])
+	var far_reach := 0.0
+	for p in vopen:
+		far_reach = maxf(far_reach, p.length())
+	_ok(absf(far_reach - 100.0) < 0.5, "open light reaches full radius")
+	game.level = {}   # сброс, чтобы пост-тестовая отрисовка не падала
+
 	if failures == 0:
 		print("\nALL TESTS PASSED")
 	else:
