@@ -1278,6 +1278,35 @@ func _init() -> void:
 	game.bullets = []
 	game.level = {}
 
+	# ---------- 46. Сундуки с сокровищами ----------
+	var chest_total := 0
+	for lv in range(1, 6):
+		for s in range(1, 9):
+			chest_total += game.generate_level(s * 71 + lv, lv).chests.size()
+	_ok(chest_total > 0, "chests are generated (%d across 40 levels)" % chest_total)
+	# открытие сундука выдаёт лут
+	var cWS := 24
+	var cHS := 12
+	var cgrid := PackedByteArray()
+	cgrid.resize(cWS * cHS)
+	for ty in range(10, cHS):
+		for tx in range(cWS):
+			cgrid[ty * cWS + tx] = 1
+	var chest := { "x": 120.0, "y": 9 * 32 - 18.0, "w": 26.0, "h": 18.0, "opened": false }
+	game.level = { "W": cWS, "H": cHS, "grid": cgrid, "px_w": cWS * 32, "px_h": cHS * 32,
+		"crate_hp": {}, "theme": { "top": "#58c98f" }, "chests": [chest] }
+	game.P.x = 118.0
+	game.P.y = 9 * 32 - 30
+	game.pickups = []
+	game.update_chests()
+	_ok(chest.opened, "chest opens on player contact")
+	_ok(game.pickups.size() > 0, "opened chest spawns loot (%d items)" % game.pickups.size())
+	var coins_before: int = game.pickups.size()
+	game.update_chests()   # повторно — уже открыт, новых предметов нет
+	_ok(game.pickups.size() == coins_before, "opened chest does not re-trigger")
+	game.pickups = []
+	game.level = {}
+
 	if failures == 0:
 		print("\nALL TESTS PASSED")
 	else:

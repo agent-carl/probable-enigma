@@ -639,6 +639,11 @@ func _ready() -> void:
 			if li >= 0 and li + 1 < args.size():
 				lvl = clampi(int(args[li + 1]), 1, 99)
 				start_level()
+			if "--chest" in args and not level.get("chests", []).is_empty():
+				var ch0: Dictionary = level.chests[0]   # дебаг: к первому сундуку для скриншота
+				P.x = ch0.x - 40.0
+				P.y = ch0.y - 12.0
+				cam = Vector2(ch0.x - VW / 2.0, ch0.y - VH / 2.0)
 	queue_redraw()
 
 func _physics_process(_delta: float) -> void:
@@ -700,7 +705,17 @@ func _demo_step() -> void:
 	if demo_frame == 50 and "--shop" in OS.get_cmdline_args() and state == "play":
 		coins = 50
 		open_shop()
-	if state == "play":
+	if state == "play" and "--chest" in OS.get_cmdline_args():
+		input.move = 0   # дебаг-скриншот сундука: бот стоит на месте
+		input.jump_pressed = false
+		input.jump_held = false
+		input.shoot_held = false
+		input.shoot_clicked = false
+		input.dash = false
+		input.ult = false
+		input.switch_to = -1
+		input.aim = Vector2(P.x + 100, P.y)
+	elif state == "play":
 		input.move = 1
 		input.jump_pressed = (demo_frame % 26 == 0)
 		input.jump_held = true
@@ -1154,6 +1169,26 @@ func generate_level(seed_val: int, level_num: int) -> Dictionary:
 		_setc(grid, W, H, cxc, cyc, T_CRATE)
 		crate_hp[cyc * W + cxc] = 24
 
+	# --- сундуки с сокровищами: награда за исследование карты (1–2 на уровень) ---
+	var chests := []
+	var chest_goal := 1 + (1 if r.randf() < 0.55 else 0)
+	var chest_tries := 0
+	while chests.size() < chest_goal and chest_tries < 40:
+		chest_tries += 1
+		var hx := _rr(r, 10, W - 10)
+		if spike_cols.has(hx) or hx < 8 or hx > W - 8:
+			continue
+		var hyc: int = ground_y[hx] - 1
+		if hyc < 4 or _cell(grid, W, H, hx, hyc) != T_EMPTY or _cell(grid, W, H, hx + 1, hyc) != T_EMPTY:
+			continue
+		var too_close := false
+		for c in chests:
+			if absi(int(c.x / TILE) - hx) < 6:
+				too_close = true
+		if too_close:
+			continue
+		chests.append({ "x": hx * TILE + 2.0, "y": ground_y[hx] * TILE - 18.0, "w": 26.0, "h": 18.0, "opened": false })
+
 	# --- движущиеся платформы/лифты в открытых местах ---
 	var movers := []
 	var mover_tries := 4 + level_num
@@ -1427,7 +1462,7 @@ func generate_level(seed_val: int, level_num: int) -> Dictionary:
 		"spawn": Vector2(2 * TILE + 6, ground_y[2] * TILE - 31),
 		"exit_px": exit_px, "enemies": enemy_list, "pickups": pickup_list,
 		"has_boss": is_boss_level, "crate_hp": crate_hp, "movers": movers, "hazards": hazards,
-		"lava_cells": lava_cells,
+		"lava_cells": lava_cells, "chests": chests,
 	}
 
 # ============================== Доступ к карте (рантайм) ==============================
@@ -2520,6 +2555,7 @@ func sim_step() -> void:
 			update_enemies()
 			update_bullets()
 			update_pickups()
+			update_chests()
 		update_effects()
 		update_ambient()
 		update_camera()
@@ -3183,6 +3219,9 @@ func update_pickups() -> void:
 	var alive := []
 	for pk in pickups:
 		pk.t += 0.08
+		if pk.has("vx") and absf(pk.vx) > 0.05:   # горизонтальный разлёт (фонтан из сундука)
+			pk.x += pk.vx
+			pk.vx *= 0.86
 		pk.vy = min(pk.vy + 0.4, 10.0)
 		var ny: float = pk.y + pk.vy
 		var ty := int(floor((ny + pk.h) / TILE))
@@ -3237,6 +3276,39 @@ func update_pickups() -> void:
 			continue
 		alive.append(pk)
 	pickups = alive
+
+func update_chests() -> void:
+	for ch in level.get("chests", []):
+		if ch.opened:
+			continue
+		if aabb(ch, P):
+			open_chest(ch)
+
+func open_chest(ch: Dictionary) -> void:
+	ch.opened = true
+	var cx: float = ch.x + ch.w / 2.0
+	var cy: float = ch.y + ch.h / 2.0
+	# фонтан монет + гарантированный полезный предмет + шанс на оружие
+	var n := 6 + rng.randi_range(0, 6)
+	for i in range(n):
+		var ang := -PI / 2.0 + (rng.randf() - 0.5) * 1.6
+		var spd := 2.2 + rng.randf() * 2.2
+		pickups.append({ "kind": "coin", "x": cx - 6, "y": cy - 8, "w": 12, "h": 12,
+			"vy": sin(ang) * spd - 2.0, "vx": cos(ang) * spd, "t": rng.randf() * 6.0 })
+	var roll := rng.randf()
+	if roll < 0.34:
+		pickups.append({ "kind": "shield", "x": cx - 10, "y": cy - 10, "w": 20, "h": 20, "vy": -3.4, "t": 0.0, "shield": 25.0 })
+	elif roll < 0.68:
+		pickups.append({ "kind": "med", "x": cx - 11, "y": cy - 9, "w": 22, "h": 18, "vy": -3.4, "t": 0.0, "heal": 30 })
+	else:
+		pickups.append({ "kind": "ammo", "x": cx - 11, "y": cy - 9, "w": 22, "h": 18, "vy": -3.4, "t": 0.0 })
+	if rng.randf() < 0.4:   # бонус: новый ствол
+		pickups.append({ "kind": "weapon", "x": cx - 11, "y": cy - 9, "w": 22, "h": 18, "vy": -3.8, "t": 0.0,
+			"weapon": WEAPON_DROPS[rng.randi_range(0, WEAPON_DROPS.size() - 1)] })
+	_burst_particles(Vector2(cx, cy), Color(1.0, 0.85, 0.42), 22, 150.0, 0.6)
+	shockwaves.append({ "x": cx, "y": cy, "r": 4.0, "max_r": 40.0, "life": 12.0, "col": Color(1.0, 0.85, 0.42) })
+	flash = maxf(flash, 0.3)
+	play_sfx("pickup")
 
 func update_effects() -> void:
 	var pa := []
@@ -3549,6 +3621,7 @@ func _draw() -> void:
 		_draw_movers()
 		_draw_hazards()
 		_draw_portal()
+		_draw_chests()
 		_draw_pickups()
 		_draw_enemies()
 		_draw_player()
@@ -4511,6 +4584,34 @@ func _draw_portal() -> void:
 		draw_circle(Vector2(cxp, cyp), rr, Color(0.47, 0.63, 1.0, 0.06))
 	draw_arc(Vector2(cxp, cyp), 20 * pulse, 0, TAU, 32, Color(1.6, 1.9, 2.2, 0.9), 3.0)
 	draw_arc(Vector2(cxp, cyp), 28 * pulse, 0, TAU, 32, Color(0.55, 0.74, 1.0, 0.5), 2.0)
+
+func _draw_chests() -> void:
+	for ch in level.get("chests", []):
+		var x: float = ch.x
+		var y: float = ch.y
+		if x + ch.w < _cam_draw.x - 40.0 or x > _cam_draw.x + VW + 40.0:
+			continue
+		if ch.opened:
+			# открытый: тёмный корпус с откинутой крышкой
+			draw_rect(Rect2(x, y + 6, ch.w, ch.h - 6), Color("#5a3a1a"))
+			draw_rect(Rect2(x + 1, y + 7, ch.w - 2, 4), Color("#2a1a0c"))
+			draw_colored_polygon(PackedVector2Array([
+				Vector2(x, y + 6), Vector2(x + ch.w, y + 6), Vector2(x + ch.w - 3, y - 4), Vector2(x + 3, y - 4)]), Color("#6b4420"))
+		else:
+			# закрытый: золотой сундук с пульсирующим сиянием и блёстками
+			var pul := 0.5 + 0.5 * sin(tick * 0.1 + x * 0.05)
+			draw_circle(Vector2(x + ch.w / 2.0, y + ch.h / 2.0), ch.w * 0.8 + pul * 3.0, Color(1.0, 0.82, 0.35, 0.12))
+			draw_rect(Rect2(x, y, ch.w, ch.h), Color("#7a5418"))
+			draw_rect(Rect2(x + 1, y + 1, ch.w - 2, ch.h - 2), Color("#c8922e"))
+			draw_rect(Rect2(x, y + ch.h * 0.42, ch.w, 4), Color("#5a3a14"))   # стык крышки
+			draw_rect(Rect2(x + ch.w / 2.0 - 2, y + ch.h * 0.42 - 1, 4, 6), Color("#ffe79a"))  # замок
+			var gl := 1.4 if bloom_on else 1.0
+			draw_circle(Vector2(x + ch.w / 2.0, y + ch.h * 0.45 + 2), 1.6 + pul, Color(1.6 * gl, 1.4 * gl, 0.8 * gl))
+			# блёстки
+			for k in range(3):
+				var sa := tick * 0.08 + k * 2.1 + x
+				var sp := Vector2(x + ch.w / 2.0 + cos(sa) * (ch.w * 0.6), y + sin(sa * 1.3) * 8.0 - 2.0)
+				draw_rect(Rect2(sp.x, sp.y, 2, 2), Color(1, 0.95, 0.7, 0.4 + 0.4 * sin(sa * 2.0)))
 
 func _draw_pickups() -> void:
 	for pk in pickups:
