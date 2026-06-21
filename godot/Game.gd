@@ -90,6 +90,15 @@ const ACTIVES := {
 	"nova":   { "icon": "✺", "name": "Щит-нова", "desc": "Щит + отталкивающая волна", "cd": 480 },
 }
 
+# Классы персонажей: разные стартовые наборы (разблок за «ядра»)
+const CLASSES := [
+	{ "id": "soldier",  "icon": "🔫", "name": "Солдат", "desc": "Сбалансирован. Старт: пистолет + ПП «Оса».", "cost": 0 },
+	{ "id": "berserk",  "icon": "🔥", "name": "Берсерк", "desc": "+20% урон, −20% HP. Старт: дробовик + огнемёт.", "cost": 12 },
+	{ "id": "ghost",    "icon": "💨", "name": "Призрак", "desc": "+30% скорость, двойной прыжок, быстрый рывок, −15% HP. Старт: винтовка.", "cost": 12 },
+	{ "id": "engineer", "icon": "⚙", "name": "Инженер", "desc": "Старт: рикошет + гранатомёт, актив «Щит-нова».", "cost": 15 },
+	{ "id": "tank",     "icon": "🛡", "name": "Танк", "desc": "+60% HP, броня, старт со щитом, −10% скорость.", "cost": 15 },
+]
+
 # Мета-прогрессия: постоянные улучшения между забегами за «ядра»
 const META := {
 	"vitality":    { "icon": "♥", "name": "Закалка", "desc": "+20 к стартовому HP за уровень", "cost": [4, 7, 11], "max": 3 },
@@ -164,6 +173,8 @@ var run_cores := 0       # ядра, заработанные за текущи�
 var difficulty := 0      # выбранная сложность (Ascension): 0..3
 var max_difficulty := 0  # макс. открытая сложность (сохраняется)
 var daily_run := false   # текущий забег — «сид дня»
+var class_sel := 0       # выбранный класс (индекс в CLASSES)
+var classes_unlocked := { "soldier": true }  # открытые классы (сохраняется)
 var tutorial_seen := false  # обучающие подсказки показаны (сохраняется)
 var tut := { "move": false, "jump": false, "shoot": false, "dash": false }  # выполненные действия
 var _second_used := false  # «Второе дыхание» израсходовано на этом уровне
@@ -585,6 +596,7 @@ func _on_ui(key: String) -> void:
 		"achievements": _set_state("achievements")
 		"settings": _settings_back = state; _set_state("settings")
 		"daily": start_daily()
+		"classes": _set_state("classes")
 		"diff_dn": difficulty = maxi(0, difficulty - 1); _save_settings()
 		"diff_up": difficulty = mini(max_difficulty, difficulty + 1); _save_settings()
 		"settings_back": _set_state(_settings_back)
@@ -605,6 +617,8 @@ func _on_ui(key: String) -> void:
 					choose_upgrade(offer[i])
 			elif key.begins_with("mbuy_"):
 				buy_meta(key.substr(5))
+			elif key.begins_with("class_"):
+				_pick_class(int(key.substr(6)))
 			elif key.begins_with("shop"):
 				var i := int(key.substr(4))
 				if i < shop_items.size():
@@ -1239,6 +1253,22 @@ func start_daily() -> void:
 func _diff_name(d: int) -> String:
 	return ["Норма", "Ветеран", "Кошмар", "Преисподняя"][clampi(d, 0, 3)]
 
+func _pick_class(i: int) -> void:
+	# выбрать класс (если открыт) или открыть за ядра
+	if i < 0 or i >= CLASSES.size():
+		return
+	var c: Dictionary = CLASSES[i]
+	if classes_unlocked.has(c.id):
+		class_sel = i
+		play_sfx("select")
+		_save_settings()
+	elif meta_cores >= int(c.cost):
+		meta_cores -= int(c.cost)
+		classes_unlocked[c.id] = true
+		class_sel = i
+		play_sfx("portal")
+		_save_settings()
+
 func start_run(s: int, label: String) -> void:
 	run_seed = s & 0xFFFFFFFF
 	seed_label = label if label != "" else str(run_seed)
@@ -1257,7 +1287,8 @@ func start_run(s: int, label: String) -> void:
 	_prev_wi = 0
 	relics = {}
 	tut = { "move": false, "jump": false, "shoot": false, "dash": false }
-	apply_meta()   # постоянные мета-улучшения
+	apply_class()  # стартовый набор класса
+	apply_meta()   # постоянные мета-улучшения поверх
 	_hp_ghost = P.hp
 	start_level()
 	_set_state("play")
@@ -1424,6 +1455,41 @@ func buy_meta(id: String) -> bool:
 	play_sfx("select")
 	_save_settings()
 	return true
+
+func _wslot(id: String) -> Dictionary:
+	return { "id": id, "ammo": WEAPONS[id].ammo }
+
+func apply_class() -> void:
+	# стартовый набор по выбранному классу
+	var c: Dictionary = CLASSES[clampi(class_sel, 0, CLASSES.size() - 1)]
+	var st: Dictionary = P.stats
+	match c.id:
+		"soldier":
+			P.weapons = [_wslot("pistol"), _wslot("smg")]
+		"berserk":
+			P.weapons = [_wslot("shotgun"), _wslot("flame")]
+			st.dmg_mul *= 1.2
+			P.maxhp = maxi(40, int(P.maxhp * 0.8))
+			P.hp = P.maxhp
+		"ghost":
+			P.weapons = [_wslot("pistol"), _wslot("rifle")]
+			st.spd_mul *= 1.3
+			st.jumps = 2
+			st.dash_cd_mul *= 0.6
+			P.maxhp = maxi(40, int(P.maxhp * 0.85))
+			P.hp = P.maxhp
+		"engineer":
+			P.weapons = [_wslot("pistol"), _wslot("ricochet"), _wslot("grenade")]
+			give_active("nova")
+		"tank":
+			P.weapons = [_wslot("pistol"), _wslot("smg")]
+			P.maxhp = int(P.maxhp * 1.6)
+			P.hp = P.maxhp
+			st.armor_mul *= 0.75
+			st.spd_mul *= 0.9
+			P.max_shield = maxf(P.max_shield, 30.0)
+			P.shield = P.max_shield
+	P.wi = 0
 
 func apply_meta() -> void:
 	# применяем купленные мета-улучшения в начале забега
@@ -4602,7 +4668,7 @@ func _draw_overlays() -> void:
 	if state == "play":
 		return
 	# для экранов без игрового мира — живой фон меню; иначе затемнение поверх игры
-	if level.is_empty() and (state == "menu" or state == "help" or state == "meta" or state == "achievements"):
+	if level.is_empty() and (state == "menu" or state == "help" or state == "meta" or state == "achievements" or state == "classes" or state == "settings"):
 		_draw_menu_bg()
 		_ci.draw_rect(Rect2(0, 0, VW, VH), Color(0.04, 0.05, 0.10, 0.45))
 	else:
@@ -4619,15 +4685,34 @@ func _draw_overlays() -> void:
 			_btn(Rect2(cx + 120, 192, 30, 28), "►", "diff_up", false)
 			if max_difficulty < 3:
 				_text(Vector2(cx, 232), "(побеждай боссов, чтобы открыть сложнее)", 11, Color("#6f7aa3"), true)
-			_btn(Rect2(cx - 90, 248, 180, 44), "Играть", "play")
-			_btn(Rect2(cx - 90, 300, 180, 30), "Сид дня", "daily", false)
-			_btn(Rect2(cx - 186, 338, 180, 30), "Управление", "help", false)
-			_btn(Rect2(cx + 6, 338, 180, 30), "Достижения  %d/%d" % [unlocked.size(), ACHIEVEMENTS.size()], "achievements", false)
-			_btn(Rect2(cx - 186, 372, 180, 30), "Настройки", "settings", false)
-			_btn(Rect2(cx + 6, 372, 180, 30), "Мастерская  ◉ %d" % meta_cores, "meta", false)
+			_btn(Rect2(cx - 90, 246, 180, 42), "Играть", "play")
+			_btn(Rect2(cx - 186, 296, 180, 30), "Класс: %s" % CLASSES[class_sel].name, "classes", false)
+			_btn(Rect2(cx + 6, 296, 180, 30), "Сид дня", "daily", false)
+			_btn(Rect2(cx - 186, 330, 180, 30), "Управление", "help", false)
+			_btn(Rect2(cx + 6, 330, 180, 30), "Достижения  %d/%d" % [unlocked.size(), ACHIEVEMENTS.size()], "achievements", false)
+			_btn(Rect2(cx - 186, 364, 180, 30), "Настройки", "settings", false)
+			_btn(Rect2(cx + 6, 364, 180, 30), "Мастерская  ◉ %d" % meta_cores, "meta", false)
 			var bl := "Рекорд: %d очков" % best if best > 0 else "Удачного первого забега!"
-			_text(Vector2(cx, 414), bl, 12, Color("#6f7aa3"), true)
-			_text(Vector2(cx, 430), "Enter / клик — старт · ↑↓ — выбор", 11, Color("#6f7aa3"), true)
+			_text(Vector2(cx, 410), bl, 12, Color("#6f7aa3"), true)
+			_text(Vector2(cx, 426), "Enter / клик — старт · ↑↓ — выбор", 11, Color("#6f7aa3"), true)
+		"classes":
+			_text(Vector2(cx, 54), "Классы", 34, Color("#ffe9b0"), true)
+			_text(Vector2(cx, 86), "Ядра: ◉ %d   (клик — выбрать / открыть)" % meta_cores, 14, Color("#9be8ff"), true)
+			var ky := 112.0
+			for i in range(CLASSES.size()):
+				var c: Dictionary = CLASSES[i]
+				var owned: bool = classes_unlocked.has(c.id)
+				var chosen: bool = i == class_sel
+				var rect := Rect2(cx - 290, ky, 580, 50)
+				_ci.draw_rect(rect, Color(0.16, 0.22, 0.14, 0.55) if chosen else (Color(1, 1, 1, 0.05) if owned else Color(0, 0, 0, 0.25)))
+				_ci.draw_rect(rect, Color(0.49, 0.95, 0.55, 0.8) if chosen else (Color(1, 0.85, 0.42, 0.5) if owned else Color(1, 1, 1, 0.12)), false, 1.5)
+				_ui_rects["class_%d" % i] = rect
+				_text(Vector2(rect.position.x + 16, ky + 24), "%s  %s" % [c.icon, c.name], 17, Color("#ffe9b0") if owned else Color("#8d97bd"))
+				_draw_wrapped(c.desc, rect.position.x + 150, ky + 14, 360, 12, Color("#aab3d6") if owned else Color("#6f7aa3"))
+				var tag := ("Выбран" if chosen else "Выбрать") if owned else ("◉ %d — открыть" % c.cost)
+				_text(Vector2(rect.position.x + 524, ky + 30), tag, 13, Color("#7df2a5") if chosen else (Color("#ffd86b") if owned else (Color("#ffd86b") if meta_cores >= int(c.cost) else Color("#ff6b5e"))))
+				ky += 56.0
+			_btn(Rect2(cx - 90, ky + 4, 180, 38), "← Назад", "menu", false)
 		"help":
 			_text(Vector2(cx, 56), "Управление", 34, Color("#ffe9b0"), true)
 			var binds := [
@@ -4880,6 +4965,11 @@ func _load_settings() -> void:
 		meta_cores = int(cfg.get_value("progress", "cores", 0))
 		max_difficulty = clampi(int(cfg.get_value("progress", "maxdiff", 0)), 0, 3)
 		difficulty = clampi(int(cfg.get_value("progress", "diff", 0)), 0, max_difficulty)
+		class_sel = int(cfg.get_value("progress", "class", 0))
+		classes_unlocked = { "soldier": true }
+		if cfg.has_section("classes"):
+			for k in cfg.get_section_keys("classes"):
+				classes_unlocked[k] = true
 		meta.clear()
 		if cfg.has_section("meta"):
 			for k in cfg.get_section_keys("meta"):
@@ -4911,6 +5001,9 @@ func _save_settings() -> void:
 	cfg.set_value("progress", "cores", meta_cores)
 	cfg.set_value("progress", "maxdiff", max_difficulty)
 	cfg.set_value("progress", "diff", difficulty)
+	cfg.set_value("progress", "class", class_sel)
+	for cid in classes_unlocked.keys():
+		cfg.set_value("classes", cid, true)
 	cfg.set_value("progress", "tutorial", tutorial_seen)
 	for mid in meta.keys():
 		cfg.set_value("meta", mid, int(meta[mid]))

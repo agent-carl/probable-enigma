@@ -1145,6 +1145,28 @@ func _init() -> void:
 	_ok(absf(game.P.hp - act_hp) < 1e-6, "active does nothing while on cooldown")
 	game.level = {}
 
+	# ---------- 39. Классы персонажей ----------
+	game.meta = {}
+	game.difficulty = 0
+	game.classes_unlocked = { "soldier": true }
+	game.class_sel = 0
+	game.meta_cores = 0
+	game._pick_class(1)   # берсерк заблокирован, ядер нет
+	_ok(game.class_sel == 0 and not game.classes_unlocked.has("berserk"), "locked class not selected without cores")
+	game.meta_cores = 50
+	game._pick_class(1)
+	_ok(game.classes_unlocked.has("berserk") and game.class_sel == 1, "class unlocked and selected with cores")
+	_ok(game.meta_cores == 38, "cores spent on class unlock (50-12)")
+	game.start_run(9100, "cls")
+	_ok(game.P.weapons[0].id == "shotgun", "berserk class starts with shotgun")
+	_ok(game.P.stats.dmg_mul > 1.0, "berserk class boosts damage")
+	game.classes_unlocked["tank"] = true
+	game.class_sel = 4
+	game.start_run(9101, "tank")
+	_ok(game.P.maxhp > 100, "tank class has more max HP (%d)" % game.P.maxhp)
+	game.class_sel = 0
+	game.level = {}
+
 	if failures == 0:
 		print("\nALL TESTS PASSED")
 	else:
