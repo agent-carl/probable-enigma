@@ -4317,7 +4317,15 @@ func _draw_player() -> void:
 		sqy = 1.0 + 0.22 * sp
 		sqx = 1.0 - 0.14 * sp
 	var piv := Vector2(pcx, P.y + P.h)   # опора — ноги
-	draw_set_transform(Vector2(piv.x - _cam_draw.x - sqx * piv.x, piv.y - _cam_draw.y - sqy * piv.y), 0.0, Vector2(sqx, sqy))
+	# наклон корпуса в сторону движения + лёгкое «дыхание» в покое
+	var lean := clampf(P.vx * 0.014, -0.13, 0.13)
+	var idle: bool = P.on_ground and absf(P.vx) < 0.4
+	var bob := (sin(tick * 0.08) * 0.8) if idle else 0.0
+	var spv := Vector2(sqx * piv.x, sqy * piv.y)
+	var cr := cos(lean)
+	var sr := sin(lean)
+	var origin := Vector2(piv.x - _cam_draw.x - (spv.x * cr - spv.y * sr), piv.y - _cam_draw.y - bob - (spv.x * sr + spv.y * cr))
+	draw_set_transform(origin, lean, Vector2(sqx, sqy))
 	# анимированные ноги при беге
 	var moving: bool = P.on_ground and absf(P.vx) > 0.4
 	var ph := tick * 0.45
@@ -4329,8 +4337,13 @@ func _draw_player() -> void:
 	draw_rect(Rect2(P.x, P.y + 4, P.w, P.h - 4), Color("#3ec6a8"))
 	draw_rect(Rect2(P.x + 2, P.y + 5, P.w - 4, 3), Color("#5fe0c2"))  # верхний блик
 	draw_rect(Rect2(P.x, P.y + P.h - 7, P.w, 7), Color("#2c917b"))
-	draw_rect(Rect2(P.x + (8 if P.face > 0 else 2), P.y + 8, 10, 5), Color("#e9f4ff"))
-	draw_rect(Rect2(P.x + (13 if P.face > 0 else 3), P.y + 9, 4, 3), Color("#1c3a4a"))
+	# глаз-визор с редким морганием
+	var blink: bool = (tick % 200) < 6
+	if blink:
+		draw_rect(Rect2(P.x + (8 if P.face > 0 else 2), P.y + 11, 10, 2), Color("#1c3a4a"))
+	else:
+		draw_rect(Rect2(P.x + (8 if P.face > 0 else 2), P.y + 8, 10, 5), Color("#e9f4ff"))
+		draw_rect(Rect2(P.x + (13 if P.face > 0 else 3), P.y + 9, 4, 3), Color("#1c3a4a"))
 	draw_set_transform(-_cam_draw)   # сброс squash перед оружием
 	# оружие, повёрнутое к прицелу
 	var w: Dictionary = WEAPONS[P.weapons[P.wi].id]
