@@ -1218,6 +1218,20 @@ func _init() -> void:
 	game.toggle_englight()
 	_ok(game.engine_light == el0, "toggle_englight restores flag")
 
+	# ---------- 43. Локализация (RU/EN) ----------
+	game.lang = "ru"
+	_ok(game.T("Играть") == "Играть", "RU: T() returns source unchanged")
+	game.lang = "en"
+	_ok(game.T("Играть") == "Play", "EN: known key translated")
+	_ok(game.T("Дробовик") == "Shotgun", "EN: weapon name translated")
+	_ok(game.T("no_such_key_xyz") == "no_such_key_xyz", "EN: unknown key falls back to source")
+	_ok((game.T("Уровень %d — %s") % [3, game.T("Норма")]) == "Level 3 — Normal", "EN: format template + value")
+	var lg0: String = game.lang
+	game.toggle_lang()
+	_ok(game.lang != lg0, "toggle_lang switches language")
+	game.toggle_lang()
+	_ok(game.lang == lg0, "toggle_lang switches back")
+
 	if failures == 0:
 		print("\nALL TESTS PASSED")
 	else:

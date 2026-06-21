@@ -229,6 +229,7 @@ var crt_on := false                      # ретро CRT-фильтр (в па�
 var fullscreen_on := false               # полноэкранный режим (сохраняется)
 var vsync_on := true                     # вертикальная синхронизация (сохраняется)
 var win_size_idx := 0                    # индекс размера окна (сохраняется)
+var lang := "ru"                         # язык интерфейса: "ru"/"en" (сохраняется)
 const WIN_SIZES := [Vector2i(960, 540), Vector2i(1280, 720), Vector2i(1600, 900), Vector2i(1920, 1080)]
 var bg_layer: CanvasLayer = null         # слой статичного фона (небо/холмы) ПОЗАДИ мира
 var bg_node: Node2D = null                # отдельный холст фона — фундамент для движкового света
@@ -309,6 +310,270 @@ var _music_key := ""
 var _audio_idx := 0
 var _sfx_cache := {}
 
+# ============================== Локализация (RU/EN) ==============================
+
+func T(s: String) -> String:
+	# перевод строки UI: при lang=="en" ищем в словаре (нет — отдаём как есть);
+	# при lang=="ru" возвращаем исходную строку без изменений (нулевой риск).
+	if lang == "en":
+		return LOC_EN.get(s, s)
+	return s
+
+const LOC_EN := {
+	# Биомы
+	"Изумрудные пещеры": "Emerald Caves",
+	"Багровые руины": "Crimson Ruins",
+	"Ледяные шахты": "Frozen Mines",
+	"Токсичные топи": "Toxic Swamps",
+	"Пустынный форт": "Desert Fort",
+	# Оружие
+	"Пистолет": "Pistol",
+	"ПП «Оса»": "SMG \"Wasp\"",
+	"Дробовик": "Shotgun",
+	"Винтовка": "Rifle",
+	"Гранатомёт": "Grenade Launcher",
+	"Рельса": "Railgun",
+	"Огнемёт": "Flamethrower",
+	"Рикошет": "Ricochet",
+	# Улучшения
+	"Живучесть": "Vitality",
+	"+25 к максимуму здоровья и лечение на 25": "+25 max health and heal 25",
+	"Крупный калибр": "Heavy Caliber",
+	"+15% к урону всего оружия": "+15% damage to all weapons",
+	"Скорострельность": "Rapid Fire",
+	"Оружие стреляет на 12% быстрее": "Weapons fire 12% faster",
+	"Лёгкие ботинки": "Light Boots",
+	"+10% к скорости бега": "+10% run speed",
+	"Двойной прыжок": "Double Jump",
+	"Дополнительный прыжок в воздухе": "Extra mid-air jump",
+	"Вампиризм": "Vampirism",
+	"+3 здоровья за каждое убийство": "+3 health per kill",
+	"Бронежилет": "Body Armor",
+	"Получаемый урон снижен на 15%": "Incoming damage reduced 15%",
+	"Крит. патроны": "Crit Rounds",
+	"+10% шанс двойного урона": "+10% double-damage chance",
+	"Пружины": "Springs",
+	"+8% к высоте прыжка": "+8% jump height",
+	"Энергощит": "Energy Shield",
+	"+30 к запасу щита и медленное восстановление щита": "+30 shield capacity and slow shield regen",
+	"Реактивный рывок": "Jet Dash",
+	"Перезарядка рывка быстрее на 30%": "Dash cooldown 30% faster",
+	"Сапёр": "Sapper",
+	"+40% к радиусу и урону ваших взрывов": "+40% radius and damage of your explosions",
+	"Магнит": "Magnet",
+	"Притягивает монеты и предметы с большего расстояния": "Pulls coins and items from farther away",
+	"Берсерк": "Berserker",
+	"Чем длиннее серия убийств, тем выше урон": "The longer the kill streak, the higher the damage",
+	"Зажигательные": "Incendiary",
+	"Пули с шансом поджигают врагов (урон по времени)": "Bullets may ignite enemies (damage over time)",
+	"Крио-патроны": "Cryo Rounds",
+	"Пули с шансом замораживают врагов (замедление)": "Bullets may freeze enemies (slow)",
+	# Реликвии
+	"Стеклянная пушка": "Glass Cannon",
+	"+60% урона, но −30% к макс. HP": "+60% damage, but −30% max HP",
+	"Кровавый клык": "Bloodfang",
+	"+10 HP за каждое убийство": "+10 HP per kill",
+	"Детонатор": "Detonator",
+	"Убитые враги взрываются": "Killed enemies explode",
+	"Цепь молний": "Chain Lightning",
+	"Попадания бьют током по ближнему врагу": "Hits zap a nearby enemy",
+	"Касание Мидаса": "Midas Touch",
+	"+1 монета за каждое убийство": "+1 coin per kill",
+	"Адреналин": "Adrenaline",
+	"При HP < 35%: +40% к скорострельности и бегу": "At HP < 35%: +40% fire rate and run speed",
+	"Шипы": "Thorns",
+	"Получив урон, ранит окружающих врагов": "When hit, damages surrounding enemies",
+	"Второе дыхание": "Second Wind",
+	"Раз за уровень переживает смертельный удар (1 HP)": "Once per level, survives a lethal hit (1 HP)",
+	"Сверхзаряд": "Overcharge",
+	"Ультимейт заряжается на 60% быстрее": "Ultimate charges 60% faster",
+	"Морозная аура": "Frost Aura",
+	"Близкие враги замедляются": "Nearby enemies are slowed",
+	"Регенерация": "Regeneration",
+	"Медленно восстанавливает здоровье": "Slowly restores health",
+	"Палач": "Executioner",
+	"+50% урона по врагам с HP < 30%": "+50% damage to enemies below 30% HP",
+	"Бастион": "Bastion",
+	"+25 щита в начале каждого уровня": "+25 shield at the start of each level",
+	# Активные предметы
+	"Бомба": "Bomb",
+	"Взрыв по области у прицела": "Area blast at the cursor",
+	"Блинк": "Blink",
+	"Телепорт к прицелу + i-кадры": "Teleport to cursor + i-frames",
+	"Заморозка": "Freeze",
+	"Замораживает врагов вокруг": "Freezes nearby enemies",
+	"Аптечка": "Medkit",
+	"Мгновенно +40 HP": "Instantly +40 HP",
+	"Щит-нова": "Shield Nova",
+	"Щит + отталкивающая волна": "Shield + knockback wave",
+	# Классы
+	"Солдат": "Soldier",
+	"Сбалансирован. Старт: пистолет + ПП «Оса».": "Balanced. Start: pistol + SMG \"Wasp\".",
+	"+20% урон, −20% HP. Старт: дробовик + огнемёт.": "+20% damage, −20% HP. Start: shotgun + flamethrower.",
+	"Призрак": "Ghost",
+	"+30% скорость, двойной прыжок, быстрый рывок, −15% HP. Старт: винтовка.": "+30% speed, double jump, fast dash, −15% HP. Start: rifle.",
+	"Инженер": "Engineer",
+	"Старт: рикошет + гранатомёт, актив «Щит-нова».": "Start: ricochet + grenade launcher, active \"Shield Nova\".",
+	"Танк": "Tank",
+	"+60% HP, броня, старт со щитом, −10% скорость.": "+60% HP, armor, start with shield, −10% speed.",
+	# Мастерская (мета)
+	"Закалка": "Tempering",
+	"+20 к стартовому HP за уровень": "+20 starting HP per level",
+	"Мощь": "Might",
+	"+6% к урону за уровень": "+6% damage per level",
+	"Прыть": "Swiftness",
+	"+5% к скорости бега за уровень": "+5% run speed per level",
+	"Богатство": "Wealth",
+	"+5 стартовых монет за уровень": "+5 starting coins per level",
+	"Арсенал": "Arsenal",
+	"Старт со случайным доп. оружием": "Start with a random extra weapon",
+	"Наследие": "Legacy",
+	"Старт со случайной реликвией": "Start with a random relic",
+	"Скидки": "Discounts",
+	"−12% к ценам в магазине за уровень": "−12% shop prices per level",
+	# Достижения
+	"Первая кровь": "First Blood",
+	"Убить первого врага": "Kill your first enemy",
+	"Мастер серий": "Streak Master",
+	"Серия из 10 убийств": "A streak of 10 kills",
+	"Победитель боссов": "Boss Slayer",
+	"Одолеть босса": "Defeat a boss",
+	"Носить 4 оружия одновременно": "Carry 4 weapons at once",
+	"Глубоко": "Deep",
+	"Дойти до 10-го уровня": "Reach level 10",
+	"Снайпер": "Sniper",
+	"Точность 90%+ за забег (30+ выстрелов)": "90%+ accuracy in a run (30+ shots)",
+	"Богач": "Rich",
+	"Набрать 1000 очков за забег": "Score 1000 points in a run",
+	"Живучий": "Survivor",
+	"Прожить 3 минуты за один забег": "Survive 3 minutes in a single run",
+	# Сложность
+	"Норма": "Normal",
+	"Ветеран": "Veteran",
+	"Кошмар": "Nightmare",
+	"Преисподняя": "Inferno",
+	# Боссы
+	"СТРАЖ ЗЕМЛИ": "EARTH WARDEN",
+	"НЕБЕСНЫЙ СТРАЖ": "SKY WARDEN",
+	"ПРИЗЫВАТЕЛЬ": "SUMMONER",
+	"АРТИЛЛЕРИСТ": "ARTILLERIST",
+	"БОСС": "BOSS",
+	# Сообщения / HUD / меню
+	"Сид дня ": "Daily seed ",
+	"Уровень %d — %s": "Level %d — %s",
+	"Реликвия: ": "Relic: ",
+	"+50 здоровья": "+50 health",
+	"Боезапас": "Ammo",
+	"Патроны всему оружию": "Ammo for all weapons",
+	"Щит": "Shield",
+	"+30 к запасу щита": "+30 shield capacity",
+	"Оружие": "Weapon",
+	"Случайный новый ствол": "A random new gun",
+	"Улучшение": "Upgrade",
+	"Случайная прокачка": "A random upgrade",
+	" (актив, E)": " (active, E)",
+	"щит -%d": "shield -%d",
+	"Второе дыхание!": "Second Wind!",
+	"БОСС ПОВЕРЖЕН! +500": "BOSS DEFEATED! +500",
+	"Открыта сложность: ": "Difficulty unlocked: ",
+	"Нет патронов!": "Out of ammo!",
+	"%s: +патроны": "%s: +ammo",
+	"+%d патронов": "+%d ammo",
+	"+25 очков": "+25 points",
+	"Сначала победите босса!": "Defeat a boss first!",
+	"+%d щит": "+%d shield",
+	"рывок (Shift/ПКМ)": "dash (Shift/RMB)",
+	"ПЕРЕГРУЗКА (Q)": "OVERLOAD (Q)",
+	"перегрузка (Q)": "overload (Q)",
+	"СЕРИЯ x%d  (очки x%.1f)": "STREAK x%d  (score x%.1f)",
+	"Уровень %d · %s": "Level %d · %s",
+	"● %d · убийств: %d · сид: %s": "● %d · kills: %d · seed: %s",
+	"Доберитесь до портала →": "Reach the portal →",
+	"← → / A D — движение": "← → / A D — move",
+	"W / Пробел — прыжок": "W / Space — jump",
+	"Мышь + ЛКМ — стрельба": "Mouse + LMB — shoot",
+	"Shift / ПКМ — рывок": "Shift / RMB — dash",
+	"Платформер-рогалик: каждый забег — новая карта": "Platformer roguelike: every run is a new map",
+	"Сложность: %s": "Difficulty: %s",
+	"(побеждай боссов, чтобы открыть сложнее)": "(beat bosses to unlock higher)",
+	"Продолжить": "Continue",
+	"Новый забег": "New Run",
+	"Играть": "Play",
+	"Класс: %s": "Class: %s",
+	"Сид дня": "Daily Seed",
+	"Управление": "Controls",
+	"Достижения  %d/%d": "Achievements  %d/%d",
+	"Настройки": "Settings",
+	"Мастерская  ◉ %d": "Workshop  ◉ %d",
+	"Рекорд: %d очков": "Best: %d points",
+	"Удачного первого забега!": "Good luck on your first run!",
+	"Enter / клик — старт · ↑↓ — выбор": "Enter / click — start · ↑↓ — select",
+	"Классы": "Classes",
+	"Ядра: ◉ %d   (клик — выбрать / открыть)": "Cores: ◉ %d   (click — select / unlock)",
+	"Выбран": "Selected",
+	"Выбрать": "Select",
+	"◉ %d — открыть": "◉ %d — unlock",
+	"← Назад": "← Back",
+	"Бег": "Run",
+	"A / D  или  ← / →": "A / D  or  ← / →",
+	"Прыжок": "Jump",
+	"W / ↑ / Пробел": "W / ↑ / Space",
+	"Спрыгнуть с платформы": "Drop through platform",
+	"S + прыжок": "S + jump",
+	"Прицел / огонь": "Aim / fire",
+	"Мышь / ЛКМ": "Mouse / LMB",
+	"Рывок (i-кадры)": "Dash (i-frames)",
+	"Shift / ПКМ": "Shift / RMB",
+	"Ультимейт «Перегрузка»": "Ultimate \"Overload\"",
+	"Активный предмет": "Active item",
+	"Смена оружия": "Switch weapon",
+	"1–8 / колесо мыши": "1–8 / mouse wheel",
+	"Громкость": "Volume",
+	"Пауза": "Paused",
+	"Звук вкл/выкл": "Sound on/off",
+	"Полный экран": "Fullscreen",
+	"Геймпад: стики — движение/прицел, A — прыжок, RT/RB — огонь, LT/B — рывок, Y — ульта, LB — оружие": "Gamepad: sticks — move/aim, A — jump, RT/RB — fire, LT/B — dash, Y — ult, LB — weapon",
+	"Достижения": "Achievements",
+	"Открыто %d из %d": "Unlocked %d of %d",
+	"В меню": "To Menu",
+	"Геймпад поддерживается · F11 — полноэкран": "Gamepad supported · F11 — fullscreen",
+	"Громкость (общая)": "Volume (master)",
+	"Музыка": "Music",
+	"Звуки": "Sound FX",
+	"Тряска: %s": "Shake: %s",
+	"Вкл": "On",
+	"Выкл": "Off",
+	"CRT-фильтр: %s": "CRT filter: %s",
+	"Экран: %s": "Display: %s",
+	"Полный": "Full",
+	"Окно": "Window",
+	"Окно: %d×%d": "Window: %d×%d",
+	"Объёмный свет (рельеф земли): %s": "Volumetric light (ground relief): %s",
+	"Вы погибли": "You Died",
+	"★ НОВЫЙ РЕКОРД ★": "★ NEW RECORD ★",
+	"Очки: %d": "Score: %d",
+	"Уровень": "Level",
+	"Убийств": "Kills",
+	"Лучшая серия": "Best streak",
+	"Точность": "Accuracy",
+	"Урон нанесён": "Damage dealt",
+	"Время": "Time",
+	"Рекорд": "Best",
+	"Заработано ◉ %d   (всего ◉ %d → Мастерская)": "Earned ◉ %d   (total ◉ %d → Workshop)",
+	"Уровень пройден!": "Level cleared!",
+	"Выберите улучшение (1 / 2 / 3 или клик):": "Choose an upgrade (1 / 2 / 3 or click):",
+	"Магазин": "Shop",
+	"Монеты: ● %d   (цифры или клик — купить)": "Coins: ● %d   (number keys or click to buy)",
+	"куплено": "bought",
+	"Дальше →": "Next →",
+	"Мастерская": "Workshop",
+	"Ядра: ◉ %d   (клик — купить улучшение)": "Cores: ◉ %d   (click to buy upgrade)",
+	"МАКС": "MAX",
+	"Громкость  ( − / + )": "Volume  ( − / + )",
+	"Достижение: ": "Achievement: ",
+	"Язык: %s": "Language: %s",
+}
+
 # ============================== Жизненный цикл ==============================
 
 func _ready() -> void:
@@ -335,6 +600,8 @@ func _ready() -> void:
 	set_process_unhandled_input(true)
 	if "--englight" in OS.get_cmdline_args():
 		engine_light = true
+	if "--en" in OS.get_cmdline_args():
+		lang = "en"
 	if "--bench" in OS.get_cmdline_args():
 		_run_bench()
 		return
@@ -1307,7 +1574,7 @@ func start_daily() -> void:
 	# «сид дня»: одинаковая карта для всех в этот день
 	daily_run = true
 	var ds := Time.get_date_string_from_system()   # напр. "2026-06-20"
-	start_run(int(hash(ds)) & 0xFFFFFFFF, "Сид дня " + ds)
+	start_run(int(hash(ds)) & 0xFFFFFFFF, T("Сид дня ") + ds)
 
 func _diff_name(d: int) -> String:
 	return ["Норма", "Ветеран", "Кошмар", "Преисподняя"][clampi(d, 0, 3)]
@@ -1403,9 +1670,9 @@ func start_level() -> void:
 	shake = 0.0
 	intro = 150
 	if boss_alive:
-		intro_text = "Уровень %d — %s" % [lvl, boss_name]
+		intro_text = T("Уровень %d — %s") % [lvl, T(boss_name)]
 	else:
-		intro_text = "Уровень %d — %s" % [lvl, level.theme.name]
+		intro_text = T("Уровень %d — %s") % [lvl, T(level.theme.name)]
 	_build_background(level_seed)
 	_play_music((lvl - 1) % 5, boss_alive)
 	if not test_mode:
@@ -1478,7 +1745,7 @@ func grant_relic(id: String) -> bool:
 		P.stats.dmg_mul *= 1.6
 		P.maxhp = max(30, int(P.maxhp * 0.7))
 		P.hp = min(P.hp, P.maxhp)
-	toasts.append({ "text": "Реликвия: " + RELICS[id].name, "life": 220.0 })
+	toasts.append({ "text": T("Реликвия: ") + T(RELICS[id].name), "life": 220.0 })
 	play_sfx("portal")
 	return true
 
@@ -1601,7 +1868,7 @@ func build_shop() -> Array:
 		items.append({ "id": "relic", "icon": RELICS[rid].icon, "name": RELICS[rid].name, "desc": RELICS[rid].desc, "price": 28, "sold": false, "relic": rid })
 	var aid := _random_other_active()
 	if aid != "":
-		items.append({ "id": "active", "icon": ACTIVES[aid].icon, "name": ACTIVES[aid].name, "desc": ACTIVES[aid].desc + " (актив, E)", "price": 14, "sold": false, "active": aid })
+		items.append({ "id": "active", "icon": ACTIVES[aid].icon, "name": ACTIVES[aid].name, "desc": T(ACTIVES[aid].desc) + T(" (актив, E)"), "price": 14, "sold": false, "active": aid })
 	# мета-скидка на цены
 	var disc := 1.0 - 0.12 * meta_level("discount")
 	if disc < 1.0:
@@ -1684,7 +1951,7 @@ func hurt_player(dmg: float, from_dir: float, src := Vector2.INF) -> void:
 		var absorbed: int = int(min(P.shield, real))
 		P.shield -= absorbed
 		real -= absorbed
-		add_text(P.x + P.w / 2.0, P.y - 14, "щит -%d" % absorbed, Color("#7fd4ff"))
+		add_text(P.x + P.w / 2.0, P.y - 14, T("щит -%d") % absorbed, Color("#7fd4ff"))
 		burst(P.x + P.w / 2.0, P.y + P.h / 2.0, 8, Color("#7fd4ff"))
 	if real > 0:
 		P.hp -= real
@@ -1702,7 +1969,7 @@ func hurt_player(dmg: float, from_dir: float, src := Vector2.INF) -> void:
 			P.inv = max(P.inv, 100)
 			flash = maxf(flash, 0.5)
 			flash_color = Color("#7df2a5")
-			toasts.append({ "text": "Второе дыхание!", "life": 150.0 })
+			toasts.append({ "text": T("Второе дыхание!"), "life": 150.0 })
 			return
 		P.hp = 0
 		die()
@@ -1886,13 +2153,13 @@ func hurt_enemy(en: Dictionary, dmg: int, crit: bool, silent := false) -> void:
 			shockwaves.append({ "x": en.x + en.w / 2.0, "y": en.y + en.h / 2.0, "r": 12.0, "max_r": 160.0, "life": 26.0, "col": Color("#ffd86b") })
 			flash = 0.7
 			flash_color = Color("#ffe9b0")
-			add_text(en.x + en.w / 2.0, en.y - 30, "БОСС ПОВЕРЖЕН! +500", Color("#ffd86b"))
+			add_text(en.x + en.w / 2.0, en.y - 30, T("БОСС ПОВЕРЖЕН! +500"), Color("#ffd86b"))
 			play_sfx("portal")
 			unlock("boss_slayer")
 			grant_random_relic()   # награда за босса — реликвия
 			if difficulty >= max_difficulty and max_difficulty < 3:
 				max_difficulty = difficulty + 1   # открыта новая сложность
-				toasts.append({ "text": "Открыта сложность: " + _diff_name(max_difficulty), "life": 240.0 })
+				toasts.append({ "text": T("Открыта сложность: ") + T(_diff_name(max_difficulty)), "life": 240.0 })
 				_save_settings()
 		elif en.get("type", "") == "exploder":
 			explode(en.x + en.w / 2.0, en.y + en.h / 2.0, en.get("radius", 62), int(round(en.dmg * 0.8)), "e")
@@ -2088,7 +2355,7 @@ func try_shoot() -> void:
 	if not want or P.cd > 0:
 		return
 	if slot.ammo <= 0:
-		add_text(P.x + P.w / 2.0, P.y - 8, "Нет патронов!", Color("#ff6b5e"))
+		add_text(P.x + P.w / 2.0, P.y - 8, T("Нет патронов!"), Color("#ff6b5e"))
 		low_ammo_t = 60
 		switch_weapon(0)
 		return
@@ -2174,12 +2441,12 @@ func give_weapon(id: String) -> void:
 		if s.id == id:
 			if is_finite(s.ammo):
 				s.ammo += WEAPONS[id].ammo
-			add_text(P.x + P.w / 2.0, P.y - 10, "%s: +патроны" % WEAPONS[id].name, Color("#9be8ff"))
+			add_text(P.x + P.w / 2.0, P.y - 10, T("%s: +патроны") % T(WEAPONS[id].name), Color("#9be8ff"))
 			return
 	P.weapons.append({ "id": id, "ammo": WEAPONS[id].ammo })
 	if P.weapons.size() > 1:
 		P.wi = P.weapons.size() - 1
-	add_text(P.x + P.w / 2.0, P.y - 10, "%s!" % WEAPONS[id].name, Color("#ffd86b"))
+	add_text(P.x + P.w / 2.0, P.y - 10, "%s!" % T(WEAPONS[id].name), Color("#ffd86b"))
 
 func give_ammo() -> void:
 	var slot: Dictionary = P.weapons[P.wi]
@@ -2192,10 +2459,10 @@ func give_ammo() -> void:
 	if not slot.is_empty():
 		var add: int = roundi(WEAPONS[slot.id].ammo * 0.6)
 		slot.ammo += add
-		add_text(P.x + P.w / 2.0, P.y - 10, "+%d патронов" % add, Color("#9be8ff"))
+		add_text(P.x + P.w / 2.0, P.y - 10, T("+%d патронов") % add, Color("#9be8ff"))
 	else:
 		score += 25
-		add_text(P.x + P.w / 2.0, P.y - 10, "+25 очков", Color("#9be8ff"))
+		add_text(P.x + P.w / 2.0, P.y - 10, T("+25 очков"), Color("#9be8ff"))
 
 # ============================== Эффекты ==============================
 
@@ -2359,7 +2626,7 @@ func update_player() -> void:
 	if overlaps_tile(P, T_EXIT):
 		if boss_alive:
 			if tick % 45 == 0:
-				add_text(P.x + P.w / 2.0, P.y - 12, "Сначала победите босса!", Color("#ff6b5e"))
+				add_text(P.x + P.w / 2.0, P.y - 12, T("Сначала победите босса!"), Color("#ff6b5e"))
 		else:
 			level_clear()
 			return
@@ -2913,7 +3180,7 @@ func update_pickups() -> void:
 			elif pk.kind == "shield":
 				P.max_shield = max(P.max_shield, pk.shield)
 				P.shield = min(P.max_shield, P.shield + pk.shield)
-				add_text(P.x + P.w / 2.0, P.y - 10, "+%d щит" % int(pk.shield), Color("#7fd4ff"))
+				add_text(P.x + P.w / 2.0, P.y - 10, T("+%d щит") % int(pk.shield), Color("#7fd4ff"))
 			elif pk.kind == "coin":
 				score += 5
 				coins += 1
@@ -4549,6 +4816,7 @@ func _draw_texts() -> void:
 # ============================== HUD и оверлеи ==============================
 
 func _text(pos: Vector2, s: String, size: int, color: Color, center := false) -> void:
+	s = T(s)
 	var px := pos
 	if center:
 		var sz := font.get_string_size(s, HORIZONTAL_ALIGNMENT_LEFT, -1, size)
@@ -4616,14 +4884,14 @@ func _draw_hud() -> void:
 		var alpha := clampf(combo_t / 40.0, 0.35, 1.0)
 		var csz := 18 + int(_combo_pop * 0.8)   # всплеск при свежем убийстве
 		var ccol := Color(1, 0.92, 0.55, alpha) if _combo_pop > 6.0 else Color(1, 0.85, 0.42, alpha)
-		_text(Vector2(VW / 2.0, 70), "СЕРИЯ x%d  (очки x%.1f)" % [combo, m], csz, ccol, true)
+		_text(Vector2(VW / 2.0, 70), T("СЕРИЯ x%d  (очки x%.1f)") % [combo, m], csz, ccol, true)
 
 	# уровень/тема
-	var title := "Уровень %d · %s" % [lvl, level.theme.name]
+	var title := T("Уровень %d · %s") % [lvl, T(level.theme.name)]
 	if boss_alive:
-		title = "Уровень %d · %s" % [lvl, boss_name if boss_name != "" else "БОСС"]
+		title = T("Уровень %d · %s") % [lvl, T(boss_name) if boss_name != "" else T("БОСС")]
 	if difficulty > 0:
-		title += "  ·  %s" % _diff_name(difficulty)
+		title += "  ·  %s" % T(_diff_name(difficulty))
 	_text(Vector2(VW / 2.0, 24), title, 14, Color("#dfe5ff"), true)
 
 	# полоса здоровья босса
@@ -4649,7 +4917,7 @@ func _draw_hud() -> void:
 	var score_str := str(score)
 	var ssz := font.get_string_size(score_str, HORIZONTAL_ALIGNMENT_LEFT, -1, 16)
 	_text(Vector2(VW - 16 - ssz.x, 26), score_str, 16, Color("#ffd86b"))
-	var sub := "● %d · убийств: %d · сид: %s" % [coins, kills, seed_label]
+	var sub := T("● %d · убийств: %d · сид: %s") % [coins, kills, seed_label]
 	var subsz := font.get_string_size(sub, HORIZONTAL_ALIGNMENT_LEFT, -1, 11)
 	_text(Vector2(VW - 16 - subsz.x, 44), sub, 11, Color("#8d97bd"))
 
@@ -4667,7 +4935,7 @@ func _draw_hud() -> void:
 	var acol := Color("#eaf0ff")
 	if low_ammo_t > 0 or (is_finite(slot.ammo) and slot.ammo <= 5):
 		acol = Color("#ff5e57")
-	_text(Vector2(50, VH - 22), "%s · %s" % [w.name, ammo_str], 13, acol)
+	_text(Vector2(50, VH - 22), "%s · %s" % [T(w.name), ammo_str], 13, acol)
 	for i in range(P.weapons.size()):
 		var sx := 232 + i * 26
 		if i == P.wi:
@@ -4744,7 +5012,7 @@ func _draw_tutorial() -> void:
 		return
 	var sx: float = P.x + P.w / 2.0 - _cam_draw.x
 	var sy: float = P.y - _cam_draw.y - 14.0
-	var tw := font.get_string_size(hint, HORIZONTAL_ALIGNMENT_LEFT, -1, 13).x + 16.0
+	var tw := font.get_string_size(T(hint), HORIZONTAL_ALIGNMENT_LEFT, -1, 13).x + 16.0
 	var pulse := 0.6 + 0.4 * sin(tick * 0.12)
 	_ci.draw_rect(Rect2(sx - tw / 2.0, sy - 16.0, tw, 20.0), Color(0.05, 0.06, 0.12, 0.8))
 	_ci.draw_rect(Rect2(sx - tw / 2.0, sy - 16.0, tw, 20.0), Color(1, 0.85, 0.42, 0.5 * pulse), false, 1.0)
@@ -4851,6 +5119,10 @@ func toggle_englight() -> void:
 	engine_light = not engine_light
 	_save_settings()
 
+func toggle_lang() -> void:
+	lang = "en" if lang == "ru" else "ru"
+	_save_settings()
+
 func toggle_fullscreen() -> void:
 	fullscreen_on = not fullscreen_on
 	_apply_fullscreen()
@@ -4923,7 +5195,7 @@ func _draw_overlays() -> void:
 			# выбор сложности (Ascension)
 			_btn(Rect2(cx - 150, 192, 30, 28), "◄", "diff_dn", false)
 			var dcol := Color("#ff8f8f") if difficulty >= 2 else Color("#eaf0ff")
-			_text(Vector2(cx, 211), "Сложность: %s" % _diff_name(difficulty), 16, dcol, true)
+			_text(Vector2(cx, 211), T("Сложность: %s") % T(_diff_name(difficulty)), 16, dcol, true)
 			_btn(Rect2(cx + 120, 192, 30, 28), "►", "diff_up", false)
 			if max_difficulty < 3:
 				_text(Vector2(cx, 232), "(побеждай боссов, чтобы открыть сложнее)", 11, Color("#6f7aa3"), true)
@@ -4932,18 +5204,18 @@ func _draw_overlays() -> void:
 				_btn(Rect2(cx + 6, 246, 180, 42), "Новый забег", "play", false)
 			else:
 				_btn(Rect2(cx - 90, 246, 180, 42), "Играть", "play")
-			_btn(Rect2(cx - 186, 296, 180, 30), "Класс: %s" % CLASSES[class_sel].name, "classes", false)
+			_btn(Rect2(cx - 186, 296, 180, 30), T("Класс: %s") % T(CLASSES[class_sel].name), "classes", false)
 			_btn(Rect2(cx + 6, 296, 180, 30), "Сид дня", "daily", false)
 			_btn(Rect2(cx - 186, 330, 180, 30), "Управление", "help", false)
-			_btn(Rect2(cx + 6, 330, 180, 30), "Достижения  %d/%d" % [unlocked.size(), ACHIEVEMENTS.size()], "achievements", false)
+			_btn(Rect2(cx + 6, 330, 180, 30), T("Достижения  %d/%d") % [unlocked.size(), ACHIEVEMENTS.size()], "achievements", false)
 			_btn(Rect2(cx - 186, 364, 180, 30), "Настройки", "settings", false)
-			_btn(Rect2(cx + 6, 364, 180, 30), "Мастерская  ◉ %d" % meta_cores, "meta", false)
-			var bl := "Рекорд: %d очков" % best if best > 0 else "Удачного первого забега!"
+			_btn(Rect2(cx + 6, 364, 180, 30), T("Мастерская  ◉ %d") % meta_cores, "meta", false)
+			var bl := T("Рекорд: %d очков") % best if best > 0 else T("Удачного первого забега!")
 			_text(Vector2(cx, 410), bl, 12, Color("#6f7aa3"), true)
 			_text(Vector2(cx, 426), "Enter / клик — старт · ↑↓ — выбор", 11, Color("#6f7aa3"), true)
 		"classes":
 			_text(Vector2(cx, 54), "Классы", 34, Color("#ffe9b0"), true)
-			_text(Vector2(cx, 86), "Ядра: ◉ %d   (клик — выбрать / открыть)" % meta_cores, 14, Color("#9be8ff"), true)
+			_text(Vector2(cx, 86), T("Ядра: ◉ %d   (клик — выбрать / открыть)") % meta_cores, 14, Color("#9be8ff"), true)
 			var ky := 112.0
 			for i in range(CLASSES.size()):
 				var c: Dictionary = CLASSES[i]
@@ -4953,9 +5225,9 @@ func _draw_overlays() -> void:
 				_ci.draw_rect(rect, Color(0.16, 0.22, 0.14, 0.55) if chosen else (Color(1, 1, 1, 0.05) if owned else Color(0, 0, 0, 0.25)))
 				_ci.draw_rect(rect, Color(0.49, 0.95, 0.55, 0.8) if chosen else (Color(1, 0.85, 0.42, 0.5) if owned else Color(1, 1, 1, 0.12)), false, 1.5)
 				_ui_rects["class_%d" % i] = rect
-				_text(Vector2(rect.position.x + 16, ky + 24), "%s  %s" % [c.icon, c.name], 17, Color("#ffe9b0") if owned else Color("#8d97bd"))
+				_text(Vector2(rect.position.x + 16, ky + 24), "%s  %s" % [c.icon, T(c.name)], 17, Color("#ffe9b0") if owned else Color("#8d97bd"))
 				_draw_wrapped(c.desc, rect.position.x + 150, ky + 14, 360, 12, Color("#aab3d6") if owned else Color("#6f7aa3"))
-				var tag := ("Выбран" if chosen else "Выбрать") if owned else ("◉ %d — открыть" % c.cost)
+				var tag := (T("Выбран") if chosen else T("Выбрать")) if owned else (T("◉ %d — открыть") % c.cost)
 				_text(Vector2(rect.position.x + 524, ky + 30), tag, 13, Color("#7df2a5") if chosen else (Color("#ffd86b") if owned else (Color("#ffd86b") if meta_cores >= int(c.cost) else Color("#ff6b5e"))))
 				ky += 56.0
 			_btn(Rect2(cx - 90, ky + 4, 180, 38), "← Назад", "menu", false)
@@ -4977,7 +5249,7 @@ func _draw_overlays() -> void:
 			]
 			var hy := 100.0
 			for b in binds:
-				var lwx := font.get_string_size(b[0], HORIZONTAL_ALIGNMENT_LEFT, -1, 15).x
+				var lwx := font.get_string_size(T(b[0]), HORIZONTAL_ALIGNMENT_LEFT, -1, 15).x
 				_text(Vector2(cx - 20 - lwx, hy), b[0], 15, Color("#aab3d6"))
 				_text(Vector2(cx + 20, hy), b[1], 15, Color("#eaf0ff"))
 				hy += 28.0
@@ -4985,7 +5257,7 @@ func _draw_overlays() -> void:
 			_btn(Rect2(cx - 90, hy + 26, 180, 40), "← Назад", "menu", false)
 		"achievements":
 			_text(Vector2(cx, 56), "Достижения", 34, Color("#ffe9b0"), true)
-			_text(Vector2(cx, 88), "Открыто %d из %d" % [unlocked.size(), ACHIEVEMENTS.size()], 15, Color("#9be8ff"), true)
+			_text(Vector2(cx, 88), T("Открыто %d из %d") % [unlocked.size(), ACHIEVEMENTS.size()], 15, Color("#9be8ff"), true)
 			var ay := 118.0
 			for a in ACHIEVEMENTS:
 				var got: bool = unlocked.has(a.id)
@@ -4994,7 +5266,7 @@ func _draw_overlays() -> void:
 				_ci.draw_rect(rect, Color(0.49, 0.95, 0.55, 0.6) if got else Color(1, 1, 1, 0.1), false, 1.0)
 				_text(Vector2(rect.position.x + 14, ay + 25), "✓" if got else "🔒", 18, Color("#7df2a5") if got else Color("#6f7aa3"))
 				_text(Vector2(rect.position.x + 44, ay + 24), a.name, 15, Color("#eaf0ff") if got else Color("#8d97bd"))
-				var dwx := font.get_string_size(a.desc, HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x
+				var dwx := font.get_string_size(T(a.desc), HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x
 				_text(Vector2(rect.position.x + 546 - dwx, ay + 24), a.desc, 12, Color("#aab3d6") if got else Color("#5a6385"))
 				ay += 44.0
 			_btn(Rect2(cx - 90, ay + 6, 180, 40), "← Назад", "menu", false)
@@ -5009,21 +5281,22 @@ func _draw_overlays() -> void:
 			_vol_row(110, "Громкость (общая)", volume, "vol_master")
 			_vol_row(158, "Музыка", music_vol, "vol_music")
 			_vol_row(206, "Звуки", sfx_vol, "vol_sfx")
-			_btn(Rect2(cx - 168, 256, 160, 34), "Тряска: %s" % ("Вкл" if shake_on else "Выкл"), "toggle_shake", false)
-			_btn(Rect2(cx + 8, 256, 160, 34), "Bloom: %s" % ("Вкл" if bloom_on else "Выкл"), "toggle_bloom", false)
-			_btn(Rect2(cx - 168, 296, 160, 34), "CRT-фильтр: %s" % ("Вкл" if crt_on else "Выкл"), "toggle_crt", false)
-			_btn(Rect2(cx + 8, 296, 160, 34), "Экран: %s" % ("Полный" if fullscreen_on else "Окно"), "toggle_fullscreen", false)
-			_btn(Rect2(cx - 168, 336, 160, 34), "V-Sync: %s" % ("Вкл" if vsync_on else "Выкл"), "toggle_vsync", false)
+			_btn(Rect2(cx - 168, 256, 160, 34), T("Тряска: %s") % (T("Вкл") if shake_on else T("Выкл")), "toggle_shake", false)
+			_btn(Rect2(cx + 8, 256, 160, 34), "Bloom: %s" % (T("Вкл") if bloom_on else T("Выкл")), "toggle_bloom", false)
+			_btn(Rect2(cx - 168, 296, 160, 34), T("CRT-фильтр: %s") % (T("Вкл") if crt_on else T("Выкл")), "toggle_crt", false)
+			_btn(Rect2(cx + 8, 296, 160, 34), T("Экран: %s") % (T("Полный") if fullscreen_on else T("Окно")), "toggle_fullscreen", false)
+			_btn(Rect2(cx - 168, 336, 160, 34), "V-Sync: %s" % (T("Вкл") if vsync_on else T("Выкл")), "toggle_vsync", false)
 			var ws: Vector2i = WIN_SIZES[win_size_idx]
-			_btn(Rect2(cx + 8, 336, 160, 34), "Окно: %d×%d" % [ws.x, ws.y], "cycle_winsize", false)
-			_btn(Rect2(cx - 168, 376, 336, 34), "Объёмный свет (рельеф земли): %s" % ("Вкл" if engine_light else "Выкл"), "toggle_englight", false)
-			_btn(Rect2(cx - 90, 420, 180, 36), "← Назад", "settings_back", false)
+			_btn(Rect2(cx + 8, 336, 160, 34), T("Окно: %d×%d") % [ws.x, ws.y], "cycle_winsize", false)
+			_btn(Rect2(cx - 168, 374, 336, 32), T("Объёмный свет (рельеф земли): %s") % (T("Вкл") if engine_light else T("Выкл")), "toggle_englight", false)
+			_btn(Rect2(cx - 168, 410, 336, 32), T("Язык: %s") % ("Русский" if lang == "ru" else "English"), "toggle_lang", false)
+			_btn(Rect2(cx - 90, 448, 180, 34), "← Назад", "settings_back", false)
 		"dead":
 			_text(Vector2(cx, 120), "Вы погибли", 44, Color("#ff6b5e"), true)
 			var is_record := score >= best and score > 0
 			if is_record:
 				_text(Vector2(cx, 156), "★ НОВЫЙ РЕКОРД ★", 16, Color("#ffd86b"), true)
-			_text(Vector2(cx, 196), "Очки: %d" % score, 22, Color("#ffd86b"), true)
+			_text(Vector2(cx, 196), T("Очки: %d") % score, 22, Color("#ffd86b"), true)
 			# таблица статистики забега
 			var rows := [
 				["Уровень", "%d" % lvl],
@@ -5037,11 +5310,11 @@ func _draw_overlays() -> void:
 			var ry := 226.0
 			for row in rows:
 				var lbl: String = row[0]
-				var lw := font.get_string_size(lbl, HORIZONTAL_ALIGNMENT_LEFT, -1, 14).x
+				var lw := font.get_string_size(T(lbl), HORIZONTAL_ALIGNMENT_LEFT, -1, 14).x
 				_text(Vector2(cx - 14 - lw, ry), lbl, 14, Color("#8d97bd"))
 				_text(Vector2(cx + 14, ry), row[1], 14, Color("#dfe5ff"))
 				ry += 22
-			_text(Vector2(cx, ry + 6), "Заработано ◉ %d   (всего ◉ %d → Мастерская)" % [run_cores, meta_cores], 14, Color("#9be8ff"), true)
+			_text(Vector2(cx, ry + 6), T("Заработано ◉ %d   (всего ◉ %d → Мастерская)") % [run_cores, meta_cores], 14, Color("#9be8ff"), true)
 			_btn(Rect2(cx - 190, 420, 180, 50), "Новый забег", "retry")
 			_btn(Rect2(cx + 10, 420, 180, 50), "В меню", "menu", false)
 		"upgrade":
@@ -5064,7 +5337,7 @@ func _draw_overlays() -> void:
 				_text(Vector2(ccx, rect.position.y + 188), "[%d]" % (i + 1), 14, Color("#8d97bd"), true)
 		"shop":
 			_text(Vector2(cx, 80), "Магазин", 36, Color("#ffe9b0"), true)
-			_text(Vector2(cx, 116), "Монеты: ● %d   (цифры или клик — купить)" % coins, 16, Color("#ffd86b"), true)
+			_text(Vector2(cx, 116), T("Монеты: ● %d   (цифры или клик — купить)") % coins, 16, Color("#ffd86b"), true)
 			var n := shop_items.size()
 			var gap := 14.0
 			var cw: float = minf(165.0, (VW - 40.0 - (n - 1) * gap) / n)   # сжимаем под число товаров
@@ -5091,7 +5364,7 @@ func _draw_overlays() -> void:
 			_btn(Rect2(cx - 110, 396, 220, 48), "Дальше →", "shop_continue")
 		"meta":
 			_text(Vector2(cx, 64), "Мастерская", 34, Color("#ffe9b0"), true)
-			_text(Vector2(cx, 96), "Ядра: ◉ %d   (клик — купить улучшение)" % meta_cores, 15, Color("#9be8ff"), true)
+			_text(Vector2(cx, 96), T("Ядра: ◉ %d   (клик — купить улучшение)") % meta_cores, 15, Color("#9be8ff"), true)
 			var my := 126.0
 			for mid in META.keys():
 				var m: Dictionary = META[mid]
@@ -5103,11 +5376,11 @@ func _draw_overlays() -> void:
 				_ci.draw_rect(rect, Color(1, 0.85, 0.42, 0.5) if afford else Color(1, 1, 1, 0.12), false, 1.5)
 				if mcost >= 0:
 					_ui_rects["mbuy_" + mid] = rect
-				_text(Vector2(rect.position.x + 14, my + 27), "%s  %s" % [m.icon, m.name], 16, Color("#ffe9b0"))
+				_text(Vector2(rect.position.x + 14, my + 27), "%s  %s" % [m.icon, T(m.name)], 16, Color("#ffe9b0"))
 				_text(Vector2(rect.position.x + 180, my + 26), m.desc, 12, Color("#aab3d6"))
 				for pi in range(int(m.max)):   # пипсы уровней
 					_ci.draw_rect(Rect2(rect.position.x + 452 + pi * 14, my + 15, 10, 10), Color("#ffd86b") if pi < mlv else Color(1, 1, 1, 0.15))
-				var cstr := "МАКС" if mcost < 0 else ("◉ %d" % mcost)
+				var cstr := T("МАКС") if mcost < 0 else ("◉ %d" % mcost)
 				_text(Vector2(rect.position.x + 522, my + 27), cstr, 14, Color("#7df2a5") if mcost < 0 else (Color("#ffd86b") if afford else Color("#ff6b5e")))
 				my += 48.0
 			_btn(Rect2(cx - 90, my + 8, 180, 40), "← Назад", "menu", false)
@@ -5132,6 +5405,7 @@ func _draw_volume(cx: float, y: float) -> void:
 	_text(Vector2(cx, y + 28), "%d%%" % int(round(volume * 100)), 12, Color("#cfd6f5"), true)
 
 func _draw_wrapped(s: String, x: float, y: float, w: float, size: int, color: Color) -> void:
+	s = T(s)
 	var words := s.split(" ")
 	var line := ""
 	var ly := y
@@ -5231,6 +5505,7 @@ func _load_settings() -> void:
 		bloom_on = bool(cfg.get_value("settings", "bloom", true))
 		crt_on = bool(cfg.get_value("settings", "crt", false))
 		engine_light = bool(cfg.get_value("settings", "englight", false))
+		lang = String(cfg.get_value("settings", "lang", "ru"))
 		fullscreen_on = bool(cfg.get_value("settings", "fullscreen", false))
 		vsync_on = bool(cfg.get_value("settings", "vsync", true))
 		win_size_idx = clampi(int(cfg.get_value("settings", "winsize", 0)), 0, WIN_SIZES.size() - 1)
@@ -5268,6 +5543,7 @@ func _save_settings() -> void:
 	cfg.set_value("settings", "bloom", bloom_on)
 	cfg.set_value("settings", "crt", crt_on)
 	cfg.set_value("settings", "englight", engine_light)
+	cfg.set_value("settings", "lang", lang)
 	cfg.set_value("settings", "fullscreen", fullscreen_on)
 	cfg.set_value("settings", "vsync", vsync_on)
 	cfg.set_value("settings", "winsize", win_size_idx)
@@ -5361,7 +5637,7 @@ func unlock(id: String) -> void:
 	if unlocked.has(id):
 		return
 	unlocked[id] = true
-	toasts.append({ "text": "Достижение: " + _ach_name(id), "life": 200.0 })
+	toasts.append({ "text": T("Достижение: ") + T(_ach_name(id)), "life": 200.0 })
 	play_sfx("portal")
 	_save_settings()
 
