@@ -123,6 +123,25 @@ const ACHIEVEMENTS := [
 	{ "id": "survivor", "name": "Живучий", "desc": "Прожить 3 минуты за один забег" },
 ]
 
+# Разблокируемый контент: эти оружие/реликвии открываются по достижению порога
+# пожизненной статистики. Всё, чего здесь нет, доступно с самого начала.
+const UNLOCK_DEFS := [
+	{ "id": "rifle",    "kind": "weapon", "stat": "deep",   "need": 3 },
+	{ "id": "grenade",  "kind": "weapon", "stat": "kills",  "need": 150 },
+	{ "id": "flame",    "kind": "weapon", "stat": "chests", "need": 8 },
+	{ "id": "railgun",  "kind": "weapon", "stat": "bosses", "need": 1 },
+	{ "id": "ricochet", "kind": "weapon", "stat": "deep",   "need": 8 },
+	{ "id": "detonate",    "kind": "relic", "stat": "kills",  "need": 250 },
+	{ "id": "glass",       "kind": "relic", "stat": "kills",  "need": 450 },
+	{ "id": "executioner", "kind": "relic", "stat": "bosses", "need": 2 },
+	{ "id": "chain",       "kind": "relic", "stat": "bosses", "need": 3 },
+	{ "id": "adrenaline",  "kind": "relic", "stat": "deep",   "need": 5 },
+	{ "id": "overcharge",  "kind": "relic", "stat": "deep",   "need": 6 },
+	{ "id": "bulwark",     "kind": "relic", "stat": "deep",   "need": 10 },
+	{ "id": "frost",       "kind": "relic", "stat": "runs",   "need": 4 },
+	{ "id": "second",      "kind": "relic", "stat": "deaths", "need": 4 },
+]
+
 const ENEMY_BASE := {
 	"walker":  { "w": 26, "h": 28, "hp": 30, "spd": 1.1, "dmg": 12, "score": 10, "cd": 0, "fly": false },
 	"shooter": { "w": 26, "h": 30, "hp": 42, "spd": 0.0, "dmg": 9, "score": 20, "cd": 105, "fly": false },
@@ -193,6 +212,9 @@ var damage_dealt := 0
 
 # достижения
 var unlocked := {}       # id -> true (сохраняется)
+# разблокировки контента (оружие/реликвии открываются по ходу игры)
+var unlocks := {}        # id -> true (сохраняется)
+var prog := { "kills": 0, "bosses": 0, "chests": 0, "deep": 0, "runs": 0, "deaths": 0 }  # пожизненная статистика
 var toasts := []         # всплывающие уведомления [{text, life}]
 
 var level := {}        # текущая карта
@@ -576,6 +598,17 @@ const LOC_EN := {
 	"Громкость  ( − / + )": "Volume  ( − / + )",
 	"Достижение: ": "Achievement: ",
 	"Язык: %s": "Language: %s",
+	"Открыто: ": "Unlocked: ",
+	"Коллекция": "Collection",
+	"Коллекция  %d/%d": "Collection  %d/%d",
+	"Реликвии": "Relics",
+	"Открывай оружие и реликвии, играя": "Unlock weapons and relics by playing",
+	"убийств": "kills",
+	"победить боссов": "defeat bosses",
+	"открыть сундуков": "open chests",
+	"дойти до уровня": "reach level",
+	"завершить забегов": "finish runs",
+	"погибнуть раз": "deaths",
 }
 
 # ============================== Жизненный цикл ==============================
@@ -614,7 +647,14 @@ func _ready() -> void:
 		audio_enabled = "--music" in OS.get_cmdline_args()  # музыку проверяем по флагу
 		RenderingServer.frame_post_draw.connect(_on_post_draw)
 		if "--menu" in OS.get_cmdline_args():
-			return  # остаёмся в меню для проверки его отрисовки
+			var a2 := OS.get_cmdline_args()
+			var si := a2.find("--view")
+			if si >= 0 and si + 1 < a2.size():
+				if a2[si + 1] == "collection":   # дебаг: показать примерный прогресс
+					unlocks = { "rifle": true, "grenade": true, "detonate": true }
+					prog = { "kills": 180, "bosses": 1, "chests": 5, "deep": 4, "runs": 6, "deaths": 3 }
+				_set_state(a2[si + 1])
+			return  # остаёмся в меню/экране для проверки отрисовки
 		start_run(12345, "DEMO")
 		if "--boss" in OS.get_cmdline_args() or "--airboss" in OS.get_cmdline_args() or "--summoner" in OS.get_cmdline_args():
 			# прыжок на боссовый уровень с прокачкой — для проверки рендера босса
@@ -943,6 +983,7 @@ func _on_ui(key: String) -> void:
 		"meta": _set_state("meta")
 		"help": _set_state("help")
 		"achievements": _set_state("achievements")
+		"collection": _set_state("collection")
 		"settings": _settings_back = state; _set_state("settings")
 		"daily": start_daily()
 		"classes": _set_state("classes")
@@ -1401,7 +1442,7 @@ func generate_level(seed_val: int, level_num: int) -> Dictionary:
 	for _i in range(n_weapons):
 		var s = spot.call()
 		if s != null:
-			add_pick.call("weapon", s, { "weapon": _pick(r, WEAPON_DROPS) })
+			add_pick.call("weapon", s, { "weapon": _pick(r, unlocked_weapon_drops()) })
 	for _i in range(_rr(r, 1, 2)):
 		var s = spot.call()
 		if s != null:
@@ -1658,6 +1699,7 @@ func start_run(s: int, label: String) -> void:
 	_hp_ghost = P.hp
 	_prev_wi = 0
 	relics = {}
+	prog.runs = int(prog.get("runs", 0)) + 1   # пожизненный счётчик забегов
 	tut = { "move": false, "jump": false, "shoot": false, "dash": false }
 	apply_class()  # стартовый набор класса
 	apply_meta()   # постоянные мета-улучшения поверх
@@ -1669,6 +1711,8 @@ func accuracy() -> float:
 	return 0.0 if shots_fired == 0 else clampf(float(shots_hit) / shots_fired, 0.0, 1.0)
 
 func start_level() -> void:
+	prog.deep = maxi(int(prog.get("deep", 0)), lvl)   # глубочайший достигнутый уровень
+	check_unlocks()
 	var level_seed := (run_seed ^ ((lvl * 2654435761) & 0xFFFFFFFF)) & 0xFFFFFFFF
 	level = generate_level(level_seed, lvl)
 	enemies = level.enemies
@@ -1803,11 +1847,59 @@ func grant_random_relic() -> void:
 func random_unowned_relic() -> String:
 	var pool := []
 	for id in RELICS.keys():
-		if not relics.has(id):
+		if not relics.has(id) and is_unlocked(id):
 			pool.append(id)
 	if pool.is_empty():
 		return ""
 	return pool[rng.randi_range(0, pool.size() - 1)]
+
+func _is_lockable(id: String) -> bool:
+	for d in UNLOCK_DEFS:
+		if d.id == id:
+			return true
+	return false
+
+func is_unlocked(id: String) -> bool:
+	# контент доступен, если он не заперт изначально или уже открыт прогрессом
+	return unlocks.has(id) or not _is_lockable(id)
+
+func unlocked_weapon_drops() -> Array:
+	# пул случайного оружия только из открытого (всегда непустой)
+	var pool := []
+	for w in WEAPON_DROPS:
+		if is_unlocked(w):
+			pool.append(w)
+	return pool if not pool.is_empty() else ["smg"]
+
+func check_unlocks() -> void:
+	# открываем контент, чьё условие по пожизненной статистике достигнуто
+	for d in UNLOCK_DEFS:
+		if unlocks.has(d.id):
+			continue
+		if int(prog.get(d.stat, 0)) >= int(d.need):
+			unlocks[d.id] = true
+			var nm: String = WEAPONS[d.id].name if d.kind == "weapon" else RELICS[d.id].name
+			toasts.append({ "text": T("Открыто: ") + T(nm), "life": 240.0 })
+			play_sfx("portal")
+			_save_settings()
+
+func _unlocks_count() -> int:
+	var n := 0
+	for d in UNLOCK_DEFS:
+		if unlocks.has(d.id):
+			n += 1
+	return n
+
+func _unlock_desc(d: Dictionary) -> String:
+	# короткая метка условия разблокировки (для экрана коллекции)
+	match d.stat:
+		"kills": return T("убийств")
+		"bosses": return T("победить боссов")
+		"chests": return T("открыть сундуков")
+		"deep": return T("дойти до уровня")
+		"runs": return T("завершить забегов")
+		"deaths": return T("погибнуть раз")
+	return ""
 
 func meta_level(id: String) -> int:
 	return int(meta.get(id, 0))
@@ -1879,7 +1971,7 @@ func apply_meta() -> void:
 		P.stats.spd_mul *= 1.0 + 0.05 * sw
 	coins = 5 * meta_level("fortune")
 	if meta_level("munitions") > 0:
-		give_weapon(pick_rng(WEAPON_DROPS))
+		give_weapon(pick_rng(unlocked_weapon_drops()))
 	if meta_level("relic_start") > 0:
 		grant_random_relic()
 
@@ -1906,7 +1998,7 @@ func build_shop() -> Array:
 		{ "id": "heal", "icon": "♥", "name": "Аптечка", "desc": "+50 здоровья", "price": 8, "sold": false },
 		{ "id": "ammo", "icon": "▭", "name": "Боезапас", "desc": "Патроны всему оружию", "price": 6, "sold": false },
 		{ "id": "shield", "icon": "▢", "name": "Щит", "desc": "+30 к запасу щита", "price": 12, "sold": false },
-		{ "id": "weapon", "icon": "▸", "name": "Оружие", "desc": "Случайный новый ствол", "price": 16, "sold": false, "weapon": pick_rng(WEAPON_DROPS) },
+		{ "id": "weapon", "icon": "▸", "name": "Оружие", "desc": "Случайный новый ствол", "price": 16, "sold": false, "weapon": pick_rng(unlocked_weapon_drops()) },
 		{ "id": "upgrade", "icon": "★", "name": "Улучшение", "desc": "Случайная прокачка", "price": 20, "sold": false, "up": _random_upgrade() },
 	]
 	var rid := random_unowned_relic()
@@ -2023,6 +2115,9 @@ func hurt_player(dmg: float, from_dir: float, src := Vector2.INF) -> void:
 func die() -> void:
 	burst(P.x + P.w / 2.0, P.y + P.h / 2.0, 30, Color("#ff6b5e"))
 	play_sfx("die")
+	prog.deaths = int(prog.get("deaths", 0)) + 1   # пожизненный счётчик смертей
+	prog.deep = maxi(int(prog.get("deep", 0)), lvl)
+	check_unlocks()
 	check_achievements()  # финальная проверка (точность/время/очки)
 	if score > best:
 		best = score
@@ -2158,6 +2253,8 @@ func hurt_enemy(en: Dictionary, dmg: int, crit: bool, silent := false) -> void:
 	if en.hp <= 0:
 		en.dead = true
 		kills += 1
+		prog.kills = int(prog.get("kills", 0)) + 1   # пожизненный счётчик убийств
+		check_unlocks()
 		# серия убийств наращивает множитель очков
 		combo += 1
 		combo_t = 150
@@ -2202,6 +2299,8 @@ func hurt_enemy(en: Dictionary, dmg: int, crit: bool, silent := false) -> void:
 			add_text(en.x + en.w / 2.0, en.y - 30, T("БОСС ПОВЕРЖЕН! +500"), Color("#ffd86b"))
 			play_sfx("portal")
 			unlock("boss_slayer")
+			prog.bosses = int(prog.get("bosses", 0)) + 1   # пожизненный счётчик боссов
+			check_unlocks()
 			grant_random_relic()   # награда за босса — реликвия
 			if difficulty >= max_difficulty and max_difficulty < 3:
 				max_difficulty = difficulty + 1   # открыта новая сложность
@@ -2831,6 +2930,8 @@ func update_enemies() -> void:
 			if not en.dead and dist < 34 and P.inv <= 0:
 				en.dead = true
 				kills += 1
+				prog.kills = int(prog.get("kills", 0)) + 1
+				check_unlocks()
 				score += en.score
 				explode(ecx, ecy, en.get("radius", 62), en.dmg, "e")
 		elif en.type == "shooter" or en.type == "tank":
@@ -3286,6 +3387,8 @@ func update_chests() -> void:
 
 func open_chest(ch: Dictionary) -> void:
 	ch.opened = true
+	prog.chests = int(prog.get("chests", 0)) + 1   # пожизненный счётчик сундуков
+	check_unlocks()
 	var cx: float = ch.x + ch.w / 2.0
 	var cy: float = ch.y + ch.h / 2.0
 	# фонтан монет + гарантированный полезный предмет + шанс на оружие
@@ -3303,8 +3406,9 @@ func open_chest(ch: Dictionary) -> void:
 	else:
 		pickups.append({ "kind": "ammo", "x": cx - 11, "y": cy - 9, "w": 22, "h": 18, "vy": -3.4, "t": 0.0 })
 	if rng.randf() < 0.4:   # бонус: новый ствол
+		var wpool := unlocked_weapon_drops()
 		pickups.append({ "kind": "weapon", "x": cx - 11, "y": cy - 9, "w": 22, "h": 18, "vy": -3.8, "t": 0.0,
-			"weapon": WEAPON_DROPS[rng.randi_range(0, WEAPON_DROPS.size() - 1)] })
+			"weapon": wpool[rng.randi_range(0, wpool.size() - 1)] })
 	_burst_particles(Vector2(cx, cy), Color(1.0, 0.85, 0.42), 22, 150.0, 0.6)
 	shockwaves.append({ "x": cx, "y": cy, "r": 4.0, "max_r": 40.0, "life": 12.0, "col": Color(1.0, 0.85, 0.42) })
 	flash = maxf(flash, 0.3)
@@ -5344,7 +5448,7 @@ func _draw_overlays() -> void:
 	if state == "play":
 		return
 	# для экранов без игрового мира — живой фон меню; иначе затемнение поверх игры
-	if level.is_empty() and (state == "menu" or state == "help" or state == "meta" or state == "achievements" or state == "classes" or state == "settings"):
+	if level.is_empty() and (state == "menu" or state == "help" or state == "meta" or state == "achievements" or state == "classes" or state == "collection" or state == "settings"):
 		_draw_menu_bg()
 		_ci.draw_rect(Rect2(0, 0, VW, VH), Color(0.04, 0.05, 0.10, 0.45))
 	else:
@@ -5372,9 +5476,10 @@ func _draw_overlays() -> void:
 			_btn(Rect2(cx + 6, 330, 180, 30), T("Достижения  %d/%d") % [unlocked.size(), ACHIEVEMENTS.size()], "achievements", false)
 			_btn(Rect2(cx - 186, 364, 180, 30), "Настройки", "settings", false)
 			_btn(Rect2(cx + 6, 364, 180, 30), T("Мастерская  ◉ %d") % meta_cores, "meta", false)
+			_btn(Rect2(cx - 90, 396, 180, 30), T("Коллекция  %d/%d") % [_unlocks_count(), UNLOCK_DEFS.size()], "collection", false)
 			var bl := T("Рекорд: %d очков") % best if best > 0 else T("Удачного первого забега!")
-			_text(Vector2(cx, 410), bl, 12, Color("#6f7aa3"), true)
-			_text(Vector2(cx, 426), "Enter / клик — старт · ↑↓ — выбор", 11, Color("#6f7aa3"), true)
+			_text(Vector2(cx, 430), bl, 12, Color("#6f7aa3"), true)
+			_text(Vector2(cx, 446), "Enter / клик — старт · ↑↓ — выбор", 11, Color("#6f7aa3"), true)
 		"classes":
 			_text(Vector2(cx, 54), "Классы", 34, Color("#ffe9b0"), true)
 			_text(Vector2(cx, 86), T("Ядра: ◉ %d   (клик — выбрать / открыть)") % meta_cores, 14, Color("#9be8ff"), true)
@@ -5432,6 +5537,13 @@ func _draw_overlays() -> void:
 				_text(Vector2(rect.position.x + 546 - dwx, ay + 24), a.desc, 12, Color("#aab3d6") if got else Color("#5a6385"))
 				ay += 44.0
 			_btn(Rect2(cx - 90, ay + 6, 180, 40), "← Назад", "menu", false)
+		"collection":
+			_text(Vector2(cx, 50), "Коллекция", 32, Color("#ffe9b0"), true)
+			_text(Vector2(cx, 80), T("Открыто %d из %d") % [_unlocks_count(), UNLOCK_DEFS.size()], 14, Color("#9be8ff"), true)
+			_text(Vector2(cx, 98), "Открывай оружие и реликвии, играя", 11, Color("#6f7aa3"), true)
+			_draw_collection_col(cx - 280, 124, "Оружие", "weapon")
+			_draw_collection_col(cx + 20, 124, "Реликвии", "relic")
+			_btn(Rect2(cx - 90, 452, 180, 36), "← Назад", "menu", false)
 		"pause":
 			_text(Vector2(cx, 170), "Пауза", 40, Color("#eaf0ff"), true)
 			_btn(Rect2(cx - 90, 214, 180, 46), "Продолжить", "resume")
@@ -5566,6 +5678,26 @@ func _draw_volume(cx: float, y: float) -> void:
 	_ci.draw_rect(Rect2(bx + 1, y + 1, (bw - 2) * volume, 8), Color("#ffc24d"))
 	_text(Vector2(cx, y + 28), "%d%%" % int(round(volume * 100)), 12, Color("#cfd6f5"), true)
 
+func _draw_collection_col(x: float, y: float, header: String, kind: String) -> void:
+	# колонка экрана «Коллекция»: запираемые предметы данного типа с прогрессом
+	_text(Vector2(x, y), header, 15, Color("#ffd86b"))
+	var ry := y + 24.0
+	for d in UNLOCK_DEFS:
+		if d.kind != kind:
+			continue
+		var data: Dictionary = WEAPONS.get(d.id, {}) if kind == "weapon" else RELICS.get(d.id, {})
+		var nm: String = data.get("name", d.id)
+		var icon: String = data.get("icon", "•")
+		if unlocks.has(d.id):
+			_text(Vector2(x, ry + 11), "✓", 13, Color("#7df2a5"))
+			_text(Vector2(x + 20, ry + 11), "%s %s" % [icon, T(nm)], 14, Color("#eaf0ff"))
+		else:
+			_text(Vector2(x, ry + 9), "🔒", 13, Color("#6f7aa3"))
+			_text(Vector2(x + 20, ry + 6), nm, 13, Color("#9aa3c8"))
+			var cur: int = mini(int(prog.get(d.stat, 0)), int(d.need))
+			_text(Vector2(x + 20, ry + 21), "%s: %d/%d" % [_unlock_desc(d), cur, int(d.need)], 10, Color("#7a85aa"))
+		ry += 32.0
+
 func _draw_wrapped(s: String, x: float, y: float, w: float, size: int, color: Color) -> void:
 	s = T(s)
 	var words := s.split(" ")
@@ -5676,6 +5808,13 @@ func _load_settings() -> void:
 		if cfg.has_section("achievements"):
 			for k in cfg.get_section_keys("achievements"):
 				unlocked[k] = true
+		unlocks.clear()
+		if cfg.has_section("unlocks"):
+			for k in cfg.get_section_keys("unlocks"):
+				unlocks[k] = true
+		if cfg.has_section("stats"):
+			for k in cfg.get_section_keys("stats"):
+				prog[k] = int(cfg.get_value("stats", k, 0))
 	else:
 		# совместимость со старым форматом рекорда
 		var old := "user://gunfall_best.save"
@@ -5711,6 +5850,10 @@ func _save_settings() -> void:
 	cfg.set_value("settings", "winsize", win_size_idx)
 	for id in unlocked.keys():
 		cfg.set_value("achievements", id, true)
+	for id in unlocks.keys():
+		cfg.set_value("unlocks", id, true)
+	for k in prog.keys():
+		cfg.set_value("stats", k, int(prog[k]))
 	cfg.save(_cfg_path())
 
 func _save_run() -> void:

@@ -1307,6 +1307,38 @@ func _init() -> void:
 	game.pickups = []
 	game.level = {}
 
+	# ---------- 47. Разблокировки контента ----------
+	game.unlocks = {}
+	game.prog = { "kills": 0, "bosses": 0, "chests": 0, "deep": 0, "runs": 0, "deaths": 0 }
+	_ok(game.is_unlocked("pistol"), "default weapon unlocked")
+	_ok(not game.is_unlocked("railgun"), "railgun locked initially")
+	_ok(not game.unlocked_weapon_drops().has("railgun"), "locked weapon excluded from drop pool")
+	_ok(game.unlocked_weapon_drops().has("smg"), "default weapon in drop pool")
+	game.prog.bosses = 1
+	game.check_unlocks()
+	_ok(game.is_unlocked("railgun"), "railgun unlocks after a boss")
+	_ok(game.unlocked_weapon_drops().has("railgun"), "unlocked weapon enters drop pool")
+	_ok(not game.is_unlocked("chain"), "chain relic still locked (needs 3 bosses)")
+	game.prog.kills = 250
+	game.check_unlocks()
+	_ok(game.is_unlocked("detonate"), "detonate relic unlocks at 250 kills")
+	game.relics = {}
+	var offered_locked := false
+	for _i in range(200):
+		if game.random_unowned_relic() == "bulwark":   # заперта (deep 10)
+			offered_locked = true
+	_ok(not offered_locked, "locked relic never offered")
+	# персистентность
+	game.unlocks = { "railgun": true }
+	game.prog.kills = 321
+	game._save_settings()
+	game.unlocks = {}
+	game.prog.kills = 0
+	game._load_settings()
+	_ok(game.unlocks.has("railgun"), "unlocks persist across save/load")
+	_ok(int(game.prog.kills) >= 321, "lifetime stats persist across save/load")
+	game.relics = {}
+
 	if failures == 0:
 		print("\nALL TESTS PASSED")
 	else:
