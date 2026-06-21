@@ -230,6 +230,8 @@ var fullscreen_on := false               # полноэкранный режим
 var vsync_on := true                     # вертикальная синхронизация (сохраняется)
 var win_size_idx := 0                    # индекс размера окна (сохраняется)
 const WIN_SIZES := [Vector2i(960, 540), Vector2i(1280, 720), Vector2i(1600, 900), Vector2i(1920, 1080)]
+var bg_layer: CanvasLayer = null         # слой статичного фона (небо/холмы) ПОЗАДИ мира
+var bg_node: Node2D = null                # отдельный холст фона — фундамент для движкового света
 var fx_layer: CanvasLayer = null         # слой полноэкранного пост-эффекта (искажения)
 var fx_rect: ColorRect = null
 var fx_mat: ShaderMaterial = null
@@ -3177,11 +3179,7 @@ func _draw() -> void:
 		var c := cam + _shake_offset()
 		_cam_draw = c
 
-		_draw_sky()
-		_draw_hills(hill_farther, th.hill_farther, c, 0.13)
-		_draw_hills(hill_far, th.hill_far, c, 0.25)
-		_draw_hills(hill_near, th.hill_near, c, 0.45)
-
+		# небо/холмы рисуются на bg_node (слой -1, позади мира) — см. _paint_bg()
 		draw_set_transform(-c)
 		_draw_tiles(c)
 		_draw_lava_reflection()
@@ -3204,7 +3202,9 @@ func _draw() -> void:
 		if flash > 0.0:
 			draw_rect(Rect2(0, 0, VW, VH), Color(flash_color.r, flash_color.g, flash_color.b, flash * 0.6))
 		_draw_ambient()
-	# HUD/оверлеи/ирис рисуются на ui_node (слой выше пост-эффекта) — см. _paint_ui()
+	# фон рисуется на bg_node (слой -1), HUD/оверлеи — на ui_node (слой выше пост-эффекта)
+	if bg_node:
+		bg_node.queue_redraw()
 	if ui_node:
 		ui_node.queue_redraw()
 
@@ -3445,6 +3445,14 @@ void fragment() {
 """
 
 func _setup_fx() -> void:
+	# статичный фон (небо/холмы) на отдельном слое ПОЗАДИ мира — отделяет
+	# неосвещаемый фон от динамического мира (фундамент для движкового света)
+	bg_layer = CanvasLayer.new()
+	bg_layer.layer = -1
+	bg_node = Node2D.new()
+	bg_layer.add_child(bg_node)
+	add_child(bg_layer)
+	bg_node.draw.connect(_paint_bg)
 	# полноэкранный экранный пост-эффект: марево, рябь взрывов, аберрация урона
 	var sh := Shader.new()
 	sh.code = FX_SHADER
@@ -3472,6 +3480,17 @@ func _setup_fx() -> void:
 	ui_layer.add_child(ui_node)
 	add_child(ui_layer)
 	ui_node.draw.connect(_paint_ui)
+
+func _paint_bg() -> void:
+	# рисуем статичный фон на bg_node (слой -1, позади мира)
+	_ci = bg_node
+	if not level.is_empty():
+		var c := _cam_draw
+		_draw_sky()
+		_draw_hills(hill_farther, th.hill_farther, c, 0.13)
+		_draw_hills(hill_far, th.hill_far, c, 0.25)
+		_draw_hills(hill_near, th.hill_near, c, 0.45)
+	_ci = self
 
 func _paint_ui() -> void:
 	_ci = ui_node
@@ -3893,7 +3912,7 @@ func _shadow(cx: float, by: float, w: float) -> void:
 
 func _draw_sky() -> void:
 	if sky_tex:
-		draw_texture_rect(sky_tex, Rect2(0, 0, VW, VH), false)
+		_ci.draw_texture_rect(sky_tex, Rect2(0, 0, VW, VH), false)
 	# дрейфующие полосы-сияние (мягкие шторы света в небе)
 	var acol: Color = th.get("top", Color(0.6, 0.8, 1.0))
 	for layer in range(3):
@@ -3902,10 +3921,10 @@ func _draw_sky() -> void:
 			var x := i * VW / 16.0
 			var yy := VH * (0.16 + layer * 0.06) + sin(x * 0.008 + tick * 0.012 + layer * 1.3) * 14.0
 			pts.append(Vector2(x, yy))
-		draw_polyline(pts, Color(acol.r, acol.g, acol.b, 0.05), 26.0 - layer * 5.0)
+		_ci.draw_polyline(pts, Color(acol.r, acol.g, acol.b, 0.05), 26.0 - layer * 5.0)
 	for sv in stars:
 		var tw := 0.45 + 0.35 * sin(tick * 0.05 + sv.x * 0.3)  # мерцание
-		draw_rect(Rect2(sv.x, sv.y, sv.z, sv.z), Color(1, 1, 1, tw))
+		_ci.draw_rect(Rect2(sv.x, sv.y, sv.z, sv.z), Color(1, 1, 1, tw))
 
 func _draw_hills(pts: PackedVector2Array, color: Color, c: Vector2, par: float) -> void:
 	if pts.size() < 3:
@@ -3921,9 +3940,9 @@ func _draw_hills(pts: PackedVector2Array, color: Color, c: Vector2, par: float) 
 		cols[i] = color.lightened(sh) if sh >= 0.0 else color.darkened(-sh)
 	# смещаем через трансформ, не пересобирая массив точек каждый кадр
 	for k in [-1, 0, 1]:
-		draw_set_transform(Vector2(ox + k * 1920, oy))
-		draw_polygon(pts, cols)
-	draw_set_transform(Vector2.ZERO)
+		_ci.draw_set_transform(Vector2(ox + k * 1920, oy))
+		_ci.draw_polygon(pts, cols)
+	_ci.draw_set_transform(Vector2.ZERO)
 
 func _draw_tiles(c: Vector2) -> void:
 	var x0 := maxi(0, int(floor(c.x / TILE)))
