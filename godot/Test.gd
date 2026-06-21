@@ -1185,6 +1185,29 @@ func _init() -> void:
 	_ok(cull_near.vy != 0.0, "on-screen enemy still updates (gravity applied)")
 	game.level = {}
 
+	# ---------- 41. Сохранение забега (Continue) ----------
+	game.start_run(4242, "save")
+	game.lvl = 3
+	game.score = 777
+	game.coins = 9
+	game.P.hp = 42.0
+	game.grant_relic("vampire")
+	game._save_run()
+	_ok(game.has_run_save(), "run autosave exists")
+	game.lvl = 1
+	game.score = 0
+	game.P.hp = 100.0
+	game.relics = {}
+	game.continue_run()
+	_ok(game.lvl == 3, "continue restores level")
+	_ok(game.score == 777, "continue restores score")
+	_ok(int(game.P.hp) == 42, "continue restores HP")
+	_ok(game.has_relic("vampire"), "continue restores relics")
+	_ok(game.state == "play", "continue enters play")
+	game._clear_run_save()
+	_ok(not game.has_run_save(), "clear removes the save")
+	game.level = {}
+
 	if failures == 0:
 		print("\nALL TESTS PASSED")
 	else:

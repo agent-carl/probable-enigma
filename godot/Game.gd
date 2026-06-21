@@ -173,6 +173,7 @@ var run_cores := 0       # ядра, заработанные за текущи�
 var difficulty := 0      # выбранная сложность (Ascension): 0..3
 var max_difficulty := 0  # макс. открытая сложность (сохраняется)
 var daily_run := false   # текущий забег — «сид дня»
+var _has_save := false   # есть ли сохранённый незавершённый забег (для «Продолжить»)
 var class_sel := 0       # выбранный класс (индекс в CLASSES)
 var classes_unlocked := { "soldier": true }  # открытые классы (сохраняется)
 var tutorial_seen := false  # обучающие подсказки показаны (сохраняется)
@@ -226,6 +227,9 @@ var world_env: WorldEnvironment = null   # HDR-bloom (свечение ярки�
 var bloom_on := true                     # переключатель свечения (в паузе)
 var crt_on := false                      # ретро CRT-фильтр (в паузе)
 var fullscreen_on := false               # полноэкранный режим (сохраняется)
+var vsync_on := true                     # вертикальная синхронизация (сохраняется)
+var win_size_idx := 0                    # индекс размера окна (сохраняется)
+const WIN_SIZES := [Vector2i(960, 540), Vector2i(1280, 720), Vector2i(1600, 900), Vector2i(1920, 1080)]
 var fx_layer: CanvasLayer = null         # слой полноэкранного пост-эффекта (искажения)
 var fx_rect: ColorRect = null
 var fx_mat: ShaderMaterial = null
@@ -305,6 +309,7 @@ func _ready() -> void:
 	_build_menu_bg()
 	_build_crate_texture()
 	_load_settings()
+	_has_save = has_run_save()
 	if DisplayServer.get_name() != "headless":
 		_setup_bloom()
 		_setup_fx()
@@ -622,6 +627,7 @@ func _handle_ui_click(m: Vector2) -> void:
 func _on_ui(key: String) -> void:
 	match key:
 		"play": start_from_menu()
+		"continue": continue_run()
 		"retry": start_from_menu()
 		"menu": _set_state("menu")
 		"resume": _set_state("play")
@@ -642,6 +648,8 @@ func _on_ui(key: String) -> void:
 		"vol_music_up": adjust_music(0.1)
 		"vol_sfx_dn": adjust_sfx(-0.1)
 		"vol_sfx_up": adjust_sfx(0.1)
+		"toggle_vsync": toggle_vsync()
+		"cycle_winsize": cycle_winsize()
 		"toggle_shake": toggle_shake()
 		"toggle_bloom": toggle_bloom()
 		"toggle_crt": toggle_crt()
@@ -1385,6 +1393,8 @@ func start_level() -> void:
 		intro_text = "Уровень %d — %s" % [lvl, level.theme.name]
 	_build_background(level_seed)
 	_play_music((lvl - 1) % 5, boss_alive)
+	if not test_mode:
+		_save_run()   # автосейв забега на старте уровня (для «Продолжить»)
 
 func _set_state(s: String) -> void:
 	state = s
@@ -1693,6 +1703,7 @@ func die() -> void:
 	run_cores = int(maxi(1, int(score / 250.0) + (lvl - 1)) * (1.0 + 0.5 * difficulty))
 	meta_cores += run_cores
 	_save_settings()
+	_clear_run_save()   # забег окончен — сейв «Продолжить» больше не нужен
 	_stop_music()
 	_set_state("dead")
 
@@ -4701,6 +4712,27 @@ func _apply_fullscreen() -> void:
 	if DisplayServer.get_name() == "headless":
 		return
 	DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN if fullscreen_on else DisplayServer.WINDOW_MODE_WINDOWED)
+	_apply_display()
+
+func _apply_display() -> void:
+	if DisplayServer.get_name() == "headless":
+		return
+	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_ENABLED if vsync_on else DisplayServer.VSYNC_DISABLED)
+	if not fullscreen_on:   # размер окна — только в оконном режиме
+		var s: Vector2i = WIN_SIZES[clampi(win_size_idx, 0, WIN_SIZES.size() - 1)]
+		DisplayServer.window_set_size(s)
+		var scr := DisplayServer.screen_get_size()
+		DisplayServer.window_set_position((scr - s) / 2)
+
+func toggle_vsync() -> void:
+	vsync_on = not vsync_on
+	_apply_display()
+	_save_settings()
+
+func cycle_winsize() -> void:
+	win_size_idx = (win_size_idx + 1) % WIN_SIZES.size()
+	_apply_display()
+	_save_settings()
 
 func _start_slowmo(factor: float, real_secs: float) -> void:
 	# кратковременное замедление времени; восстановление по реальному времени
@@ -4731,7 +4763,11 @@ func _draw_overlays() -> void:
 			_btn(Rect2(cx + 120, 192, 30, 28), "►", "diff_up", false)
 			if max_difficulty < 3:
 				_text(Vector2(cx, 232), "(побеждай боссов, чтобы открыть сложнее)", 11, Color("#6f7aa3"), true)
-			_btn(Rect2(cx - 90, 246, 180, 42), "Играть", "play")
+			if _has_save:
+				_btn(Rect2(cx - 186, 246, 180, 42), "Продолжить", "continue")
+				_btn(Rect2(cx + 6, 246, 180, 42), "Новый забег", "play", false)
+			else:
+				_btn(Rect2(cx - 90, 246, 180, 42), "Играть", "play")
 			_btn(Rect2(cx - 186, 296, 180, 30), "Класс: %s" % CLASSES[class_sel].name, "classes", false)
 			_btn(Rect2(cx + 6, 296, 180, 30), "Сид дня", "daily", false)
 			_btn(Rect2(cx - 186, 330, 180, 30), "Управление", "help", false)
@@ -4809,11 +4845,14 @@ func _draw_overlays() -> void:
 			_vol_row(110, "Громкость (общая)", volume, "vol_master")
 			_vol_row(158, "Музыка", music_vol, "vol_music")
 			_vol_row(206, "Звуки", sfx_vol, "vol_sfx")
-			_btn(Rect2(cx - 168, 262, 160, 38), "Тряска: %s" % ("Вкл" if shake_on else "Выкл"), "toggle_shake", false)
-			_btn(Rect2(cx + 8, 262, 160, 38), "Bloom: %s" % ("Вкл" if bloom_on else "Выкл"), "toggle_bloom", false)
-			_btn(Rect2(cx - 168, 308, 160, 38), "CRT-фильтр: %s" % ("Вкл" if crt_on else "Выкл"), "toggle_crt", false)
-			_btn(Rect2(cx + 8, 308, 160, 38), "Экран: %s" % ("Полный" if fullscreen_on else "Окно"), "toggle_fullscreen", false)
-			_btn(Rect2(cx - 90, 364, 180, 40), "← Назад", "settings_back", false)
+			_btn(Rect2(cx - 168, 256, 160, 34), "Тряска: %s" % ("Вкл" if shake_on else "Выкл"), "toggle_shake", false)
+			_btn(Rect2(cx + 8, 256, 160, 34), "Bloom: %s" % ("Вкл" if bloom_on else "Выкл"), "toggle_bloom", false)
+			_btn(Rect2(cx - 168, 296, 160, 34), "CRT-фильтр: %s" % ("Вкл" if crt_on else "Выкл"), "toggle_crt", false)
+			_btn(Rect2(cx + 8, 296, 160, 34), "Экран: %s" % ("Полный" if fullscreen_on else "Окно"), "toggle_fullscreen", false)
+			_btn(Rect2(cx - 168, 336, 160, 34), "V-Sync: %s" % ("Вкл" if vsync_on else "Выкл"), "toggle_vsync", false)
+			var ws: Vector2i = WIN_SIZES[win_size_idx]
+			_btn(Rect2(cx + 8, 336, 160, 34), "Окно: %d×%d" % [ws.x, ws.y], "cycle_winsize", false)
+			_btn(Rect2(cx - 90, 380, 180, 36), "← Назад", "settings_back", false)
 		"dead":
 			_text(Vector2(cx, 120), "Вы погибли", 44, Color("#ff6b5e"), true)
 			var is_record := score >= best and score > 0
@@ -5027,6 +5066,8 @@ func _load_settings() -> void:
 		bloom_on = bool(cfg.get_value("settings", "bloom", true))
 		crt_on = bool(cfg.get_value("settings", "crt", false))
 		fullscreen_on = bool(cfg.get_value("settings", "fullscreen", false))
+		vsync_on = bool(cfg.get_value("settings", "vsync", true))
+		win_size_idx = clampi(int(cfg.get_value("settings", "winsize", 0)), 0, WIN_SIZES.size() - 1)
 		tutorial_seen = bool(cfg.get_value("progress", "tutorial", false))
 		unlocked.clear()
 		if cfg.has_section("achievements"):
@@ -5043,6 +5084,7 @@ func _load_settings() -> void:
 
 func _save_settings() -> void:
 	var cfg := ConfigFile.new()
+	cfg.load(_cfg_path())   # сохраняем существующие секции (напр. сейв забега)
 	cfg.set_value("progress", "best", best)
 	cfg.set_value("progress", "cores", meta_cores)
 	cfg.set_value("progress", "maxdiff", max_difficulty)
@@ -5060,9 +5102,85 @@ func _save_settings() -> void:
 	cfg.set_value("settings", "bloom", bloom_on)
 	cfg.set_value("settings", "crt", crt_on)
 	cfg.set_value("settings", "fullscreen", fullscreen_on)
+	cfg.set_value("settings", "vsync", vsync_on)
+	cfg.set_value("settings", "winsize", win_size_idx)
 	for id in unlocked.keys():
 		cfg.set_value("achievements", id, true)
 	cfg.save(_cfg_path())
+
+func _save_run() -> void:
+	# автосейв забега на старте уровня (для «Продолжить»)
+	if P.is_empty():
+		return
+	var wl := []
+	for s in P.weapons:
+		wl.append({ "id": s.id, "ammo": -1 if not is_finite(s.ammo) else int(s.ammo) })
+	var data := {
+		"seed": run_seed, "label": seed_label, "lvl": lvl, "score": score, "coins": coins,
+		"diff": difficulty, "class": class_sel, "daily": daily_run, "ult": ult,
+		"hp": P.hp, "maxhp": P.maxhp, "shield": P.shield, "max_shield": P.max_shield,
+		"stats": P.stats, "wi": P.wi, "active": P.get("active", ""),
+		"weapons": wl, "relics": relics.keys(),
+	}
+	var cfg := ConfigFile.new()
+	cfg.load(_cfg_path())
+	cfg.set_value("run", "data", data)
+	cfg.save(_cfg_path())
+	_has_save = true
+
+func has_run_save() -> bool:
+	var cfg := ConfigFile.new()
+	if cfg.load(_cfg_path()) != OK:
+		return false
+	return cfg.has_section_key("run", "data")
+
+func _clear_run_save() -> void:
+	var cfg := ConfigFile.new()
+	if cfg.load(_cfg_path()) == OK and cfg.has_section("run"):
+		cfg.erase_section("run")
+		cfg.save(_cfg_path())
+	_has_save = false
+
+func continue_run() -> void:
+	var cfg := ConfigFile.new()
+	if cfg.load(_cfg_path()) != OK or not cfg.has_section_key("run", "data"):
+		return
+	var d: Dictionary = cfg.get_value("run", "data")
+	run_seed = int(d.seed)
+	seed_label = str(d.label)
+	lvl = int(d.lvl)
+	score = int(d.score)
+	coins = int(d.coins)
+	difficulty = int(d.diff)
+	class_sel = int(d.get("class", 0))
+	daily_run = bool(d.get("daily", false))
+	ult = float(d.get("ult", 0.0))
+	kills = 0
+	max_combo = 0
+	run_ticks = 0
+	shots_fired = 0
+	shots_hit = 0
+	damage_dealt = 0
+	combo = 0
+	P = make_player()
+	P.hp = float(d.hp)
+	P.maxhp = int(d.maxhp)
+	P.shield = float(d.shield)
+	P.max_shield = float(d.max_shield)
+	P.stats = d.stats
+	P.wi = int(d.wi)
+	P.active = str(d.active)
+	P.active_max = int(ACTIVES[P.active].cd) if ACTIVES.has(P.active) else 0
+	P.weapons = []
+	for s in d.weapons:
+		P.weapons.append({ "id": s.id, "ammo": (INF if int(s.ammo) < 0 else int(s.ammo)) })
+	relics = {}
+	for rid in d.relics:
+		relics[rid] = true
+	_hp_ghost = P.hp
+	_prev_wi = P.wi
+	start_level()
+	_set_state("play")
 
 # ============================== Достижения ==============================
 
