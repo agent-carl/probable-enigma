@@ -1130,6 +1130,21 @@ func _init() -> void:
 	_ok(game._diff_name(0) == "Норма" and game._diff_name(3) == "Преисподняя", "difficulty names map")
 	game.difficulty = 0
 
+	# ---------- 38. Активные предметы ----------
+	game.start_run(8800, "act")
+	_ok(game.P.active == "bomb", "starts with an active item")
+	game.give_active("medkit")
+	_ok(game.P.active == "medkit", "give_active swaps the active item")
+	game.P.hp = 50.0
+	game.P.active_cd = 0
+	game.use_active()
+	_ok(game.P.hp > 50.0, "medkit active heals the player")
+	_ok(game.P.active_cd > 0, "active goes on cooldown after use")
+	var act_hp: float = game.P.hp
+	game.use_active()   # на кулдауне — не срабатывает
+	_ok(absf(game.P.hp - act_hp) < 1e-6, "active does nothing while on cooldown")
+	game.level = {}
+
 	if failures == 0:
 		print("\nALL TESTS PASSED")
 	else:

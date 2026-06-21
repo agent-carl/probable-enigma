@@ -76,6 +76,18 @@ const RELICS := {
 	"second":     { "icon": "🕊", "name": "Второе дыхание", "desc": "Раз за уровень переживает смертельный удар (1 HP)" },
 	"overcharge": { "icon": "🔋", "name": "Сверхзаряд", "desc": "Ультимейт заряжается на 60% быстрее" },
 	"frost":      { "icon": "❄", "name": "Морозная аура", "desc": "Близкие враги замедляются" },
+	"regen":      { "icon": "🌿", "name": "Регенерация", "desc": "Медленно восстанавливает здоровье" },
+	"executioner":{ "icon": "🪓", "name": "Палач", "desc": "+50% урона по врагам с HP < 30%" },
+	"bulwark":    { "icon": "🛉", "name": "Бастион", "desc": "+25 щита в начале каждого уровня" },
+}
+
+# Активные предметы (слот, клавиша E): мгновенные/area-способности с кулдауном
+const ACTIVES := {
+	"bomb":   { "icon": "💣", "name": "Бомба", "desc": "Взрыв по области у прицела", "cd": 300 },
+	"blink":  { "icon": "✦", "name": "Блинк", "desc": "Телепорт к прицелу + i-кадры", "cd": 220 },
+	"freeze": { "icon": "❄", "name": "Заморозка", "desc": "Замораживает врагов вокруг", "cd": 480 },
+	"medkit": { "icon": "✚", "name": "Аптечка", "desc": "Мгновенно +40 HP", "cd": 600 },
+	"nova":   { "icon": "✺", "name": "Щит-нова", "desc": "Щит + отталкивающая волна", "cd": 480 },
 }
 
 # Мета-прогрессия: постоянные улучшения между забегами за «ядра»
@@ -494,6 +506,8 @@ func _unhandled_input(event: InputEvent) -> void:
 					_play_music((lvl - 1) % 5, boss_alive)
 			KEY_F11:
 				toggle_fullscreen()
+			KEY_E:
+				if state == "play": use_active()
 			KEY_MINUS, KEY_KP_SUBTRACT:
 				set_volume(volume - 0.1)
 			KEY_EQUAL, KEY_KP_ADD:
@@ -527,6 +541,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			_cycle_weapon(1)
 		elif event.button_index == MOUSE_BUTTON_WHEEL_UP:
 			_cycle_weapon(-1)
+	elif event is InputEventJoypadButton and event.pressed and state == "play" and event.button_index == JOY_BUTTON_X:
+		use_active()
 	elif event is InputEventJoypadButton and event.pressed and state != "play":
 		match event.button_index:
 			JOY_BUTTON_DPAD_UP: _nav_move(-1)
@@ -1177,8 +1193,8 @@ func _next_eid() -> int:
 func _spawn_enemy(type: String, sx: float, sy: float) -> Dictionary:
 	# создание врага в рантайме (осколки делящегося и т.п.)
 	var b: Dictionary = ENEMY_BASE[type]
-	var hp_mul := 1.0 + 0.25 * (lvl - 1)
-	var dmg_add := 2 * (lvl - 1)
+	var hp_mul := (1.0 + 0.25 * (lvl - 1)) * (1.0 + 0.35 * difficulty)
+	var dmg_add := 2 * (lvl - 1) + 3 * difficulty
 	return {
 		"type": type, "x": sx, "y": sy, "w": b.w, "h": b.h,
 		"hp": roundi(b.hp * hp_mul), "maxhp": roundi(b.hp * hp_mul),
@@ -1198,6 +1214,7 @@ func make_player() -> Dictionary:
 		"coyote": 0, "buffer": 0, "air_jumps": 0, "drop": 0,
 		"inv": 0, "cd": 0, "face": 1, "aim": 0.0,
 		"dash_cd": 0, "dash_t": 0, "dash_dir": 1.0, "squash": 0.0,
+		"active": "bomb", "active_cd": 0, "active_max": ACTIVES["bomb"].cd,
 		"shield": 0.0, "max_shield": 0.0, "ride_id": -1,
 		"weapons": [{ "id": "pistol", "ammo": INF }], "wi": 0,
 		"stats": {
@@ -1276,6 +1293,9 @@ func start_level() -> void:
 	combo_t = 0
 	hitstop = 0
 	_second_used = false   # «Второе дыхание» восстанавливается каждый уровень
+	if has_relic("bulwark"):
+		P.max_shield = maxf(P.max_shield, 25.0)
+		P.shield = minf(P.max_shield, P.shield + 25.0)
 	if lvl > 1 and not tutorial_seen:
 		tutorial_seen = true   # дошёл до 2-го уровня — обучение пройдено
 		_save_settings()
@@ -1452,12 +1472,25 @@ func build_shop() -> Array:
 	var rid := random_unowned_relic()
 	if rid != "":
 		items.append({ "id": "relic", "icon": RELICS[rid].icon, "name": RELICS[rid].name, "desc": RELICS[rid].desc, "price": 28, "sold": false, "relic": rid })
+	var aid := _random_other_active()
+	if aid != "":
+		items.append({ "id": "active", "icon": ACTIVES[aid].icon, "name": ACTIVES[aid].name, "desc": ACTIVES[aid].desc + " (актив, E)", "price": 14, "sold": false, "active": aid })
 	# мета-скидка на цены
 	var disc := 1.0 - 0.12 * meta_level("discount")
 	if disc < 1.0:
 		for it in items:
 			it.price = maxi(1, roundi(it.price * disc))
 	return items
+
+func _random_other_active() -> String:
+	# случайный активный предмет, отличный от текущего
+	var pool := []
+	for id in ACTIVES.keys():
+		if P.is_empty() or id != P.get("active", ""):
+			pool.append(id)
+	if pool.is_empty():
+		return ""
+	return pool[rng.randi_range(0, pool.size() - 1)]
 
 func pick_rng(arr: Array):
 	return arr[rng.randi_range(0, arr.size() - 1)]
@@ -1482,6 +1515,7 @@ func buy_shop_item(i: int) -> void:
 		"weapon": give_weapon(it.weapon)
 		"upgrade": apply_upgrade_stats(it.up)
 		"relic": grant_relic(it.relic)
+		"active": give_active(it.active)
 	play_sfx("pickup")
 
 func _refill_all_ammo() -> void:
@@ -1560,6 +1594,60 @@ func die() -> void:
 	_stop_music()
 	_set_state("dead")
 
+func give_active(id: String) -> void:
+	if not ACTIVES.has(id) or P.is_empty():
+		return
+	P.active = id
+	P.active_max = ACTIVES[id].cd
+	P.active_cd = 0
+
+func use_active() -> void:
+	if state != "play" or P.is_empty() or P.get("active", "") == "" or P.active_cd > 0:
+		return
+	var cx: float = P.x + P.w / 2.0
+	var cy: float = P.y + P.h / 2.0
+	var a: float = P.aim
+	match P.active:
+		"bomb":
+			explode(cx + cos(a) * 120.0, cy + sin(a) * 120.0, 92.0, 40, "p")
+		"blink":
+			# телепорт к прицелу: ищем свободную точку, укорачивая дистанцию
+			var d := 150.0
+			while d > 20.0:
+				var nx := clampf(P.x + cos(a) * d, 0, level.px_w - P.w)
+				var ny := clampf(P.y + sin(a) * d, 0, level.px_h - P.h)
+				if not solid_px(nx + P.w / 2.0, ny + P.h / 2.0):
+					P.x = nx
+					P.y = ny
+					break
+				d -= 24.0
+			P.inv = max(P.inv, 24)
+			for i in range(4):
+				afterimages.append({ "x": P.x - cos(a) * i * 10.0, "y": P.y - sin(a) * i * 10.0, "life": 12.0 })
+			burst(cx, cy, 12, Color("#9be8ff"))
+		"freeze":
+			for en in enemies:
+				if not en.dead and en.type != "boss" and Vector2(en.x + en.w / 2.0 - cx, en.y + en.h / 2.0 - cy).length() < 280.0:
+					apply_chill(en, 200)
+			shockwaves.append({ "x": cx, "y": cy, "r": 8.0, "max_r": 280.0, "life": 22.0, "col": Color("#a8e6ff") })
+		"medkit":
+			P.hp = min(P.maxhp, P.hp + 40)
+			add_text(cx, P.y - 10, "+40 HP", Color("#7df2a5"))
+			burst(cx, cy, 12, Color("#7df2a5"))
+		"nova":
+			P.max_shield = maxf(P.max_shield, 40.0)
+			P.shield = P.max_shield
+			shockwaves.append({ "x": cx, "y": cy, "r": 10.0, "max_r": 160.0, "life": 20.0, "col": Color("#7fd4ff") })
+			for en in enemies:
+				if not en.dead:
+					var ev := Vector2(en.x + en.w / 2.0 - cx, en.y + en.h / 2.0 - cy)
+					if ev.length() < 160.0:
+						en.vx += signf(ev.x) * 6.0
+						en.vy -= 3.0
+						hurt_enemy(en, 12, false)
+	P.active_cd = P.active_max
+	play_sfx("portal")
+
 func activate_ult() -> void:
 	# «Перегрузка»: ударная волна, чистит вражеские пули, даёт i-кадры
 	var cx: float = P.x + P.w / 2.0
@@ -1613,6 +1701,8 @@ func hurt_enemy(en: Dictionary, dmg: int, crit: bool, silent := false) -> void:
 	# элита-бронежилет снижает входящий урон
 	if en.get("mod", "") == "armored":
 		dmg = max(1, int(round(dmg * 0.6)))
+	if has_relic("executioner") and en.hp < 0.3 * en.maxhp:
+		dmg = int(round(dmg * 1.5))   # добивание ослабленных
 	en.hp -= dmg
 	en.hurt_t = 90
 	damage_dealt += dmg
@@ -2152,6 +2242,10 @@ func update_player() -> void:
 		P.cd -= 1
 	if P.squash > 0.0:
 		P.squash = maxf(0.0, P.squash - 0.12)
+	if P.active_cd > 0:
+		P.active_cd -= 1
+	if has_relic("regen") and tick % 36 == 0:
+		P.hp = min(P.maxhp, P.hp + 1)
 	if _hitmark > 0.0:
 		_hitmark -= 1.0
 	if _recoil > 0.0:
@@ -4213,13 +4307,24 @@ func _draw_hud() -> void:
 	_ci.draw_rect(Rect2(13, uy + 1, 118 * ufrac, 6), ucol)
 	_text(Vector2(136, uy + 8), "ПЕРЕГРУЗКА (Q)" if ready else "перегрузка (Q)", 10, Color("#ffd86b") if ready else Color("#8d97bd"))
 
-	# реликвии забега — ряд иконок
+	# активный предмет (слот, клавиша E) с индикатором перезарядки
+	if P.get("active", "") != "":
+		var aready: bool = P.active_cd <= 0
+		_ci.draw_rect(Rect2(12, 62, 26, 26), Color(0, 0, 0, 0.5))
+		_ci.draw_rect(Rect2(12, 62, 26, 26), Color("#7fd4ff") if aready else Color(1, 1, 1, 0.15), false, 1.0)
+		_text(Vector2(16, 81), ACTIVES[P.active].icon, 14, Color("#eaf0ff") if aready else Color("#5a6385"))
+		if not aready:
+			var cdf := float(P.active_cd) / maxf(1.0, P.active_max)
+			_ci.draw_rect(Rect2(12, 62, 26, 26.0 * cdf), Color(0, 0, 0, 0.55))   # затемнение сверху по кулдауну
+		_text(Vector2(41, 76), "E", 10, Color("#8d97bd"))
+
+	# реликвии забега — ряд иконок (под активным предметом)
 	if relics.size() > 0:
 		var rx := 12.0
 		for rid in relics.keys():
-			_ci.draw_rect(Rect2(rx, 62, 18, 18), Color(0.12, 0.10, 0.18, 0.7))
-			_ci.draw_rect(Rect2(rx, 62, 18, 18), Color(1, 0.85, 0.42, 0.5), false, 1.0)
-			_text(Vector2(rx + 3, 76), RELICS[rid].icon, 13, Color("#ffe9b0"))
+			_ci.draw_rect(Rect2(rx, 92, 18, 18), Color(0.12, 0.10, 0.18, 0.7))
+			_ci.draw_rect(Rect2(rx, 92, 18, 18), Color(1, 0.85, 0.42, 0.5), false, 1.0)
+			_text(Vector2(rx + 3, 106), RELICS[rid].icon, 13, Color("#ffe9b0"))
 			rx += 22.0
 
 	# серия убийств
@@ -4532,6 +4637,7 @@ func _draw_overlays() -> void:
 				["Прицел / огонь", "Мышь / ЛКМ"],
 				["Рывок (i-кадры)", "Shift / ПКМ"],
 				["Ультимейт «Перегрузка»", "Q"],
+				["Активный предмет", "E"],
 				["Смена оружия", "1–8 / колесо мыши"],
 				["Громкость", "− / +"],
 				["Пауза", "Esc / P"],
