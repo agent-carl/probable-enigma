@@ -711,6 +711,7 @@ func _init() -> void:
 	game.start_run(61, "61")
 	# заморозка замедляет, потом скорость восстанавливается
 	game.P.x = 50.0
+	game.cam = Vector2.ZERO   # враги в кадре (иначе отсекаются как «спящие»)
 	var fr: Dictionary = game._spawn_enemy("walker", 600.0, 200.0)
 	var base_spd: float = fr.base_spd
 	game.enemies = [fr]
@@ -725,6 +726,7 @@ func _init() -> void:
 	# горение наносит урон по времени и заряжает ульту/статы
 	game.start_run(62, "62")
 	game.P.x = 50.0
+	game.cam = Vector2.ZERO
 	var bn: Dictionary = game._spawn_enemy("tank", 600.0, 200.0)
 	bn.hp = 200
 	game.enemies = [bn]
@@ -1165,6 +1167,22 @@ func _init() -> void:
 	game.start_run(9101, "tank")
 	_ok(game.P.maxhp > 100, "tank class has more max HP (%d)" % game.P.maxhp)
 	game.class_sel = 0
+	game.level = {}
+
+	# ---------- 40. Оптимизация: отсечение далёких врагов ----------
+	game.start_run(9200, "cull")
+	game.cam = Vector2.ZERO
+	var cull_far: Dictionary = game._spawn_enemy("walker", 5000.0, 200.0)
+	cull_far.vx = 3.0
+	var cull_fx0: float = cull_far.x
+	game.enemies = [cull_far]
+	game.update_enemies()
+	_ok(absf(cull_far.x - cull_fx0) < 0.001, "off-screen enemy is skipped (asleep)")
+	var cull_near: Dictionary = game._spawn_enemy("walker", 300.0, 100.0)
+	cull_near.vy = 0.0
+	game.enemies = [cull_near]
+	game.update_enemies()
+	_ok(cull_near.vy != 0.0, "on-screen enemy still updates (gravity applied)")
 	game.level = {}
 
 	if failures == 0:

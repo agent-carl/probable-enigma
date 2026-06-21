@@ -315,6 +315,9 @@ func _ready() -> void:
 	else:
 		audio_enabled = false
 	set_process_unhandled_input(true)
+	if "--bench" in OS.get_cmdline_args():
+		_run_bench()
+		return
 	if "--demo" in OS.get_cmdline_args():
 		demo = true
 		audio_enabled = "--music" in OS.get_cmdline_args()  # музыку проверяем по флагу
@@ -442,6 +445,39 @@ func _on_post_draw() -> void:
 	_want_shot = false
 	var img := get_viewport().get_texture().get_image()
 	img.save_png("/tmp/gunfall_demo_%d.png" % demo_frame)
+
+func _run_bench() -> void:
+	# стресс-тест симуляции без рендера (запуск: --headless --bench)
+	var t0 := Time.get_ticks_usec()
+	for i in range(120):
+		generate_level(i * 13 + 1, 12)
+	var gen_ms := (Time.get_ticks_usec() - t0) / 1000.0
+	difficulty = 3
+	lvl = 12
+	state = "play"
+	level = generate_level(777, 12)
+	P = make_player()
+	P.x = level.spawn.x
+	P.y = level.spawn.y
+	P.hp = 1.0e9   # чтобы не умереть во время бенча
+	enemies = level.enemies.duplicate()
+	for i in range(120):
+		enemies.append(_spawn_enemy("walker", level.spawn.x + 200.0 + i * 4.0, level.spawn.y))
+	for i in range(200):
+		bullets.append({ "x": float(80 + i * 3), "y": 220.0, "vx": 3.0, "vy": 0.0, "dmg": 5, "crit": false, "from": "e", "life": 600, "color": Color.WHITE })
+	for i in range(400):
+		burst(300.0, 300.0, 1, Color.WHITE)
+	var n_en := enemies.size()
+	t0 = Time.get_ticks_usec()
+	for f in range(600):
+		update_enemies()
+		update_bullets()
+		update_effects()
+	var upd_ms := (Time.get_ticks_usec() - t0) / 1000.0
+	print("BENCH: gen 120 lvls = %.1f ms | update x600 (%d enemies) = %.1f ms (%.3f ms/frame)" % [gen_ms, n_en, upd_ms, upd_ms / 600.0])
+	level = {}
+	state = "menu"
+	get_tree().quit()
 
 # ============================== Ввод (реальный) ==============================
 
@@ -2370,6 +2406,11 @@ func update_enemies() -> void:
 			continue
 		var ecx: float = en.x + en.w / 2.0
 		var ecy: float = en.y + en.h / 2.0
+		# оптимизация: далёкие за экраном враги «спят» (боссы — всегда активны)
+		if en.type != "boss" and (ecx < cam.x - 240.0 or ecx > cam.x + VW + 240.0 or ecy < cam.y - 240.0 or ecy > cam.y + VH + 240.0):
+			if en.hurt_t > 0:
+				en.hurt_t -= 1
+			continue
 		var dist := Vector2(pcx - ecx, pcy - ecy).length()
 
 		# реликвия «Морозная аура»: близкие враги постоянно подмёрзшие
@@ -4041,6 +4082,9 @@ func _draw_enemies() -> void:
 	for en in enemies:
 		if not en.has("dir"):
 			en["dir"] = 1  # защита отрисовки (на случай неполной записи врага)
+		# отсечение: не рисуем врагов за пределами экрана
+		if en.x + en.w < _cam_draw.x - 40.0 or en.x > _cam_draw.x + VW + 40.0 or en.y + en.h < _cam_draw.y - 40.0 or en.y > _cam_draw.y + VH + 40.0:
+			continue
 		var flash: bool = en.hurt_t > 84
 		# кольцо-«поп» при свежем попадании (расходится и гаснет)
 		if en.hurt_t > 78 and en.type != "boss":
@@ -4294,6 +4338,8 @@ func _draw_player() -> void:
 
 func _draw_bullets() -> void:
 	for b in bullets:
+		if b.x < _cam_draw.x - 40.0 or b.x > _cam_draw.x + VW + 40.0 or b.y < _cam_draw.y - 40.0 or b.y > _cam_draw.y + VH + 40.0:
+			continue   # пуля за экраном — не рисуем
 		var col: Color = b.color
 		if b.get("grenade", false):
 			# граната — вращающийся снаряд со светящимся следом

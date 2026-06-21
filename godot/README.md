@@ -288,5 +288,13 @@ godot --headless --path godot --script res://Test.gd
 
 Ожидаемый результат: `ALL TESTS PASSED`.
 
+Стресс-бенч производительности симуляции (без рендера):
+
+```bash
+godot --headless --path godot --bench
+```
+
+Печатает время генерации уровней и обновления симуляции (мс/кадр) под нагрузкой.
+
 Эти же тесты автоматически запускаются на GitHub Actions при каждом push,
 затрагивающем папку `godot/` (см. `.github/workflows/tests.yml`).
