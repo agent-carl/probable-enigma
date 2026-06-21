@@ -1242,6 +1242,42 @@ func _init() -> void:
 	var m5 = SynthScript.build_music(5, false)
 	_ok(m5 != null and m5.data.size() > 0, "music builds for 6th biome index")
 
+	# ---------- 45. Враг-сфера (orbiter) ----------
+	var oWS := 24
+	var oHS := 12
+	var ogrid := PackedByteArray()
+	ogrid.resize(oWS * oHS)
+	for ty in range(10, oHS):
+		for tx in range(oWS):
+			ogrid[ty * oWS + tx] = 1
+	game.level = { "W": oWS, "H": oHS, "grid": ogrid, "px_w": oWS * 32, "px_h": oHS * 32,
+		"crate_hp": {}, "theme": { "top": "#58c98f" } }
+	game.cam = Vector2.ZERO
+	game.P.x = 120.0
+	game.P.y = 10 * 32 - 30
+	game.P.inv = 999
+	var orb: Dictionary = game._spawn_enemy("orbiter", 400.0, 9 * 32 - 30)
+	game.enemies = [orb]
+	game.bullets = []
+	var ox0: float = orb.x
+	var oy0: float = orb.y
+	var orb_fired := false
+	for i in range(160):
+		game.update_enemies()
+		if game.bullets.size() > 0:
+			orb_fired = true
+	_ok(orb_fired, "orbiter fires aimed bolts")
+	_ok(orb.x != ox0 or orb.y != oy0, "orbiter orbits (moves)")
+	var orb_count := 0
+	for lv in range(5, 11):
+		for en in game.generate_level(lv * 101 + 7, lv).enemies:
+			if en.type == "orbiter":
+				orb_count += 1
+	_ok(orb_count > 0, "orbiter spawns at higher levels (%d)" % orb_count)
+	game.enemies = []
+	game.bullets = []
+	game.level = {}
+
 	if failures == 0:
 		print("\nALL TESTS PASSED")
 	else:

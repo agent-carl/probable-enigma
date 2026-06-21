@@ -133,6 +133,7 @@ const ENEMY_BASE := {
 	"splitter": { "w": 30, "h": 30, "hp": 52, "spd": 0.9, "dmg": 12, "score": 25, "cd": 0, "fly": false },
 	"charger": { "w": 34, "h": 32, "hp": 95, "spd": 0.7, "dmg": 18, "score": 35, "cd": 0, "fly": false },
 	"healer":  { "w": 24, "h": 24, "hp": 36, "spd": 1.5, "dmg": 6, "score": 45, "cd": 150, "fly": true },
+	"orbiter": { "w": 24, "h": 24, "hp": 46, "spd": 2.0, "dmg": 11, "score": 38, "cd": 95, "fly": true, "orbit": 150 },
 	"shard":   { "w": 14, "h": 16, "hp": 10, "spd": 2.4, "dmg": 8, "score": 5, "cd": 0, "fly": false },
 	"boss":    { "w": 70, "h": 74, "hp": 900, "spd": 0.9, "dmg": 18, "score": 300, "cd": 70, "fly": false },
 }
@@ -1286,6 +1287,7 @@ func generate_level(seed_val: int, level_num: int) -> Dictionary:
 		"sniper": int((mini(1 + int((level_num - 2) / 2.0), 4) if level_num >= 3 else 0) * crowd),
 		"charger": int((mini(1 + int((level_num - 2) / 2.0), 4) if level_num >= 3 else 0) * crowd),
 		"healer": int((mini(int((level_num - 3) / 2.0), 3) if level_num >= 4 else 0) * crowd),
+		"orbiter": int((mini(int((level_num - 4) / 2.0), 3) if level_num >= 5 else 0) * crowd),
 	}
 	for type in counts.keys():
 		for _i in range(counts[type]):
@@ -2845,6 +2847,38 @@ func update_enemies() -> void:
 			if en.vy == 0 and pvy != 0:
 				en.vy = -pvy * 0.5
 			en.dir = 1 if pcx > ecx else -1
+		elif en.type == "orbiter":
+			# кружит вокруг игрока на заданном радиусе и бьёт прицельными болтами
+			en.phase += 0.05
+			var R: float = float(en.get("orbit", 150))
+			var topx: float = pcx - ecx
+			var topy: float = pcy - ecy
+			var d: float = maxf(1.0, sqrt(topx * topx + topy * topy))
+			var rdx: float = topx / d
+			var rdy: float = topy / d
+			var pull: float = clampf((d - R) / R, -1.0, 1.0)   # >0 — далеко, тянемся внутрь
+			var dvx: float = -rdy + rdx * pull * 0.9            # касательная + коррекция радиуса
+			var dvy: float = rdx + rdy * pull * 0.9
+			var dl: float = maxf(0.001, sqrt(dvx * dvx + dvy * dvy))
+			dvx = dvx / dl * float(en.spd)
+			dvy = dvy / dl * float(en.spd)
+			en.vx = lerpf(float(en.vx), dvx, 0.12)
+			en.vy = lerpf(float(en.vy), dvy, 0.12)
+			var pvx: float = en.vx
+			var pvy: float = en.vy
+			collide_entity(en)
+			if en.vx == 0 and pvx != 0:
+				en.vx = -pvx * 0.5
+			if en.vy == 0 and pvy != 0:
+				en.vy = -pvy * 0.5
+			en.dir = 1 if pcx > ecx else -1
+			if dist < 470 and line_of_sight(ecx, ecy, pcx, pcy):
+				en.cd -= 1
+				if en.cd <= 0:
+					en.cd = en.cd_max
+					_eshot(ecx, ecy, atan2(topy, topx), 5.2, en.dmg, "#c79bff")
+			else:
+				en.cd = maxi(int(en.cd), 25)
 		elif en.type == "boss" and en.get("variant", "ground") == "summoner":
 			# босс-призыватель: парит, призывает миньонов и стреляет
 			en.phase += 0.05
@@ -4584,6 +4618,15 @@ func _draw_enemies() -> void:
 			draw_colored_polygon(PackedVector2Array([
 				Vector2(en.x + en.w - 2, ec.y), Vector2(en.x + en.w + 7, ec.y - 6 + flap), Vector2(en.x + en.w - 4, ec.y + 4)]), wing)
 			draw_rect(Rect2(ec.x + en.dir * 4 - 2, ec.y - 3, 4, 4), Color("#10243a"))
+		elif en.type == "orbiter":
+			var ec := Vector2(en.x + en.w / 2.0, en.y + en.h / 2.0)
+			var aura := 0.5 + 0.5 * sin(tick * 0.12 + en.phase)
+			draw_circle(ec, en.w * 0.72 + aura * 3.0, Color(0.62, 0.42, 1.0, 0.14))  # фиолетовая аура
+			draw_circle(ec, en.w / 2.0, Color.WHITE if flash else Color("#9d6bff"))
+			draw_circle(ec, en.w / 2.0 - 4, Color("#2a1640"))                        # тёмное ядро
+			var ga: float = tick * 0.14 + float(en.phase)                            # вращающийся спутник-глинт
+			draw_circle(ec + Vector2(cos(ga), sin(ga)) * (en.w * 0.6), 2.4, Color(0.85, 0.7, 1.0))
+			draw_circle(ec + Vector2(en.dir * 3, 0), 2.0, Color("#ecd9ff"))          # зрачок к игроку
 		elif en.type == "tank":
 			draw_rect(Rect2(en.x, en.y + 8, en.w, en.h - 8), Color.WHITE if flash else Color("#c8893a"))
 			draw_circle(Vector2(en.x + en.w / 2.0, en.y + 12), en.w / 2.0 - 4, Color.WHITE if flash else Color("#9c6a28"))
