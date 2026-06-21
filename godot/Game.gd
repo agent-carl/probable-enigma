@@ -32,6 +32,8 @@ const THEMES := [
 	  "ground": "#2b3d31", "top": "#a8d65c", "plat": "#c6ec85", "spike": "#e9ffc9", "weather": "bubbles", "wcol": "#bff06a", "lava": "#9bff3a" },
 	{ "name": "Пустынный форт", "sky0": "#1a1208", "sky1": "#3d2c14", "hill_far": "#291e0e", "hill_near": "#352813",
 	  "ground": "#4a3a20", "top": "#e6b566", "plat": "#f4ce8d", "spike": "#ffe9c2", "weather": "sand", "wcol": "#f0d29a", "lava": "#ff7a1a" },
+	{ "name": "Аметистовая бездна", "sky0": "#140a24", "sky1": "#33183f", "hill_far": "#1f1030", "hill_near": "#2d1942",
+	  "ground": "#352048", "top": "#9d6bff", "plat": "#bf9bff", "spike": "#ecd9ff", "weather": "rain", "wcol": "#cba6ff", "lava": "#b24aff" },
 ]
 
 const WEAPONS := {
@@ -326,6 +328,7 @@ const LOC_EN := {
 	"Ледяные шахты": "Frozen Mines",
 	"Токсичные топи": "Toxic Swamps",
 	"Пустынный форт": "Desert Fort",
+	"Аметистовая бездна": "Amethyst Abyss",
 	# Оружие
 	"Пистолет": "Pistol",
 	"ПП «Оса»": "SMG \"Wasp\"",
@@ -629,6 +632,12 @@ func _ready() -> void:
 			for wid in ["smg", "shotgun", "rifle", "grenade", "railgun", "flame"]:
 				P.weapons.append({ "id": wid, "ammo": 999 })
 			start_level()
+		else:
+			var args := OS.get_cmdline_args()
+			var li := args.find("--lvl")
+			if li >= 0 and li + 1 < args.size():
+				lvl = clampi(int(args[li + 1]), 1, 99)
+				start_level()
 	queue_redraw()
 
 func _physics_process(_delta: float) -> void:
@@ -837,7 +846,7 @@ func _unhandled_input(event: InputEvent) -> void:
 				if not audio_enabled:
 					_stop_music()
 				elif state == "play":
-					_play_music((lvl - 1) % 5, boss_alive)
+					_play_music((lvl - 1) % THEMES.size(), boss_alive)
 			KEY_F11:
 				toggle_fullscreen()
 			KEY_E:
@@ -1674,7 +1683,7 @@ func start_level() -> void:
 	else:
 		intro_text = T("Уровень %d — %s") % [lvl, T(level.theme.name)]
 	_build_background(level_seed)
-	_play_music((lvl - 1) % 5, boss_alive)
+	_play_music((lvl - 1) % THEMES.size(), boss_alive)
 	if not test_mode:
 		_save_run()   # автосейв забега на старте уровня (для «Продолжить»)
 
@@ -3405,7 +3414,7 @@ func _new_ambient_particle(at_random_y: bool) -> Dictionary:
 	var x := rng.randf() * VW
 	var y := rng.randf() * VH
 	match weather:
-		"snow", "sand", "spores":
+		"snow", "sand", "spores", "rain":
 			if not at_random_y:
 				y = -8.0  # появляются сверху
 		"embers", "bubbles":
@@ -3429,6 +3438,10 @@ func _new_ambient_particle(at_random_y: bool) -> Dictionary:
 			vx = (rng.randf() - 0.5) * 0.3
 			vy = -(0.4 + rng.randf() * 0.9)
 			sz = 1.5 + rng.randf() * 2.5
+		"rain":
+			vx = 0.6 + rng.randf() * 0.5      # лёгкий снос ветром
+			vy = 3.0 + rng.randf() * 1.8      # быстрые падающие струйки
+			sz = 1.0 + rng.randf() * 1.0
 		_:  # spores — мягкое парение
 			vx = (rng.randf() - 0.5) * 0.5
 			vy = (rng.randf() - 0.5) * 0.4
@@ -3594,7 +3607,11 @@ func _draw_ambient() -> void:
 	for p in ambient:
 		var col := weather_col
 		col.a = p.alpha
-		if weather == "snow" or weather == "bubbles":
+		if weather == "rain":
+			# падающая струйка-штрих по направлению движения
+			var v: Vector2 = Vector2(p.vx, p.vy).normalized() * (5.0 + float(p.size) * 2.5)
+			draw_line(Vector2(p.x, p.y), Vector2(p.x + v.x, p.y + v.y), col, maxf(1.0, float(p.size) * 0.8))
+		elif weather == "snow" or weather == "bubbles":
 			draw_circle(Vector2(p.x, p.y), p.size, col)
 		else:
 			draw_rect(Rect2(p.x - p.size / 2.0, p.y - p.size / 2.0, p.size, p.size), col)
@@ -5138,6 +5155,7 @@ func _set_grade(theme_idx: int) -> void:
 		{ "mul": Vector3(0.95, 1.02, 1.12), "add": Vector3(0, 0.006, 0.02), "con": 1.04 }, # шахты (лёд)
 		{ "mul": Vector3(0.95, 1.09, 0.95), "add": Vector3(0, 0.012, 0), "con": 1.05 },   # топи (яд)
 		{ "mul": Vector3(1.12, 1.02, 0.88), "add": Vector3(0.02, 0.008, 0), "con": 1.06 }, # форт (янтарь)
+		{ "mul": Vector3(1.05, 0.94, 1.13), "add": Vector3(0.014, 0, 0.02), "con": 1.06 },  # бездна (аметист)
 	]
 	var gr: Dictionary = grades[theme_idx % grades.size()] if theme_idx >= 0 else { "mul": Vector3.ONE, "add": Vector3.ZERO, "con": 1.0 }
 	fx_mat.set_shader_parameter("grade_mul", gr.mul)
@@ -5460,7 +5478,7 @@ func play_sfx(name: String) -> void:
 func _play_music(theme_idx: int, intense: bool) -> void:
 	if _music_player == null:
 		return
-	var key := "%d_%s" % [theme_idx % 5, intense]
+	var key := "%d_%s" % [theme_idx % THEMES.size(), intense]
 	if key == _music_key and _music_player.playing:
 		return
 	_music_key = key

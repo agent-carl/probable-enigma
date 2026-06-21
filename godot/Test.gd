@@ -1231,6 +1231,16 @@ func _init() -> void:
 	_ok(game.lang != lg0, "toggle_lang switches language")
 	game.toggle_lang()
 	_ok(game.lang == lg0, "toggle_lang switches back")
+	game.lang = "ru"
+	game._save_settings()   # не оставляем EN в конфиге после тестов
+
+	# ---------- 44. Шестой биом (Аметистовая бездна) ----------
+	_ok(game.THEMES.size() == 6, "six biomes present")
+	_ok(game.THEMES[5].name == "Аметистовая бездна", "6th biome is Amethyst Abyss")
+	_ok(game.THEMES[5].weather == "rain", "6th biome uses rain weather")
+	var SynthScript = load("res://Synth.gd")
+	var m5 = SynthScript.build_music(5, false)
+	_ok(m5 != null and m5.data.size() > 0, "music builds for 6th biome index")
 
 	if failures == 0:
 		print("\nALL TESTS PASSED")
