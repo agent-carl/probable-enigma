@@ -1208,6 +1208,16 @@ func _init() -> void:
 	_ok(not game.has_run_save(), "clear removes the save")
 	game.level = {}
 
+	# ---------- 42. Объёмный свет: ресурсы и переключатель ----------
+	game._build_ground_normal()
+	_ok(game.ground_norm != null, "ground normal map built")
+	_ok(game.ground_ctex != null and game.ground_ctex.normal_texture != null, "ground CanvasTexture has normal")
+	var el0: bool = game.engine_light
+	game.toggle_englight()
+	_ok(game.engine_light != el0, "toggle_englight flips flag")
+	game.toggle_englight()
+	_ok(game.engine_light == el0, "toggle_englight restores flag")
+
 	if failures == 0:
 		print("\nALL TESTS PASSED")
 	else:

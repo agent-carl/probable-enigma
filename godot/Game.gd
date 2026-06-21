@@ -259,6 +259,16 @@ var ground_tex: ImageTexture = null   # пиксель-текстура камн
 var grass_tex: ImageTexture = null    # текстура травянистой кромки
 var plat_tex: ImageTexture = null     # текстура односторонней платформы
 var crate_tex: ImageTexture = null    # текстура дерева ящика
+# движковый нормал-мап-свет (опционально): рельеф земли под настоящим PointLight2D
+var ground_norm: Texture2D = null     # карта нормалей-бевелей тайла
+var ground_ctex: CanvasTexture = null # земля как CanvasTexture (диффуз + нормали)
+var grass_ctex: CanvasTexture = null  # травяная кромка как CanvasTexture
+var terrain_layer: CanvasLayer = null # слой земли с движковым освещением
+var terrain_node: Node2D = null       # холст земли (нормал-мап-поверхность)
+var terrain_cm: CanvasModulate = null # амбиентное затемнение слоя земли
+var player_light: PointLight2D = null # фонарь игрока (рельеф земли)
+var portal_light: PointLight2D = null # маяк портала
+var engine_light := false             # включён ли движковый нормал-мап-свет
 var _cam_draw := Vector2.ZERO   # текущее смещение камеры в кадре (с тряской)
 var afterimages := []  # следы рывка [{x,y,life}]
 var ambient := []      # атмосферные частицы по теме (экранное пространство)
@@ -308,6 +318,7 @@ func _ready() -> void:
 	_build_cracks()
 	_build_vignette()
 	_build_light_tex()
+	_build_ground_normal()
 	_build_menu_bg()
 	_build_crate_texture()
 	_load_settings()
@@ -322,6 +333,8 @@ func _ready() -> void:
 	else:
 		audio_enabled = false
 	set_process_unhandled_input(true)
+	if "--englight" in OS.get_cmdline_args():
+		engine_light = true
 	if "--bench" in OS.get_cmdline_args():
 		_run_bench()
 		return
@@ -3078,6 +3091,42 @@ func _build_tile_textures(seed_val: int) -> void:
 				c = c.darkened(0.16)  # шов между досками
 			pimg.set_pixel(x, y, c)
 	plat_tex = ImageTexture.create_from_image(pimg)
+	# обновляем диффуз CanvasTexture-ов земли (нормали биом-независимы)
+	if ground_ctex:
+		ground_ctex.diffuse_texture = ground_tex
+	if grass_ctex:
+		grass_ctex.diffuse_texture = grass_tex
+
+func _build_ground_normal() -> void:
+	# карта нормалей тайла земли: скруглённый бевел по краям + микрорельеф камешков.
+	# Стандартная OpenGL-кодировка (плоскость = 128,128,255; G вверх). Тайлится по сетке.
+	var tr := RandomNumberGenerator.new()
+	tr.seed = 0x6E07
+	var img := Image.create(TILE, TILE, false, Image.FORMAT_RGBA8)
+	var bev := 4.0   # ширина скоса у кромки тайла
+	for y in range(TILE):
+		for x in range(TILE):
+			var nx := 0.0
+			var ny := 0.0
+			# бевел: нормаль отклоняется наружу у краёв тайла
+			if x < bev:
+				nx = -(1.0 - x / bev)
+			elif x >= TILE - bev:
+				nx = (1.0 - (TILE - 1 - x) / bev)
+			if y < bev:
+				ny = (1.0 - y / bev)            # верх → нормаль вверх (G+)
+			elif y >= TILE - bev:
+				ny = -(1.0 - (TILE - 1 - y) / bev)
+			# микрорельеф: лёгкое случайное дрожание нормали (камешки)
+			nx += (tr.randf() - 0.5) * 0.35
+			ny += (tr.randf() - 0.5) * 0.35
+			var nz := 1.0
+			var l := sqrt(nx * nx + ny * ny + nz * nz)
+			img.set_pixel(x, y, Color(0.5 + 0.5 * nx / l, 0.5 + 0.5 * ny / l, 0.5 + 0.5 * nz / l, 1.0))
+	ground_norm = ImageTexture.create_from_image(img)
+	ground_ctex = CanvasTexture.new()
+	ground_ctex.normal_texture = ground_norm
+	grass_ctex = CanvasTexture.new()   # кромка без рельефа (плоская нормаль по умолчанию)
 
 # ============================== Атмосфера (погода по теме) ==============================
 
@@ -3202,9 +3251,11 @@ func _draw() -> void:
 		if flash > 0.0:
 			draw_rect(Rect2(0, 0, VW, VH), Color(flash_color.r, flash_color.g, flash_color.b, flash * 0.6))
 		_draw_ambient()
-	# фон рисуется на bg_node (слой -1), HUD/оверлеи — на ui_node (слой выше пост-эффекта)
+	# фон/земля рисуются на своих слоях, HUD/оверлеи — на ui_node (слой выше пост-эффекта)
 	if bg_node:
 		bg_node.queue_redraw()
+	if terrain_node:
+		terrain_node.queue_redraw()
 	if ui_node:
 		ui_node.queue_redraw()
 
@@ -3448,11 +3499,35 @@ func _setup_fx() -> void:
 	# статичный фон (небо/холмы) на отдельном слое ПОЗАДИ мира — отделяет
 	# неосвещаемый фон от динамического мира (фундамент для движкового света)
 	bg_layer = CanvasLayer.new()
-	bg_layer.layer = -1
+	bg_layer.layer = -2
 	bg_node = Node2D.new()
 	bg_layer.add_child(bg_node)
 	add_child(bg_layer)
 	bg_node.draw.connect(_paint_bg)
+	# слой земли с движковым нормал-мап-светом (между фоном и миром)
+	terrain_layer = CanvasLayer.new()
+	terrain_layer.layer = -1
+	terrain_node = Node2D.new()
+	terrain_layer.add_child(terrain_node)
+	terrain_cm = CanvasModulate.new()
+	terrain_cm.color = Color.WHITE   # пока свет выключен — без затемнения
+	terrain_layer.add_child(terrain_cm)
+	player_light = PointLight2D.new()
+	player_light.texture = light_tex
+	player_light.texture_scale = 3.4   # ~радиус 218px
+	player_light.energy = 1.55
+	player_light.color = Color(1.0, 0.94, 0.82)
+	player_light.enabled = false
+	terrain_node.add_child(player_light)
+	portal_light = PointLight2D.new()
+	portal_light.texture = light_tex
+	portal_light.texture_scale = 2.6
+	portal_light.energy = 1.2
+	portal_light.color = Color(0.6, 0.78, 1.0)
+	portal_light.enabled = false
+	terrain_node.add_child(portal_light)
+	add_child(terrain_layer)
+	terrain_node.draw.connect(_paint_terrain)
 	# полноэкранный экранный пост-эффект: марево, рябь взрывов, аберрация урона
 	var sh := Shader.new()
 	sh.code = FX_SHADER
@@ -3480,6 +3555,55 @@ func _setup_fx() -> void:
 	ui_layer.add_child(ui_node)
 	add_child(ui_layer)
 	ui_node.draw.connect(_paint_ui)
+
+func _update_terrain_light() -> void:
+	if terrain_node == null:
+		return
+	terrain_node.position = -_cam_draw   # слой земли в кадре мира
+	var on := engine_light and not level.is_empty()
+	# амбиент: при включённом свете слегка затемняем землю (свет «проявляет» рельеф),
+	# но не настолько, чтобы навредить читаемости платформера
+	if terrain_cm:
+		if on:
+			var amb: Color = th.get("amb", Color(0.04, 0.05, 0.10))
+			terrain_cm.color = Color(0.42 + amb.r, 0.42 + amb.g, 0.46 + amb.b).clamp(Color.BLACK, Color.WHITE)
+		else:
+			terrain_cm.color = Color.WHITE
+	if player_light:
+		var pon := on and state != "dead" and not P.is_empty()
+		player_light.enabled = pon
+		if pon:
+			player_light.position = Vector2(P.x + P.w / 2.0, P.y + P.h / 2.0)
+			var dash := 0.4 if P.get("dash_t", 0) > 0 else 0.0
+			player_light.energy = 1.55 + dash
+	if portal_light:
+		var ron := on and not level.is_empty()
+		portal_light.enabled = ron
+		if ron:
+			var ep: Vector2 = level.exit_px
+			portal_light.position = Vector2(ep.x, ep.y + TILE / 2.0)
+			portal_light.energy = 1.1 + sin(tick * 0.07) * 0.2
+
+func _paint_terrain() -> void:
+	# тела сплошной земли + травяная кромка на terrain_node (нормал-мап-поверхность
+	# под движковым PointLight2D). Рисуется в мировых координатах (узел сдвинут на -камеру).
+	_ci = terrain_node
+	if not level.is_empty() and ground_ctex:
+		var c := _cam_draw
+		var x0 := maxi(0, int(floor(c.x / TILE)))
+		var x1 := mini(level.W - 1, int(floor((c.x + VW) / TILE)) + 1)
+		var y0 := maxi(0, int(floor(c.y / TILE)))
+		var y1 := mini(level.H - 1, int(floor((c.y + VH) / TILE)) + 1)
+		for ty in range(y0, y1 + 1):
+			for tx in range(x0, x1 + 1):
+				if level.grid[ty * level.W + tx] != T_SOLID:
+					continue
+				var px := tx * TILE
+				var py := ty * TILE
+				_ci.draw_texture_rect(ground_ctex, Rect2(px, py, TILE, TILE), false)
+				if tile_at(tx, ty - 1) != T_SOLID:
+					_ci.draw_texture_rect(grass_ctex, Rect2(px, py, TILE, 7), false)
+	_ci = self
 
 func _paint_bg() -> void:
 	# рисуем статичный фон на bg_node (слой -1, позади мира)
@@ -3550,6 +3674,7 @@ func _update_fx() -> void:
 		return
 	if world_fx:
 		world_fx.position = -_cam_draw   # держим слой частиц в кадре мира
+	_update_terrain_light()
 	aberration = maxf(0.0, aberration - 0.04)
 	var btarget := 1.0 if (state == "pause" or state == "upgrade" or state == "shop" or state == "dead") else 0.0
 	_blur = lerpf(_blur, btarget, 0.22)
@@ -3955,15 +4080,18 @@ func _draw_tiles(c: Vector2) -> void:
 			var px := tx * TILE
 			var py := ty * TILE
 			if t == T_SOLID:
-				if ground_tex:
+				if terrain_node != null:
+					pass   # тело земли + кромка рисуются на terrain_node (нормал-мап-слой)
+				elif ground_tex:
 					draw_texture_rect(ground_tex, Rect2(px, py, TILE, TILE), false)
+					if tile_at(tx, ty - 1) != T_SOLID:
+						if grass_tex:
+							draw_texture_rect(grass_tex, Rect2(px, py, TILE, 7), false)
+						else:
+							draw_rect(Rect2(px, py, TILE, 6), th.top)
 				else:
 					draw_rect(Rect2(px, py, TILE, TILE), th.ground)
-				# травянистая кромка на открытой сверху земле
-				if tile_at(tx, ty - 1) != T_SOLID:
-					if grass_tex:
-						draw_texture_rect(grass_tex, Rect2(px, py, TILE, 7), false)
-					else:
+					if tile_at(tx, ty - 1) != T_SOLID:
 						draw_rect(Rect2(px, py, TILE, 6), th.top)
 			elif t == T_PLAT:
 				if plat_tex:
@@ -4719,6 +4847,10 @@ func toggle_crt() -> void:
 	crt_on = not crt_on
 	_save_settings()
 
+func toggle_englight() -> void:
+	engine_light = not engine_light
+	_save_settings()
+
 func toggle_fullscreen() -> void:
 	fullscreen_on = not fullscreen_on
 	_apply_fullscreen()
@@ -4884,7 +5016,8 @@ func _draw_overlays() -> void:
 			_btn(Rect2(cx - 168, 336, 160, 34), "V-Sync: %s" % ("Вкл" if vsync_on else "Выкл"), "toggle_vsync", false)
 			var ws: Vector2i = WIN_SIZES[win_size_idx]
 			_btn(Rect2(cx + 8, 336, 160, 34), "Окно: %d×%d" % [ws.x, ws.y], "cycle_winsize", false)
-			_btn(Rect2(cx - 90, 380, 180, 36), "← Назад", "settings_back", false)
+			_btn(Rect2(cx - 168, 376, 336, 34), "Объёмный свет (рельеф земли): %s" % ("Вкл" if engine_light else "Выкл"), "toggle_englight", false)
+			_btn(Rect2(cx - 90, 420, 180, 36), "← Назад", "settings_back", false)
 		"dead":
 			_text(Vector2(cx, 120), "Вы погибли", 44, Color("#ff6b5e"), true)
 			var is_record := score >= best and score > 0
@@ -5097,6 +5230,7 @@ func _load_settings() -> void:
 		shake_on = bool(cfg.get_value("settings", "shake", true))
 		bloom_on = bool(cfg.get_value("settings", "bloom", true))
 		crt_on = bool(cfg.get_value("settings", "crt", false))
+		engine_light = bool(cfg.get_value("settings", "englight", false))
 		fullscreen_on = bool(cfg.get_value("settings", "fullscreen", false))
 		vsync_on = bool(cfg.get_value("settings", "vsync", true))
 		win_size_idx = clampi(int(cfg.get_value("settings", "winsize", 0)), 0, WIN_SIZES.size() - 1)
@@ -5133,6 +5267,7 @@ func _save_settings() -> void:
 	cfg.set_value("settings", "shake", shake_on)
 	cfg.set_value("settings", "bloom", bloom_on)
 	cfg.set_value("settings", "crt", crt_on)
+	cfg.set_value("settings", "englight", engine_light)
 	cfg.set_value("settings", "fullscreen", fullscreen_on)
 	cfg.set_value("settings", "vsync", vsync_on)
 	cfg.set_value("settings", "winsize", win_size_idx)
