@@ -1498,6 +1498,27 @@ func _init() -> void:
 	game.relics = {}
 	game.bullets = []
 
+	# ---------- 53. Редкость предметов ----------
+	_ok(game._rar("hp") == 1, "common upgrade tier")
+	_ok(game._rar("djump") == 3, "legendary upgrade tier")
+	_ok(game._rar("vampire") == 1 and game._rar("chain") == 3, "relic tiers")
+	game.lvl = 1
+	game.P = game.make_player()
+	game.offer_upgrades()
+	_ok(game.offer.size() == 3, "offer has 3 cards")
+	_ok(game.offer[0].id != game.offer[1].id and game.offer[1].id != game.offer[2].id, "offer cards distinct")
+	# взвешивание: обычные выпадают чаще легендарных
+	var commons := 0
+	var legends := 0
+	var two := [{ "id": "hp" }, { "id": "djump" }]   # обычная vs легендарная
+	for i in range(400):
+		if game._weighted_pick(two).id == "hp":
+			commons += 1
+		else:
+			legends += 1
+	_ok(commons > legends * 2, "common picked far more than legendary (%d vs %d)" % [commons, legends])
+	game.state = "menu"
+
 	if failures == 0:
 		print("\nALL TESTS PASSED")
 	else:

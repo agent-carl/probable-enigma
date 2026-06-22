@@ -101,6 +101,19 @@ const RELICS := {
 	"vengeance":  { "icon": "⚔", "name": "Возмездие", "desc": "После получения урона следующее попадание ×2" },
 }
 
+# Редкость улучшений и реликвий: 1 обычная, 2 редкая, 3 легендарная.
+# Влияет на цвет рамки/названия и на шанс выпадения (взвешенный по уровню).
+const RARITY := {
+	# улучшения
+	"hp": 1, "dmg": 1, "rate": 1, "speed": 1, "jump": 1, "magnet": 1,
+	"steal": 2, "armor": 2, "crit": 2, "shieldup": 2, "dashcd": 2, "cryo": 2, "incend": 2,
+	"djump": 3, "blast": 3, "berserk": 3,
+	# реликвии
+	"vampire": 1, "midas": 1, "thorns": 1, "regen": 1, "hunter": 1, "siphon": 1,
+	"glass": 2, "detonate": 2, "frost": 2, "executioner": 2, "bulwark": 2, "momentum": 2, "bloodlust": 2, "splinter": 2, "adrenaline": 2,
+	"chain": 3, "second": 3, "overcharge": 3, "vengeance": 3,
+}
+
 # Активные предметы (слот, клавиша E): мгновенные/area-способности с кулдауном
 const ACTIVES := {
 	"bomb":   { "icon": "💣", "name": "Бомба", "desc": "Взрыв по области у прицела", "cd": 300 },
@@ -565,6 +578,9 @@ const LOC_EN := {
 	"СТРАЖ ЗЕМЛИ": "EARTH WARDEN",
 	"НЕБЕСНЫЙ СТРАЖ": "SKY WARDEN",
 	"КРИСТАЛЬНЫЙ СТРАЖ": "CRYSTAL WARDEN",
+	"Обычная": "Common",
+	"Редкая": "Rare",
+	"Легендарная": "Legendary",
 	"ПРИЗЫВАТЕЛЬ": "SUMMONER",
 	"АРТИЛЛЕРИСТ": "ARTILLERIST",
 	"БОСС": "BOSS",
@@ -753,7 +769,12 @@ func _ready() -> void:
 				if a2[si + 1] == "collection":   # дебаг: показать примерный прогресс
 					unlocks = { "rifle": true, "grenade": true, "detonate": true }
 					prog = { "kills": 180, "bosses": 1, "chests": 5, "deep": 4, "runs": 6, "deaths": 3 }
-				_set_state(a2[si + 1])
+				if a2[si + 1] == "upgrade":   # дебаг: карты выбора с редкостью
+					P = make_player()
+					lvl = 8
+					offer_upgrades()
+				else:
+					_set_state(a2[si + 1])
 			return  # остаёмся в меню/экране для проверки отрисовки
 		start_run(12345, "DEMO")
 		if "--boss" in OS.get_cmdline_args() or "--airboss" in OS.get_cmdline_args() or "--summoner" in OS.get_cmdline_args():
@@ -883,7 +904,7 @@ func _demo_step() -> void:
 		if "--guns" in OS.get_cmdline_args() and demo_frame % 35 == 0:
 			input.switch_to = (P.wi + 1) % P.weapons.size()
 	sim_step()
-	if state == "upgrade":
+	if state == "upgrade" and not ("--view" in OS.get_cmdline_args()):
 		choose_upgrade(offer[0])
 	if state == "shop" and not ("--shop" in OS.get_cmdline_args()):
 		shop_continue()
@@ -2004,14 +2025,48 @@ func offer_upgrades() -> void:
 		if u.get("unique", false) and u.id == "djump" and P.stats.jumps > 1:
 			continue
 		pool.append(u)
-	# перемешивание
-	for i in range(pool.size() - 1, 0, -1):
-		var j := rng.randi_range(0, i)
-		var tmp = pool[i]
-		pool[i] = pool[j]
-		pool[j] = tmp
-	offer = pool.slice(0, 3)
+	# выбор 3 без повтора, взвешенный по редкости (глубже — выше шанс редких)
+	offer = []
+	for _k in range(3):
+		if pool.is_empty():
+			break
+		var pick: Dictionary = _weighted_pick(pool)
+		offer.append(pick)
+		pool.erase(pick)
 	_set_state("upgrade")
+
+func _rar(id: String) -> int:
+	return int(RARITY.get(id, 1))
+
+func _rar_weight(t: int) -> float:
+	match t:
+		2: return 30.0 + lvl * 2.0
+		3: return 7.0 + lvl
+	return 100.0   # обычная
+
+func _rar_color(t: int) -> Color:
+	match t:
+		2: return Color("#6bb8ff")   # редкая — синяя
+		3: return Color("#ffcb45")   # легендарная — золотая
+	return Color("#cfd6f5")          # обычная — бледная
+
+func _rar_name(t: int) -> String:
+	match t:
+		2: return T("Редкая")
+		3: return T("Легендарная")
+	return T("Обычная")
+
+func _weighted_pick(items: Array) -> Dictionary:
+	# случайный предмет с весом по редкости
+	var total := 0.0
+	for it in items:
+		total += _rar_weight(_rar(it.id))
+	var roll := rng.randf() * total
+	for it in items:
+		roll -= _rar_weight(_rar(it.id))
+		if roll <= 0.0:
+			return it
+	return items[items.size() - 1]
 
 func apply_upgrade_stats(u: Dictionary) -> void:
 	var st: Dictionary = P.stats
@@ -2053,7 +2108,7 @@ func grant_relic(id: String) -> bool:
 		P.stats.dmg_mul *= 1.6
 		P.maxhp = max(30, int(P.maxhp * 0.7))
 		P.hp = min(P.hp, P.maxhp)
-	toasts.append({ "text": T("Реликвия: ") + T(RELICS[id].name), "life": 220.0 })
+	toasts.append({ "text": T("Реликвия: ") + T(RELICS[id].name), "life": 220.0, "col": _rar_color(_rar(id)) })
 	play_sfx("portal")
 	return true
 
@@ -2064,12 +2119,19 @@ func grant_random_relic() -> void:
 
 func random_unowned_relic() -> String:
 	var pool := []
+	var total := 0.0
 	for id in RELICS.keys():
 		if not relics.has(id) and is_unlocked(id):
 			pool.append(id)
+			total += _rar_weight(_rar(id))
 	if pool.is_empty():
 		return ""
-	return pool[rng.randi_range(0, pool.size() - 1)]
+	var roll := rng.randf() * total   # взвешиваем по редкости
+	for id in pool:
+		roll -= _rar_weight(_rar(id))
+		if roll <= 0.0:
+			return id
+	return pool[pool.size() - 1]
 
 func _is_lockable(id: String) -> bool:
 	for d in UNLOCK_DEFS:
@@ -5700,8 +5762,9 @@ func _draw_toasts() -> void:
 		var a := clampf(t.life / 40.0, 0, 1)
 		var tw := font.get_string_size(t.text, HORIZONTAL_ALIGNMENT_LEFT, -1, 15).x + 28
 		var tx := VW / 2.0 - tw / 2.0
+		var tcol: Color = t.get("col", Color(1, 0.85, 0.42))   # цвет акцента (редкость реликвии)
 		_ci.draw_rect(Rect2(tx, ty, tw, 26), Color(0.1, 0.12, 0.2, 0.85 * a))
-		_ci.draw_rect(Rect2(tx, ty, 4, 26), Color(1, 0.85, 0.42, a))
+		_ci.draw_rect(Rect2(tx, ty, 4, 26), Color(tcol.r, tcol.g, tcol.b, a))
 		_text(Vector2(VW / 2.0, ty + 18), t.text, 15, Color(1, 0.92, 0.7, a), true)
 		ty += 32
 
@@ -6018,13 +6081,16 @@ func _draw_overlays() -> void:
 			for i in range(offer.size()):
 				var u: Dictionary = offer[i]
 				var rect := Rect2(sx + i * (cw + gap), 200, cw, 200)
-				_ci.draw_rect(rect, Color(1, 1, 1, 0.05))
-				_ci.draw_rect(rect, Color(1, 0.85, 0.42, 0.5), false, 2.0)
+				var rt := _rar(u.id)
+				var rcol := _rar_color(rt)
+				_ci.draw_rect(rect, Color(rcol.r, rcol.g, rcol.b, 0.07))
+				_ci.draw_rect(rect, Color(rcol.r, rcol.g, rcol.b, 0.85), false, 2.0 if rt < 3 else 3.0)
 				_ui_rects["card%d" % i] = rect
 				var ccx := rect.position.x + cw / 2.0
-				_text(Vector2(ccx, rect.position.y + 60), u.icon, 48, Color("#ffe9b0"), true)
-				_text(Vector2(ccx, rect.position.y + 100), u.name, 18, Color("#ffe9b0"), true)
-				_draw_wrapped(u.desc, rect.position.x + 16, rect.position.y + 130, cw - 32, 14, Color("#aab3d6"))
+				_text(Vector2(ccx, rect.position.y + 26), _rar_name(rt), 12, rcol, true)
+				_text(Vector2(ccx, rect.position.y + 72), u.icon, 44, Color("#ffe9b0"), true)
+				_text(Vector2(ccx, rect.position.y + 108), u.name, 18, rcol, true)
+				_draw_wrapped(u.desc, rect.position.x + 16, rect.position.y + 136, cw - 32, 14, Color("#aab3d6"))
 				_text(Vector2(ccx, rect.position.y + 188), "[%d]" % (i + 1), 14, Color("#8d97bd"), true)
 		"shop":
 			_text(Vector2(cx, 80), "Магазин", 36, Color("#ffe9b0"), true)
@@ -6038,13 +6104,24 @@ func _draw_overlays() -> void:
 				var it: Dictionary = shop_items[i]
 				var rect := Rect2(sx + i * (cw + gap), 160, cw, 210)
 				var affordable: bool = coins >= it.price and not it.sold
+				# редкость для реликвий/улучшений в магазине
+				var srt := 1
+				if it.has("relic"):
+					srt = _rar(it.relic)
+				elif it.has("up"):
+					srt = _rar(it.up.id)
+				var srcol := _rar_color(srt)
 				_ci.draw_rect(rect, Color(1, 1, 1, 0.05) if not it.sold else Color(0, 0, 0, 0.25))
-				_ci.draw_rect(rect, Color(1, 0.85, 0.42, 0.6) if affordable else Color(1, 1, 1, 0.15), false, 2.0)
+				if srt > 1 and not it.sold:
+					_ci.draw_rect(rect, Color(srcol.r, srcol.g, srcol.b, 0.85), false, 2.0 if srt < 3 else 3.0)
+				else:
+					_ci.draw_rect(rect, Color(1, 0.85, 0.42, 0.6) if affordable else Color(1, 1, 1, 0.15), false, 2.0)
 				_ui_rects["shop%d" % i] = rect
 				var ccx := rect.position.x + cw / 2.0
 				var fade := 0.4 if it.sold else 1.0
+				var ncol: Color = srcol if srt > 1 else Color(1, 0.91, 0.69)
 				_text(Vector2(ccx, rect.position.y + 56), it.icon, 40, Color(1, 0.91, 0.69, fade), true)
-				_text(Vector2(ccx, rect.position.y + 92), it.name, 17, Color(1, 0.91, 0.69, fade), true)
+				_text(Vector2(ccx, rect.position.y + 92), it.name, 17, Color(ncol.r, ncol.g, ncol.b, fade), true)
 				_draw_wrapped(it.desc, rect.position.x + 12, rect.position.y + 118, cw - 24, 13, Color(0.67, 0.70, 0.84, fade))
 				if it.sold:
 					_text(Vector2(ccx, rect.position.y + 176), "куплено", 14, Color("#7df2a5"), true)
@@ -6106,8 +6183,9 @@ func _draw_collection_col(x: float, y: float, header: String, kind: String) -> v
 		var nm: String = data.get("name", d.id)
 		var icon: String = data.get("icon", "•")
 		if unlocks.has(d.id):
+			var ncol: Color = _rar_color(_rar(d.id)) if kind == "relic" else Color("#eaf0ff")
 			_text(Vector2(x, ry + 11), "✓", 13, Color("#7df2a5"))
-			_text(Vector2(x + 20, ry + 11), "%s %s" % [icon, T(nm)], 14, Color("#eaf0ff"))
+			_text(Vector2(x + 20, ry + 11), "%s %s" % [icon, T(nm)], 14, ncol)
 		else:
 			_text(Vector2(x, ry + 9), "🔒", 13, Color("#6f7aa3"))
 			_text(Vector2(x + 20, ry + 6), nm, 13, Color("#9aa3c8"))
