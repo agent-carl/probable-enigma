@@ -137,15 +137,16 @@ func _init() -> void:
 	var b10_col := int((b10.x + b10.w / 2.0) / 32)
 	b10_col = clampi(b10_col, 0, L10.W - 1)
 	_ok(b10.y + b10.h < gy10[b10_col] * 32, "air boss spawns above the ground")
-	# третий вариант — призыватель (ур.15), и он спавнит миньонов
+	# третий вариант — кристальный страж (ур.15)
 	var L15: Dictionary = game.generate_level(151515, 15)
 	var b15 = null
 	for en in L15.enemies:
 		if en.get("boss", false):
 			b15 = en
-	_ok(b15 != null and b15.variant == "summoner", "level 15 boss is summoner variant")
+	_ok(b15 != null and b15.variant == "crystal", "level 15 boss is crystal variant")
+	# призыватель теперь на ур.20 — спавнит миньонов
 	game.start_run(150, "150")
-	game.lvl = 15
+	game.lvl = 20
 	game.start_level()
 	var n0: int = game.enemies.size()
 	for i in range(260):
@@ -1059,15 +1060,15 @@ func _init() -> void:
 	_ok(spring_found, "spring tiles generate in levels")
 	_ok(spring_solid, "springs sit on solid ground")
 	_ok(game.is_blocking(7), "spring is a solid tile")
-	# 4-й босс — артиллерист (ур.20) и ведёт огонь
-	var L20: Dictionary = game.generate_level(20 * 7 + 1, 20)
+	# артиллерист теперь на ур.25 и ведёт огонь
+	var L20: Dictionary = game.generate_level(25 * 7 + 1, 25)
 	var bossv := ""
 	var boss20 = null
 	for en in L20.enemies:
 		if en.get("boss", false):
 			bossv = en.variant
 			boss20 = en
-	_ok(bossv == "artillery", "artillery boss appears on level 20 (got '%s')" % bossv)
+	_ok(bossv == "artillery", "artillery boss appears on level 25 (got '%s')" % bossv)
 	if boss20 != null:
 		game.level = L20
 		game.P = game.make_player()
@@ -1078,6 +1079,38 @@ func _init() -> void:
 		game.bullets = []
 		game.update_enemies()
 		_ok(game.bullets.size() > 0, "artillery boss fires a volley")
+	game.level = {}
+
+	# ---------- 52. Кристальный босс (ур.15): телепорт + спираль ----------
+	var L15c: Dictionary = game.generate_level(15 * 7 + 3, 15)
+	var bc = null
+	for en in L15c.enemies:
+		if en.get("boss", false):
+			bc = en
+	_ok(bc != null and bc.variant == "crystal", "level 15 boss is crystal")
+	if bc != null:
+		game.level = L15c
+		game.P = game.make_player()
+		game.P.x = bc.x + 30.0
+		game.P.y = bc.y + 160.0
+		game.cam = Vector2.ZERO
+		bc.cd = 0
+		game.enemies = [bc]
+		game.bullets = []
+		var bx0: float = bc.x
+		var by0: float = bc.y
+		var fired := false
+		var blinked := false
+		for i in range(260):
+			game.update_enemies()
+			if game.bullets.size() > 0:
+				fired = true
+			if absf(bc.x - bx0) > 100.0 or absf(bc.y - by0) > 100.0:
+				blinked = true
+		_ok(fired, "crystal boss fires crystal shards")
+		_ok(blinked, "crystal boss teleports")
+	game.enemies = []
+	game.bullets = []
 	game.level = {}
 
 	# ---------- 35. Мета-прогрессия ----------

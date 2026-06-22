@@ -564,6 +564,7 @@ const LOC_EN := {
 	# Боссы
 	"СТРАЖ ЗЕМЛИ": "EARTH WARDEN",
 	"НЕБЕСНЫЙ СТРАЖ": "SKY WARDEN",
+	"КРИСТАЛЬНЫЙ СТРАЖ": "CRYSTAL WARDEN",
 	"ПРИЗЫВАТЕЛЬ": "SUMMONER",
 	"АРТИЛЛЕРИСТ": "ARTILLERIST",
 	"БОСС": "BOSS",
@@ -1605,9 +1606,9 @@ func generate_level(seed_val: int, level_num: int) -> Dictionary:
 	# --- босс на каждом 5-м уровне (чередуем наземного и летающего) ---
 	if is_boss_level:
 		var bb: Dictionary = ENEMY_BASE["boss"]
-		# четыре варианта босса по кругу: наземный, летающий, призыватель, артиллерист
-		var bvi := (int(level_num / 5) - 1) % 4
-		var boss_variant: String = ["ground", "air", "summoner", "artillery"][bvi]
+		# пять вариантов босса по кругу: наземный, летающий, кристальный, призыватель, артиллерист
+		var bvi := (int(level_num / 5) - 1) % 5
+		var boss_variant: String = ["ground", "air", "crystal", "summoner", "artillery"][bvi]
 		var bspan := 3
 		var bx := -1
 		# ровная площадка ближе к выходу
@@ -1624,7 +1625,7 @@ func generate_level(seed_val: int, level_num: int) -> Dictionary:
 			bx = W - 20
 		var boss_hp := int((500 + 90 * level_num) * diff_hp)
 		var by: float = ground_y[bx] * TILE - bb.h - 1
-		if boss_variant == "air" or boss_variant == "summoner" or boss_variant == "artillery":
+		if boss_variant == "air" or boss_variant == "summoner" or boss_variant == "artillery" or boss_variant == "crystal":
 			# парящие боссы держатся над землёй
 			by = max(2 * TILE, ground_y[bx] * TILE - 7 * TILE)
 		enemy_list.append({
@@ -1970,7 +1971,7 @@ func start_level() -> void:
 	if boss_alive:
 		for en in enemies:
 			if en.get("boss", false):
-				boss_name = { "ground": "СТРАЖ ЗЕМЛИ", "air": "НЕБЕСНЫЙ СТРАЖ", "summoner": "ПРИЗЫВАТЕЛЬ", "artillery": "АРТИЛЛЕРИСТ" }.get(en.get("variant", "ground"), "БОСС")
+				boss_name = { "ground": "СТРАЖ ЗЕМЛИ", "air": "НЕБЕСНЫЙ СТРАЖ", "crystal": "КРИСТАЛЬНЫЙ СТРАЖ", "summoner": "ПРИЗЫВАТЕЛЬ", "artillery": "АРТИЛЛЕРИСТ" }.get(en.get("variant", "ground"), "БОСС")
 				break
 	cam.x = clampf(P.x - VW / 2.0, 0, max(0, level.px_w - VW))
 	cam.y = clampf(P.y - VH / 2.0, 0, max(0, level.px_h - VH))
@@ -3268,6 +3269,41 @@ func update_enemies() -> void:
 					_eshot(ecx, ecy, atan2(topy, topx), 5.2, en.dmg, "#c79bff")
 			else:
 				en.cd = maxi(int(en.cd), 25)
+		elif en.type == "boss" and en.get("variant", "ground") == "crystal":
+			# кристальный страж: парит, телепортируется и сыплет спиралью кристаллов
+			en.phase += 0.05
+			en.dir = 1 if pcx > ecx else -1
+			var hover_yc := clampf(pcy - 140.0, 2.0 * TILE, level.px_h - 6.0 * TILE)
+			en.vx += clampf(pcx - ecx, -1, 1) * 0.08
+			en.vy += clampf(hover_yc - ecy, -1, 1) * 0.12 + sin(en.phase * 1.6) * 0.05
+			var spc := Vector2(en.vx, en.vy).length()
+			if spc > 2.2:
+				en.vx *= 2.2 / spc
+				en.vy *= 2.2 / spc
+			collide_entity(en)
+			# спираль из кристаллов (два рукава)
+			en.cd -= 1
+			if en.cd <= 0:
+				en.cd = 9
+				_eshot(ecx, ecy, en.phase * 3.0, 4.4, en.dmg, "#bf9bff")
+				_eshot(ecx, ecy, en.phase * 3.0 + PI, 4.4, en.dmg, "#bf9bff")
+			# телепорт-блинк + кольцо-нова на новом месте
+			en.atk_t -= 1
+			if en.atk_t <= 0:
+				en.atk_t = 210
+				burst(ecx, ecy, 24, Color("#c79bff"))
+				shockwaves.append({ "x": ecx, "y": ecy, "r": 6.0, "max_r": 60.0, "life": 12.0, "col": Color("#c79bff") })
+				var side := -1.0 if rng.randf() < 0.5 else 1.0
+				var nx := clampf(pcx + side * 190.0, 2.0 * TILE, level.px_w - 2.0 * TILE)
+				var ny := clampf(pcy - 120.0, 2.0 * TILE, level.px_h - 6.0 * TILE)
+				en.x = nx - en.w / 2.0
+				en.y = ny - en.h / 2.0
+				en.vx = 0.0
+				en.vy = 0.0
+				burst(nx, ny, 24, Color("#c79bff"))
+				for k in range(18):
+					_eshot(nx, ny, k * TAU / 18.0 + en.phase, 4.0, en.dmg, "#c79bff")
+				shake = max(shake, 6.0)
 		elif en.type == "boss" and en.get("variant", "ground") == "summoner":
 			# босс-призыватель: парит, призывает миньонов и стреляет
 			en.phase += 0.05
@@ -5226,6 +5262,26 @@ func _draw_enemies() -> void:
 			draw_circle(hc, en.w / 2.0, Color.WHITE if flash else Color("#3fae6a"))
 			draw_rect(Rect2(hc.x - 2, hc.y - 6, 4, 12), Color("#eafff0"))
 			draw_rect(Rect2(hc.x - 6, hc.y - 2, 12, 4), Color("#eafff0"))
+		elif en.type == "boss" and en.get("variant", "ground") == "crystal":
+			var ecc := Vector2(en.x + en.w / 2.0, en.y + en.h / 2.0)
+			var charging: bool = int(en.atk_t) < 22   # вот-вот телепорт-нова
+			draw_circle(ecc, en.w * 0.85 + sin(tick * 0.1) * 5, Color(0.7, 0.5, 1.0, 0.32 if charging else 0.18))
+			# вращающиеся осколки-спутники
+			for oi in range(6):
+				var oa: float = en.phase * 2.0 + oi * TAU / 6.0
+				var op: Vector2 = ecc + Vector2(cos(oa), sin(oa)) * (en.w * 0.75)
+				draw_colored_polygon(PackedVector2Array([
+					op + Vector2(0, -4), op + Vector2(3, 0), op + Vector2(0, 4), op + Vector2(-3, 0)]), Color("#d9b3ff"))
+			# гранёное кристальное ядро (ромб в ромбе)
+			var cc := Color.WHITE if flash else Color("#7a3fd0")
+			draw_colored_polygon(PackedVector2Array([
+				ecc + Vector2(0, -en.h / 2.0), ecc + Vector2(en.w / 2.0, 0),
+				ecc + Vector2(0, en.h / 2.0), ecc + Vector2(-en.w / 2.0, 0)]), cc)
+			draw_colored_polygon(PackedVector2Array([
+				ecc + Vector2(0, -en.h / 3.0), ecc + Vector2(en.w / 3.0, 0),
+				ecc + Vector2(0, en.h / 3.0), ecc + Vector2(-en.w / 3.0, 0)]), Color.WHITE if flash else Color("#bf9bff"))
+			var gl := 1.6 if bloom_on else 1.0
+			draw_circle(ecc, 5, Color(1.3 * gl, 1.1 * gl, 1.6 * gl))
 		elif en.type == "boss" and en.get("variant", "ground") == "summoner":
 			var ecs := Vector2(en.x + en.w / 2.0, en.y + en.h / 2.0)
 			draw_circle(ecs, en.w * 0.85 + sin(tick * 0.1) * 5, Color(0.75, 0.55, 1.0, 0.18))
