@@ -1339,6 +1339,67 @@ func _init() -> void:
 	_ok(int(game.prog.kills) >= 321, "lifetime stats persist across save/load")
 	game.relics = {}
 
+	# ---------- 48. Алтари-события ----------
+	var shr_total := 0
+	for lv in [1, 2, 3, 4, 6, 7, 8, 9]:   # небоссовые уровни
+		for s in range(1, 13):
+			shr_total += game.generate_level(s * 37 + lv, lv).shrines.size()
+	_ok(shr_total > 0, "shrines are generated on non-boss levels (%d)" % shr_total)
+	# боссовые уровни — без алтарей
+	var shr_boss := 0
+	for s in range(1, 13):
+		shr_boss += game.generate_level(s * 91, 5).shrines.size()
+	_ok(shr_boss == 0, "no shrines on boss levels")
+	# взаимодействие: подход открывает оверлей, решение помечает алтарь
+	var sWS := 24
+	var sHS := 12
+	var sgrid := PackedByteArray()
+	sgrid.resize(sWS * sHS)
+	for ty in range(10, sHS):
+		for tx in range(sWS):
+			sgrid[ty * sWS + tx] = 1
+	var shrine := { "x": 118.0, "y": 9 * 32 - 30.0, "w": 36.0, "h": 30.0, "type": "spring", "used": false }
+	game.level = { "W": sWS, "H": sHS, "grid": sgrid, "px_w": sWS * 32, "px_h": sHS * 32,
+		"crate_hp": {}, "theme": { "top": "#58c98f" }, "shrines": [shrine] }
+	game.P.x = 118.0
+	game.P.y = 9 * 32 - 30
+	game.state = "play"
+	game.update_shrines()
+	_ok(game.state == "shrine", "approaching a shrine opens the choice overlay")
+	_ok(not game.pending_shrine.is_empty(), "pending shrine set")
+	# приём «целебного источника»: лечит и снижает макс. HP
+	game.P.maxhp = 100.0
+	game.P.hp = 40.0
+	game.resolve_shrine(true)
+	_ok(game.state == "play", "resolving shrine resumes play")
+	_ok(shrine.used, "shrine marked used after decision")
+	_ok(game.P.maxhp == 90 and game.P.hp == 90, "spring heals to (reduced) max")
+	game.update_shrines()
+	_ok(game.state == "play", "used shrine does not re-trigger")
+	# кровавый алтарь: −25% макс. HP + реликвия
+	game.relics = {}
+	game.unlocks = { "detonate": true }   # есть что выдать
+	game.prog = { "kills": 0, "bosses": 0, "chests": 0, "deep": 0, "runs": 0, "deaths": 0 }
+	var blood := { "x": 0.0, "y": 0.0, "w": 36.0, "h": 30.0, "type": "blood", "used": false }
+	game.pending_shrine = blood
+	game.P.maxhp = 100.0
+	game.P.hp = 100.0
+	game.resolve_shrine(true)
+	_ok(game.P.maxhp == 75, "blood altar reduces max HP by 25%")
+	_ok(game.relics.size() >= 1, "blood altar grants a relic")
+	game.level = {}
+
+	# ---------- 49. Регресс: переключатели настроек реагируют ----------
+	var el_before: bool = game.engine_light
+	game._on_ui("toggle_englight")
+	_ok(game.engine_light != el_before, "settings button toggles engine light")
+	game._on_ui("toggle_englight")
+	var lang_before: String = game.lang
+	game._on_ui("toggle_lang")
+	_ok(game.lang != lang_before, "settings button toggles language")
+	game.lang = "ru"
+	game._save_settings()
+
 	if failures == 0:
 		print("\nALL TESTS PASSED")
 	else:
@@ -1374,6 +1435,8 @@ func simulate(game, seed_v: int, max_steps: int) -> Dictionary:
 			game.choose_upgrade(game.offer[i % game.offer.size()])
 		if game.state == "shop":
 			game.shop_continue()
+		if game.state == "shrine":
+			game.resolve_shrine(i % 2 == 0)   # бот то принимает, то отказывается
 		if game.state == "dead":
 			deaths += 1
 			game.start_run(seed_v + deaths, str(seed_v + deaths))

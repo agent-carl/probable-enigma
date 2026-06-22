@@ -142,6 +142,14 @@ const UNLOCK_DEFS := [
 	{ "id": "second",      "kind": "relic", "stat": "deaths", "need": 4 },
 ]
 
+# Алтари-события: интерактив с выбором риск/награда (1 шт. на уровень с шансом).
+const SHRINES := {
+	"blood":  { "icon": "🩸", "title": "Кровавый алтарь",  "offer": "Отдать 25% макс. HP в обмен на случайную реликвию." },
+	"gamble": { "icon": "🎲", "title": "Алтарь азарта",     "offer": "Поставить половину монет: с шансом 50% удвоить ставку, иначе потерять." },
+	"power":  { "icon": "🔥", "title": "Алтарь ярости",     "offer": "+25% к урону на весь забег, но пробудить волну врагов." },
+	"spring": { "icon": "✨", "title": "Целебный источник", "offer": "Восстановить всё здоровье и щит ценой −10% к максимуму HP." },
+}
+
 const ENEMY_BASE := {
 	"walker":  { "w": 26, "h": 28, "hp": 30, "spd": 1.1, "dmg": 12, "score": 10, "cd": 0, "fly": false },
 	"shooter": { "w": 26, "h": 30, "hp": 42, "spd": 0.0, "dmg": 9, "score": 20, "cd": 105, "fly": false },
@@ -215,6 +223,7 @@ var unlocked := {}       # id -> true (сохраняется)
 # разблокировки контента (оружие/реликвии открываются по ходу игры)
 var unlocks := {}        # id -> true (сохраняется)
 var prog := { "kills": 0, "bosses": 0, "chests": 0, "deep": 0, "runs": 0, "deaths": 0 }  # пожизненная статистика
+var pending_shrine := {}  # алтарь, по которому сейчас принимается решение (оверлей)
 var toasts := []         # всплывающие уведомления [{text, life}]
 
 var level := {}        # текущая карта
@@ -609,6 +618,22 @@ const LOC_EN := {
 	"дойти до уровня": "reach level",
 	"завершить забегов": "finish runs",
 	"погибнуть раз": "deaths",
+	"Кровавый алтарь": "Blood Altar",
+	"Отдать 25% макс. HP в обмен на случайную реликвию.": "Sacrifice 25% max HP for a random relic.",
+	"Алтарь азарта": "Altar of Chance",
+	"Поставить половину монет: с шансом 50% удвоить ставку, иначе потерять.": "Wager half your coins: 50% to double the bet, otherwise lose it.",
+	"Алтарь ярости": "Altar of Fury",
+	"+25% к урону на весь забег, но пробудить волну врагов.": "+25% damage for the whole run, but awaken a wave of enemies.",
+	"Целебный источник": "Healing Spring",
+	"Восстановить всё здоровье и щит ценой −10% к максимуму HP.": "Restore all health and shield at the cost of −10% max HP.",
+	"Принять": "Accept",
+	"Отказаться": "Decline",
+	"Решение можно принять только раз": "You can decide only once",
+	"Нет монет": "No coins",
+	"Выигрыш! +%d●": "Win! +%d●",
+	"Проигрыш… −%d●": "Lost… −%d●",
+	"Ярость! +25% урона": "Fury! +25% damage",
+	"Исцеление!": "Healed!",
 }
 
 # ============================== Жизненный цикл ==============================
@@ -684,6 +709,12 @@ func _ready() -> void:
 				P.x = ch0.x - 40.0
 				P.y = ch0.y - 12.0
 				cam = Vector2(ch0.x - VW / 2.0, ch0.y - VH / 2.0)
+			if "--shrine" in args:   # дебаг: алтарь рядом с игроком (оверлей при касании)
+				var st := args.find("--shrine")
+				var stype: String = args[st + 1] if (st >= 0 and st + 1 < args.size() and SHRINES.has(args[st + 1])) else "blood"
+				var off := 90.0 if "--world" in args else -4.0   # --world: рядом (видно алтарь), иначе под игроком (оверлей)
+				level.shrines = [{ "x": P.x + off, "y": P.y - 12.0, "w": 36.0, "h": 30.0, "type": stype, "used": false }]
+				coins = 40
 	queue_redraw()
 
 func _physics_process(_delta: float) -> void:
@@ -745,7 +776,7 @@ func _demo_step() -> void:
 	if demo_frame == 50 and "--shop" in OS.get_cmdline_args() and state == "play":
 		coins = 50
 		open_shop()
-	if state == "play" and "--chest" in OS.get_cmdline_args():
+	if state == "play" and ("--chest" in OS.get_cmdline_args() or "--world" in OS.get_cmdline_args()):
 		input.move = 0   # дебаг-скриншот сундука: бот стоит на месте
 		input.jump_pressed = false
 		input.jump_held = false
@@ -897,6 +928,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_ESCAPE, KEY_P:
 				if state == "play": _set_state("pause")
 				elif state == "pause": _set_state("play")
+				elif state == "shrine": resolve_shrine(false)
 			KEY_M:
 				audio_enabled = not audio_enabled
 				if not audio_enabled:
@@ -948,7 +980,9 @@ func _unhandled_input(event: InputEvent) -> void:
 			JOY_BUTTON_DPAD_DOWN: _nav_move(1)
 			JOY_BUTTON_A: _nav_confirm()
 			JOY_BUTTON_B:
-				if state == "pause" or state == "help" or state == "meta" or state == "achievements" or state == "settings":
+				if state == "shrine":
+					resolve_shrine(false)
+				elif state == "pause" or state == "help" or state == "meta" or state == "achievements" or state == "settings":
 					_on_ui("settings_back" if state == "settings" else ("resume" if state == "pause" else "menu"))
 
 func _nav_move(d: int) -> void:
@@ -980,6 +1014,8 @@ func _on_ui(key: String) -> void:
 		"resume": _set_state("play")
 		"quit": _set_state("menu")
 		"shop_continue": shop_continue()
+		"shrine_accept": resolve_shrine(true)
+		"shrine_decline": resolve_shrine(false)
 		"meta": _set_state("meta")
 		"help": _set_state("help")
 		"achievements": _set_state("achievements")
@@ -1002,6 +1038,8 @@ func _on_ui(key: String) -> void:
 		"toggle_bloom": toggle_bloom()
 		"toggle_crt": toggle_crt()
 		"toggle_fullscreen": toggle_fullscreen()
+		"toggle_englight": toggle_englight()
+		"toggle_lang": toggle_lang()
 		_:
 			if key.begins_with("card"):
 				var i := int(key.substr(4))
@@ -1229,6 +1267,27 @@ func generate_level(seed_val: int, level_num: int) -> Dictionary:
 		if too_close:
 			continue
 		chests.append({ "x": hx * TILE + 2.0, "y": ground_y[hx] * TILE - 18.0, "w": 26.0, "h": 18.0, "opened": false })
+
+	# --- алтарь-событие: 1 на уровень с шансом, в стороне от спавна/выхода/сундуков ---
+	var shrines := []
+	if level_num % 5 != 0 and r.randf() < 0.55:
+		var shrine_keys: Array = SHRINES.keys()
+		for _t in range(40):
+			var sx := _rr(r, 12, W - 12)
+			if spike_cols.has(sx) or sx < 10 or sx > W - 10:
+				continue
+			var syc: int = ground_y[sx] - 1
+			if syc < 4 or _cell(grid, W, H, sx, syc) != T_EMPTY or _cell(grid, W, H, sx + 1, syc) != T_EMPTY:
+				continue
+			var near_chest := false
+			for c in chests:
+				if absi(int(c.x / TILE) - sx) < 5:
+					near_chest = true
+			if near_chest:
+				continue
+			var stype: String = shrine_keys[r.randi_range(0, shrine_keys.size() - 1)]
+			shrines.append({ "x": sx * TILE - 2.0, "y": ground_y[sx] * TILE - 30.0, "w": 36.0, "h": 30.0, "type": stype, "used": false })
+			break
 
 	# --- движущиеся платформы/лифты в открытых местах ---
 	var movers := []
@@ -1503,7 +1562,7 @@ func generate_level(seed_val: int, level_num: int) -> Dictionary:
 		"spawn": Vector2(2 * TILE + 6, ground_y[2] * TILE - 31),
 		"exit_px": exit_px, "enemies": enemy_list, "pickups": pickup_list,
 		"has_boss": is_boss_level, "crate_hp": crate_hp, "movers": movers, "hazards": hazards,
-		"lava_cells": lava_cells, "chests": chests,
+		"lava_cells": lava_cells, "chests": chests, "shrines": shrines,
 	}
 
 # ============================== Доступ к карте (рантайм) ==============================
@@ -2655,6 +2714,7 @@ func sim_step() -> void:
 			update_bullets()
 			update_pickups()
 			update_chests()
+			update_shrines()
 		update_effects()
 		update_ambient()
 		update_camera()
@@ -3385,6 +3445,74 @@ func update_chests() -> void:
 		if aabb(ch, P):
 			open_chest(ch)
 
+func update_shrines() -> void:
+	# подойдя к алтарю, открываем оверлей выбора (пауза)
+	for sh in level.get("shrines", []):
+		if sh.used:
+			continue
+		if aabb(sh, P):
+			pending_shrine = sh
+			play_sfx("portal")
+			_set_state("shrine")
+			return
+
+func resolve_shrine(accept: bool) -> void:
+	if pending_shrine.is_empty():
+		_set_state("play")
+		return
+	var sh: Dictionary = pending_shrine
+	sh.used = true
+	pending_shrine = {}
+	if accept:
+		var cx: float = P.x + P.w / 2.0
+		match sh.type:
+			"blood":
+				P.maxhp = maxi(30, int(P.maxhp * 0.75))
+				P.hp = minf(P.hp, P.maxhp)
+				var rid := random_unowned_relic()
+				if rid != "":
+					grant_relic(rid)
+				else:
+					coins += 12   # реликвий не осталось — компенсация
+					add_text(cx, P.y - 10, "+12●", Color("#ffd86b"))
+			"gamble":
+				var bet := int(coins / 2.0)
+				if bet <= 0:
+					add_text(cx, P.y - 10, T("Нет монет"), Color("#ff6b5e"))
+				elif rng.randf() < 0.5:
+					coins += bet
+					add_text(cx, P.y - 10, T("Выигрыш! +%d●") % bet, Color("#7df2a5"))
+				else:
+					coins -= bet
+					add_text(cx, P.y - 10, T("Проигрыш… −%d●") % bet, Color("#ff6b5e"))
+			"power":
+				P.stats.dmg_mul *= 1.25
+				add_text(cx, P.y - 10, T("Ярость! +25% урона"), Color("#ffb14d"))
+				_summon_wave(3 + lvl / 2)
+			"spring":
+				P.maxhp = maxi(30, int(P.maxhp * 0.9))
+				P.hp = P.maxhp
+				if P.max_shield <= 0.0:
+					P.max_shield = 30.0
+				P.shield = P.max_shield
+				add_text(cx, P.y - 10, T("Исцеление!"), Color("#7df2a5"))
+		flash = maxf(flash, 0.25)
+		play_sfx("portal")
+	_set_state("play")
+
+func _summon_wave(n: int) -> void:
+	# призыв небольшой волны врагов вокруг игрока (для «Алтаря ярости»)
+	var types := ["walker", "flyer", "exploder"]
+	for i in range(maxi(1, n)):
+		var ang := rng.randf() * TAU
+		var sx: float = P.x + cos(ang) * (90.0 + rng.randf() * 60.0)
+		var sy: float = P.y - 40.0 - rng.randf() * 40.0
+		sx = clampf(sx, TILE, level.px_w - TILE)
+		sy = clampf(sy, TILE, level.px_h - TILE)
+		var en := _spawn_enemy(types[rng.randi_range(0, types.size() - 1)], sx, sy)
+		enemies.append(en)
+		burst(sx + en.w / 2.0, sy + en.h / 2.0, 8, Color("#c08bff"))
+
 func open_chest(ch: Dictionary) -> void:
 	ch.opened = true
 	prog.chests = int(prog.get("chests", 0)) + 1   # пожизненный счётчик сундуков
@@ -3726,6 +3854,7 @@ func _draw() -> void:
 		_draw_hazards()
 		_draw_portal()
 		_draw_chests()
+		_draw_shrines()
 		_draw_pickups()
 		_draw_enemies()
 		_draw_player()
@@ -4689,6 +4818,40 @@ func _draw_portal() -> void:
 	draw_arc(Vector2(cxp, cyp), 20 * pulse, 0, TAU, 32, Color(1.6, 1.9, 2.2, 0.9), 3.0)
 	draw_arc(Vector2(cxp, cyp), 28 * pulse, 0, TAU, 32, Color(0.55, 0.74, 1.0, 0.5), 2.0)
 
+func _draw_shrines() -> void:
+	for sh in level.get("shrines", []):
+		var x: float = sh.x
+		var y: float = sh.y
+		if x + sh.w < _cam_draw.x - 40.0 or x > _cam_draw.x + VW + 40.0:
+			continue
+		var cxp: float = x + sh.w / 2.0
+		var def: Dictionary = SHRINES.get(sh.type, {})
+		var tint: Color = { "blood": Color("#d8484f"), "gamble": Color("#e0c24a"), "power": Color("#ff7a3d"), "spring": Color("#5fe0c0") }.get(sh.type, Color("#9d6bff"))
+		if sh.used:
+			# погасший алтарь — тёмный камень
+			draw_rect(Rect2(x + 6, y + 18, sh.w - 12, 12), Color("#2a2535"))
+			draw_rect(Rect2(x + 2, y + 28, sh.w - 4, 4), Color("#1a1622"))
+		else:
+			var pul := 0.5 + 0.5 * sin(tick * 0.08 + x * 0.05)
+			# свечение
+			draw_circle(Vector2(cxp, y + 8), sh.w * 0.7 + pul * 4.0, Color(tint.r, tint.g, tint.b, 0.14))
+			# постамент
+			draw_rect(Rect2(x + 4, y + 18, sh.w - 8, 12), Color("#3b3550"))
+			draw_rect(Rect2(x + 2, y + 28, sh.w - 4, 4), Color("#241f33"))
+			# парящий кристалл/чаша
+			var gl := 1.5 if bloom_on else 1.0
+			var fy := y + 6 + sin(tick * 0.06) * 2.0
+			draw_colored_polygon(PackedVector2Array([
+				Vector2(cxp, fy - 8), Vector2(cxp + 7, fy), Vector2(cxp, fy + 8), Vector2(cxp - 7, fy)]),
+				Color(tint.r * gl, tint.g * gl, tint.b * gl, 0.9))
+			draw_circle(Vector2(cxp, fy), 2.0 + pul, Color(1.4 * gl, 1.4 * gl, 1.4 * gl))
+			# подсказка-иконка над алтарём
+			var icon: String = def.get("icon", "?")
+			_text_world(Vector2(cxp - 6, y - 8), icon, 14, Color(1, 1, 1, 0.6 + 0.4 * pul))
+
+func _text_world(pos: Vector2, s: String, size: int, color: Color) -> void:
+	draw_string(font, pos, s, HORIZONTAL_ALIGNMENT_LEFT, -1, size, color)
+
 func _draw_chests() -> void:
 	for ch in level.get("chests", []):
 		var x: float = ch.x
@@ -5544,6 +5707,13 @@ func _draw_overlays() -> void:
 			_draw_collection_col(cx - 280, 124, "Оружие", "weapon")
 			_draw_collection_col(cx + 20, 124, "Реликвии", "relic")
 			_btn(Rect2(cx - 90, 452, 180, 36), "← Назад", "menu", false)
+		"shrine":
+			var sdef: Dictionary = SHRINES.get(pending_shrine.get("type", ""), {})
+			_text(Vector2(cx, 150), "%s  %s" % [sdef.get("icon", "✦"), T(sdef.get("title", "Алтарь"))], 30, Color("#ffe9b0"), true)
+			_draw_wrapped(sdef.get("offer", ""), cx - 230, 200, 460, 16, Color("#cfd6f5"))
+			_btn(Rect2(cx - 190, 300, 180, 48), "Принять", "shrine_accept")
+			_btn(Rect2(cx + 10, 300, 180, 48), "Отказаться", "shrine_decline", false)
+			_text(Vector2(cx, 372), "Решение можно принять только раз", 11, Color("#6f7aa3"), true)
 		"pause":
 			_text(Vector2(cx, 170), "Пауза", 40, Color("#eaf0ff"), true)
 			_btn(Rect2(cx - 90, 214, 180, 46), "Продолжить", "resume")
