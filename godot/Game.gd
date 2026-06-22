@@ -2395,8 +2395,7 @@ func shop_continue() -> void:
 	_set_state("play")
 
 func level_clear() -> void:
-	score += 100 + lvl * 25
-	score += 100 + lvl * 25
+	score += 200 + lvl * 50   # бонус за зачистку уровня (растёт с глубиной)
 	check_achievements()   # вехи забега (серия/очки/реликвии) открываются сразу
 	play_sfx("portal")
 	offer_upgrades()
