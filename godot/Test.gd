@@ -1402,6 +1402,17 @@ func _init() -> void:
 	game.lang = "ru"
 	game._save_settings()
 
+	# ---------- 50. Башни-награды и широкие пропасти ----------
+	var elevated := 0
+	for s in range(1, 40):
+		for lv in [3, 4, 6, 7, 8]:
+			var L3 = game.generate_level(s * 13 + lv, lv)
+			for c in L3.chests:
+				var ccx := int(c.x / 32)
+				if ccx >= 0 and ccx < L3.W and (L3.ground_y[ccx] * 32 - c.y) > 60:
+					elevated += 1   # сундук заметно выше уровня земли = на башне-платформе
+	_ok(elevated > 0, "reward towers place elevated chests (%d)" % elevated)
+
 	if failures == 0:
 		print("\nALL TESTS PASSED")
 	else:

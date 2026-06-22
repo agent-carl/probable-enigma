@@ -1135,6 +1135,25 @@ func generate_level(seed_val: int, level_num: int) -> Dictionary:
 	var prof: Dictionary = TERRAIN[(level_num - 1) % TERRAIN.size()]
 	while x < W - 10:
 		var rv := r.randf()
+		# --- широкая пропасть со шпилем-опорой посередине (драматичный разрыв) ---
+		if rv < 0.05 and level_num >= 3 and x - last_pit_end > 8 and x + 9 < W - 10 and h + 4 < max_h:
+			var cw := _rr(r, 6, 8)
+			var depth := _rr(r, 4, 6)
+			var is_lava := r.randf() < minf(0.3 + 0.04 * level_num + float(prof.lava), 0.7)
+			var pillar := cw / 2 - 1   # индекс начала шпиля (2 тайла)
+			for i in range(cw):
+				if x >= W - 10:
+					break
+				if i == pillar or i == pillar + 1:
+					ground_y[x] = h            # шпиль на уровне кромки — опора для прыжка
+				else:
+					ground_y[x] = h + depth
+					spike_cols[x] = true
+					if is_lava:
+						lava_cols[x] = true
+				x += 1
+			last_pit_end = x
+			continue
 		# --- яма (пропасть с шипами/лавой), запрыгиваемой ширины ---
 		if rv < prof.pit and x - last_pit_end > 6 and h + 3 < max_h:
 			var pw := _rr(r, 2, int(prof.pit_max))
@@ -1305,6 +1324,44 @@ func generate_level(seed_val: int, level_num: int) -> Dictionary:
 		if too_close:
 			continue
 		chests.append({ "x": hx * TILE + 2.0, "y": ground_y[hx] * TILE - 18.0, "w": 26.0, "h": 18.0, "opened": false })
+
+	# --- башня-награда: лесенка платформ вверх к сундуку (стимул лезть наверх) ---
+	if r.randf() < 0.5:
+		for _t in range(24):
+			var bx := _rr(r, 16, W - 16)
+			if spike_cols.has(bx) or ground_y[bx] != ground_y[bx + 1]:
+				continue
+			var steps := _rr(r, 3, 4)
+			var by: int = ground_y[bx]
+			var ok := true
+			# проверяем, что лесенка и пространство над ней свободны
+			for s2 in range(steps):
+				var sy: int = by - 3 * (s2 + 1)
+				var sxx: int = bx + (1 if s2 % 2 == 0 else -1)   # зигзаг для запрыгивания
+				if sy < 3 or sxx < 4 or sxx + 2 >= W:
+					ok = false
+					break
+				for j in range(3):
+					for dy in range(-1, 2):
+						if _cell(grid, W, H, sxx + j, sy + dy) != T_EMPTY:
+							ok = false
+				if not ok:
+					break
+			if not ok:
+				continue
+			var topx := bx
+			var topy := by
+			for s2 in range(steps):
+				var sy: int = by - 3 * (s2 + 1)
+				var sxx: int = bx + (1 if s2 % 2 == 0 else -1)
+				for j in range(3):
+					_setc(grid, W, H, sxx + j, sy, T_PLAT)
+					plat_cells.append(Vector2i(sxx + j, sy))
+				topx = sxx
+				topy = sy
+			# сундук на верхней платформе
+			chests.append({ "x": topx * TILE + 14.0, "y": topy * TILE - 18.0, "w": 26.0, "h": 18.0, "opened": false })
+			break
 
 	# --- алтарь-событие: 1 на уровень с шансом, в стороне от спавна/выхода/сундуков ---
 	var shrines := []
