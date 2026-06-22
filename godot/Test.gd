@@ -1551,6 +1551,31 @@ func _init() -> void:
 	game.level = {}
 	game.state = "menu"
 
+	# ---------- 55. Новое оружие: миниган и магнум ----------
+	_ok(game.WEAPONS.has("minigun") and game.WEAPONS.has("magnum"), "new weapons defined")
+	game.unlocks = {}
+	_ok(not game.is_unlocked("minigun"), "minigun locked initially")
+	game.prog = { "kills": 500, "bosses": 0, "chests": 0, "deep": 0, "runs": 0, "deaths": 0 }
+	game.check_unlocks()
+	_ok(game.is_unlocked("minigun"), "minigun unlocks at 500 kills")
+	game.state = "play"
+	game.P = game.make_player()
+	game.P.weapons = [{ "id": "magnum", "ammo": 14 }]
+	game.P.wi = 0
+	game.P.cd = 0
+	game.P.x = 100.0
+	game.P.y = 100.0
+	game.bullets = []
+	game.input.shoot_clicked = true
+	game.input.shoot_held = true
+	game.input.aim = Vector2(300, 100)
+	game.try_shoot()
+	_ok(game.bullets.size() > 0, "magnum fires a bullet")
+	_ok(int(game.P.weapons[0].ammo) == 13, "magnum consumes ammo")
+	game.bullets = []
+	game.unlocks = {}
+	game.state = "menu"
+
 	if failures == 0:
 		print("\nALL TESTS PASSED")
 	else:

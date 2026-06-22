@@ -57,8 +57,10 @@ const WEAPONS := {
 	"railgun": { "name": "Рельса", "dmg": 55, "cd": 50, "spd": 22.0, "spread": 0.0, "pellets": 1, "auto": false, "ammo": 20, "color": "#7fd4ff", "kick": 3.6, "len": 25, "pierce": true },
 	"flame":   { "name": "Огнемёт", "dmg": 4, "cd": 2, "spd": 0.0, "spread": 0.0, "pellets": 0, "auto": true, "ammo": 240, "color": "#ff7a3d", "kick": 0.6, "len": 18, "flame": true, "range": 132.0, "cone": 0.5 },
 	"ricochet": { "name": "Рикошет", "dmg": 11, "cd": 9, "spd": 13.0, "spread": 0.05, "pellets": 1, "auto": true, "ammo": 96, "color": "#b9ff6b", "kick": 1.4, "len": 18, "bounce": 3 },
+	"minigun": { "name": "Миниган", "dmg": 5, "cd": 3, "spd": 14.0, "spread": 0.15, "pellets": 1, "auto": true, "ammo": 350, "color": "#ffe066", "kick": 0.9, "len": 20 },
+	"magnum":  { "name": "Магнум", "dmg": 64, "cd": 42, "spd": 21.0, "spread": 0.0, "pellets": 1, "auto": false, "ammo": 14, "color": "#ff6b8a", "kick": 6.5, "len": 22 },
 }
-const WEAPON_DROPS := ["smg", "shotgun", "rifle", "grenade", "railgun", "flame", "ricochet"]
+const WEAPON_DROPS := ["smg", "shotgun", "rifle", "grenade", "railgun", "flame", "ricochet", "minigun", "magnum"]
 
 const UPGRADES := [
 	{ "id": "hp", "icon": "♥", "name": "Живучесть", "desc": "+25 к максимуму здоровья и лечение на 25" },
@@ -186,6 +188,8 @@ const UNLOCK_DEFS := [
 	{ "id": "flame",    "kind": "weapon", "stat": "chests", "need": 8 },
 	{ "id": "railgun",  "kind": "weapon", "stat": "bosses", "need": 1 },
 	{ "id": "ricochet", "kind": "weapon", "stat": "deep",   "need": 8 },
+	{ "id": "minigun",  "kind": "weapon", "stat": "kills",  "need": 500 },
+	{ "id": "magnum",   "kind": "weapon", "stat": "bosses", "need": 4 },
 	{ "id": "detonate",    "kind": "relic", "stat": "kills",  "need": 250 },
 	{ "id": "glass",       "kind": "relic", "stat": "kills",  "need": 450 },
 	{ "id": "executioner", "kind": "relic", "stat": "bosses", "need": 2 },
@@ -425,6 +429,8 @@ const LOC_EN := {
 	"Рельса": "Railgun",
 	"Огнемёт": "Flamethrower",
 	"Рикошет": "Ricochet",
+	"Миниган": "Minigun",
+	"Магнум": "Magnum",
 	# Улучшения
 	"Живучесть": "Vitality",
 	"+25 к максимуму здоровья и лечение на 25": "+25 max health and heal 25",
@@ -806,7 +812,7 @@ func _ready() -> void:
 		elif "--guns" in OS.get_cmdline_args():
 			# все стволы и уровень с камикадзе — для проверки рендера оружия
 			lvl = 4
-			for wid in ["smg", "shotgun", "rifle", "grenade", "railgun", "flame"]:
+			for wid in ["smg", "shotgun", "rifle", "grenade", "railgun", "flame", "minigun", "magnum"]:
 				P.weapons.append({ "id": wid, "ammo": 999 })
 			start_level()
 		else:
