@@ -57,7 +57,9 @@ func _init() -> void:
 					_ok(run_len <= 6, "s%dl%d pit len %d <= 6" % [s, lvl, run_len])
 					run_start = -1
 				if not spike_here and not spike_prev:
-					_ok(abs(gy[x] - gy[x - 1]) <= 1, "s%dl%d step at x=%d" % [s, lvl, x])
+					# подъём (земля выше = меньше gy) должен быть запрыгиваемым (≤3);
+					# обрывы вниз любой величины — падение всегда проходимо
+					_ok(gy[x - 1] - gy[x] <= 3, "s%dl%d up-step at x=%d (%d)" % [s, lvl, x, gy[x - 1] - gy[x]])
 
 			# враги не в стенах, не у спавна
 			for en in L.enemies:

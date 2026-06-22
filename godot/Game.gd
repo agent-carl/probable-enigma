@@ -36,6 +36,18 @@ const THEMES := [
 	  "ground": "#352048", "top": "#9d6bff", "plat": "#bf9bff", "spike": "#ecd9ff", "weather": "rain", "wcol": "#cba6ff", "lava": "#b24aff" },
 ]
 
+# Профиль рельефа по биому (порядок как в THEMES) — задаёт «характер» карты.
+# pit — шанс ямы, plateau — приподнятой площадки, cliff — резкого уступа;
+# step_up — макс. высота уступа вверх (в пределах прыжка ≤3), lava — добавка к шансу лавы.
+const TERRAIN := [
+	{ "pit": 0.15, "pit_max": 4, "plateau": 0.12, "cliff": 0.06, "step_up": 2, "lava": 0.0 },   # Изумрудные пещеры — мягкий
+	{ "pit": 0.17, "pit_max": 4, "plateau": 0.08, "cliff": 0.13, "step_up": 3, "lava": 0.18 },  # Багровые руины — рваный, лава
+	{ "pit": 0.22, "pit_max": 4, "plateau": 0.10, "cliff": 0.06, "step_up": 2, "lava": 0.0 },   # Ледяные шахты — много ям
+	{ "pit": 0.16, "pit_max": 4, "plateau": 0.12, "cliff": 0.06, "step_up": 2, "lava": 0.12 },  # Токсичные топи
+	{ "pit": 0.10, "pit_max": 3, "plateau": 0.18, "cliff": 0.13, "step_up": 3, "lava": 0.0 },   # Пустынный форт — террасы
+	{ "pit": 0.18, "pit_max": 4, "plateau": 0.16, "cliff": 0.15, "step_up": 3, "lava": 0.1 },   # Аметистовая бездна — вертикаль
+]
+
 const WEAPONS := {
 	"pistol":  { "name": "Пистолет", "dmg": 12, "cd": 16, "spd": 12.0, "spread": 0.035, "pellets": 1, "auto": false, "ammo": INF, "color": "#ffd86b", "kick": 1.2, "len": 15 },
 	"smg":     { "name": "ПП «Оса»", "dmg": 8, "cd": 6, "spd": 13.0, "spread": 0.10, "pellets": 1, "auto": true, "ammo": 150, "color": "#9be8ff", "kick": 1.6, "len": 17 },
@@ -1120,13 +1132,15 @@ func generate_level(seed_val: int, level_num: int) -> Dictionary:
 	var x := 8
 	var last_pit_end := -99
 
+	var prof: Dictionary = TERRAIN[(level_num - 1) % TERRAIN.size()]
 	while x < W - 10:
 		var rv := r.randf()
-		if rv < 0.16 and x - last_pit_end > 7 and h + 3 < max_h:
-			var pw := _rr(r, 2, 4)
-			var depth := _rr(r, 2, 3)
-			# с уровнем растёт шанс, что яма — лавовая (опасная зона со светом)
-			var is_lava := r.randf() < minf(0.25 + 0.05 * level_num, 0.6)
+		# --- яма (пропасть с шипами/лавой), запрыгиваемой ширины ---
+		if rv < prof.pit and x - last_pit_end > 6 and h + 3 < max_h:
+			var pw := _rr(r, 2, int(prof.pit_max))
+			var depth := _rr(r, 2, 4)
+			# с уровнем и по биому растёт шанс, что яма — лавовая (опасная зона со светом)
+			var is_lava := r.randf() < minf(0.2 + 0.04 * level_num + float(prof.lava), 0.65)
 			var i := 0
 			while i < pw and x < W - 10:
 				ground_y[x] = h + depth
@@ -1137,7 +1151,31 @@ func generate_level(seed_val: int, level_num: int) -> Dictionary:
 				x += 1
 			last_pit_end = x
 			continue
-		if rv < 0.55:
+		# --- плато: приподнятая площадка с пологим (1 тайл/шаг) въездом ---
+		if rv < prof.pit + prof.plateau and x + 9 < W - 10 and x - last_pit_end > 3 and h > min_h + 4:
+			var ph := clampi(h - _rr(r, 2, 4), min_h, h - 1)
+			while h > ph and x < W - 10:
+				h -= 1
+				ground_y[x] = h
+				x += 1
+			var plen := _rr(r, 3, 7)
+			var k := 0
+			while k < plen and x < W - 10:
+				ground_y[x] = h
+				x += 1
+				k += 1
+			continue
+		# --- резкий уступ: вверх в пределах прыжка либо обрыв вниз ---
+		if rv < prof.pit + prof.plateau + prof.cliff and x - last_pit_end > 3:
+			if r.randf() < 0.5:
+				h = clampi(h - _rr(r, 2, int(prof.step_up)), min_h, max_h)   # уступ вверх (запрыгиваемый)
+			else:
+				h = clampi(h + _rr(r, 2, 3), min_h, max_h)                    # обрыв вниз
+			ground_y[x] = h
+			x += 1
+			continue
+		# --- плавная ходьба ---
+		if rv < 0.78:
 			h = clampi(h + _pick(r, [-1, -1, 0, 1, 1]), min_h, max_h)
 		ground_y[x] = h
 		x += 1
