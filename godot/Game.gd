@@ -93,6 +93,12 @@ const RELICS := {
 	"regen":      { "icon": "🌿", "name": "Регенерация", "desc": "Медленно восстанавливает здоровье" },
 	"executioner":{ "icon": "🪓", "name": "Палач", "desc": "+50% урона по врагам с HP < 30%" },
 	"bulwark":    { "icon": "🛉", "name": "Бастион", "desc": "+25 щита в начале каждого уровня" },
+	"hunter":     { "icon": "🎯", "name": "Охотник", "desc": "+30% урона по врагам с HP > 70% (первый удар больнее)" },
+	"siphon":     { "icon": "🛡", "name": "Сифон", "desc": "8% нанесённого урона возвращается щитом" },
+	"splinter":   { "icon": "💥", "name": "Шрапнель", "desc": "Убитый враг выпускает осколки во все стороны" },
+	"momentum":   { "icon": "🏃", "name": "Разгон", "desc": "Убийство ненадолго ускоряет бег и стрельбу" },
+	"bloodlust":  { "icon": "🔥", "name": "Жажда крови", "desc": "Чем ниже HP, тем выше урон (до +50%)" },
+	"vengeance":  { "icon": "⚔", "name": "Возмездие", "desc": "После получения урона следующее попадание ×2" },
 }
 
 # Активные предметы (слот, клавиша E): мгновенные/area-способности с кулдауном
@@ -133,6 +139,21 @@ const ACHIEVEMENTS := [
 	{ "id": "sharpshooter", "name": "Снайпер", "desc": "Точность 90%+ за забег (30+ выстрелов)" },
 	{ "id": "high_score", "name": "Богач", "desc": "Набрать 1000 очков за забег" },
 	{ "id": "survivor", "name": "Живучий", "desc": "Прожить 3 минуты за один забег" },
+	{ "id": "combo_legend", "name": "Неудержимый", "desc": "Серия из 25 убийств" },
+	{ "id": "rich_legend", "name": "Магнат", "desc": "Набрать 2500 очков за забег" },
+	{ "id": "coin_hoard", "name": "Скопидом", "desc": "Накопить 60 монет за забег" },
+	{ "id": "relic_collector", "name": "Сила реликвий", "desc": "Собрать 5 реликвий за один забег" },
+	{ "id": "overkill", "name": "Перебор", "desc": "Нанести 5000 урона за забег" },
+	{ "id": "marksman", "name": "Меткий стрелок", "desc": "Точность 95%+ за забег (50+ выстрелов)" },
+	{ "id": "nightmare", "name": "Кошмар наяву", "desc": "Победить босса на «Кошмаре» и выше" },
+	{ "id": "iron_run", "name": "Двужильный", "desc": "Прожить 5 минут за один забег" },
+	{ "id": "deep_legend", "name": "Бездна зовёт", "desc": "Дойти до 15-го уровня" },
+	{ "id": "daily_player", "name": "Сегодня мой день", "desc": "Сыграть забег дня" },
+	{ "id": "veteran", "name": "Ветеран", "desc": "1000 убийств за всё время" },
+	{ "id": "boss_legend", "name": "Гроза боссов", "desc": "Победить 10 боссов за всё время" },
+	{ "id": "treasure_hunter", "name": "Кладоискатель", "desc": "Открыть 25 сундуков за всё время" },
+	{ "id": "persistent", "name": "Упорство", "desc": "Сыграть 25 забегов" },
+	{ "id": "completionist", "name": "Первопроходец", "desc": "Открыть весь контент коллекции" },
 ]
 
 # Разблокируемый контент: эти оружие/реликвии открываются по достижению порога
@@ -442,6 +463,18 @@ const LOC_EN := {
 	"+50% урона по врагам с HP < 30%": "+50% damage to enemies below 30% HP",
 	"Бастион": "Bastion",
 	"+25 щита в начале каждого уровня": "+25 shield at the start of each level",
+	"Охотник": "Hunter",
+	"+30% урона по врагам с HP > 70% (первый удар больнее)": "+30% damage to enemies above 70% HP (first hit hurts more)",
+	"Сифон": "Siphon",
+	"8% нанесённого урона возвращается щитом": "8% of damage dealt returns as shield",
+	"Шрапнель": "Shrapnel",
+	"Убитый враг выпускает осколки во все стороны": "Slain enemies burst into splinters in all directions",
+	"Разгон": "Momentum",
+	"Убийство ненадолго ускоряет бег и стрельбу": "A kill briefly boosts run and fire speed",
+	"Жажда крови": "Bloodlust",
+	"Чем ниже HP, тем выше урон (до +50%)": "The lower your HP, the more damage (up to +50%)",
+	"Возмездие": "Vengeance",
+	"После получения урона следующее попадание ×2": "After taking damage, your next hit deals ×2",
 	# Активные предметы
 	"Бомба": "Bomb",
 	"Взрыв по области у прицела": "Area blast at the cursor",
@@ -494,6 +527,35 @@ const LOC_EN := {
 	"Набрать 1000 очков за забег": "Score 1000 points in a run",
 	"Живучий": "Survivor",
 	"Прожить 3 минуты за один забег": "Survive 3 minutes in a single run",
+	"Неудержимый": "Unstoppable",
+	"Серия из 25 убийств": "A streak of 25 kills",
+	"Магнат": "Tycoon",
+	"Набрать 2500 очков за забег": "Score 2500 in a run",
+	"Скопидом": "Hoarder",
+	"Накопить 60 монет за забег": "Hold 60 coins in a run",
+	"Сила реликвий": "Relic Power",
+	"Собрать 5 реликвий за один забег": "Collect 5 relics in a single run",
+	"Перебор": "Overkill",
+	"Нанести 5000 урона за забег": "Deal 5000 damage in a run",
+	"Меткий стрелок": "Marksman",
+	"Точность 95%+ за забег (50+ выстрелов)": "95%+ accuracy in a run (50+ shots)",
+	"Кошмар наяву": "Living Nightmare",
+	"Победить босса на «Кошмаре» и выше": "Beat a boss on Nightmare or higher",
+	"Двужильный": "Iron-Willed",
+	"Прожить 5 минут за один забег": "Survive 5 minutes in a single run",
+	"Бездна зовёт": "The Abyss Calls",
+	"Дойти до 15-го уровня": "Reach level 15",
+	"Сегодня мой день": "My Day Today",
+	"Сыграть забег дня": "Play a daily run",
+	"1000 убийств за всё время": "1000 kills all-time",
+	"Гроза боссов": "Boss Bane",
+	"Победить 10 боссов за всё время": "Defeat 10 bosses all-time",
+	"Кладоискатель": "Treasure Hunter",
+	"Открыть 25 сундуков за всё время": "Open 25 chests all-time",
+	"Упорство": "Persistence",
+	"Сыграть 25 забегов": "Play 25 runs",
+	"Первопроходец": "Trailblazer",
+	"Открыть весь контент коллекции": "Unlock all collection content",
 	# Сложность
 	"Норма": "Normal",
 	"Ветеран": "Veteran",
@@ -1797,6 +1859,7 @@ func make_player() -> Dictionary:
 		"dash_cd": 0, "dash_t": 0, "dash_dir": 1.0, "squash": 0.0,
 		"active": "bomb", "active_cd": 0, "active_max": ACTIVES["bomb"].cd,
 		"shield": 0.0, "max_shield": 0.0, "ride_id": -1,
+		"momentum_t": 0.0, "vengeance": false,
 		"weapons": [{ "id": "pistol", "ammo": INF }], "wi": 0,
 		"stats": {
 			"dmg_mul": 1.0, "cd_mul": 1.0, "spd_mul": 1.0, "jumps": 1, "lifesteal": 0,
@@ -2216,6 +2279,7 @@ func shop_continue() -> void:
 func level_clear() -> void:
 	score += 100 + lvl * 25
 	score += 100 + lvl * 25
+	check_achievements()   # вехи забега (серия/очки/реликвии) открываются сразу
 	play_sfx("portal")
 	offer_upgrades()
 
@@ -2226,6 +2290,8 @@ func hurt_player(dmg: float, from_dir: float, src := Vector2.INF) -> void:
 		return
 	var real: int = max(1, roundi(dmg * P.stats.armor_mul))
 	P.inv = 55
+	if has_relic("vengeance"):
+		P.vengeance = true   # следующее попадание усилено
 	P.vx = clampf(P.vx + from_dir * 4.0, -8, 8)
 	P.vy = min(P.vy, -4.0)
 	shake = min(14.0, shake + 7.0)
@@ -2393,9 +2459,20 @@ func hurt_enemy(en: Dictionary, dmg: int, crit: bool, silent := false) -> void:
 		dmg = max(1, int(round(dmg * 0.6)))
 	if has_relic("executioner") and en.hp < 0.3 * en.maxhp:
 		dmg = int(round(dmg * 1.5))   # добивание ослабленных
+	if has_relic("hunter") and en.hp > 0.7 * en.maxhp:
+		dmg = int(round(dmg * 1.3))   # бонус по «свежим» врагам
+	if has_relic("bloodlust") and not P.is_empty():
+		dmg = int(round(dmg * (1.0 + 0.5 * (1.0 - clampf(P.hp / P.maxhp, 0.0, 1.0)))))
+	if not silent and has_relic("vengeance") and P.get("vengeance", false):
+		dmg *= 2   # отложенный контрудар после полученного урона
+		P.vengeance = false
 	en.hp -= dmg
 	en.hurt_t = 90
 	damage_dealt += dmg
+	if not silent and has_relic("siphon") and not P.is_empty():
+		if P.max_shield < 40.0:
+			P.max_shield = 40.0
+		P.shield = minf(P.max_shield, P.shield + maxf(1.0, dmg * 0.08))
 	ult = min(ULT_MAX, ult + dmg * (1.6 if has_relic("overcharge") else 1.0))  # урон заряжает ультимейт
 	if not silent:
 		add_text(en.x + en.w / 2.0, en.y - 4, str(dmg), Color("#ffd86b") if crit else Color.WHITE)
@@ -2426,6 +2503,10 @@ func hurt_enemy(en: Dictionary, dmg: int, crit: bool, silent := false) -> void:
 			P.hp = min(P.maxhp, P.hp + 10)
 		if has_relic("midas"):
 			coins += 1
+		if has_relic("momentum"):
+			P.momentum_t = 90.0   # ~1.5 с разгона
+		if has_relic("splinter") and not en.get("boss", false) and not _detonating:
+			_splinter_burst(en.x + en.w / 2.0, en.y + en.h / 2.0)
 		if has_relic("detonate") and not en.get("boss", false) and not _detonating:
 			_detonating = true   # труп взрывается (без цепной рекурсии)
 			explode(en.x + en.w / 2.0, en.y + en.h / 2.0, 58.0, 18, "p")
@@ -2453,8 +2534,11 @@ func hurt_enemy(en: Dictionary, dmg: int, crit: bool, silent := false) -> void:
 			add_text(en.x + en.w / 2.0, en.y - 30, T("БОСС ПОВЕРЖЕН! +500"), Color("#ffd86b"))
 			play_sfx("portal")
 			unlock("boss_slayer")
+			if difficulty >= 2:
+				unlock("nightmare")   # босс повержен на «Кошмаре»+
 			prog.bosses = int(prog.get("bosses", 0)) + 1   # пожизненный счётчик боссов
 			check_unlocks()
+			check_achievements()
 			grant_random_relic()   # награда за босса — реликвия
 			if difficulty >= max_difficulty and max_difficulty < 3:
 				max_difficulty = difficulty + 1   # открыта новая сложность
@@ -2572,6 +2656,16 @@ func _chain_arc(src: Dictionary, dmg: int) -> void:
 	chain_bolts.append({ "x1": sx, "y1": sy, "x2": best.x + best.w / 2.0, "y2": best.y + best.h / 2.0, "life": 6.0 })
 	hurt_enemy(best, max(1, int(dmg * 0.4)), false, true)
 
+func _splinter_burst(cx: float, cy: float) -> void:
+	# «Шрапнель»: труп выпускает осколки-пули по кругу
+	var dmg: int = maxi(4, int(8 * P.stats.dmg_mul))
+	for i in range(5):
+		var a := i * TAU / 5.0 + rng.randf() * 0.3
+		bullets.append({
+			"x": cx, "y": cy, "vx": cos(a) * 7.0, "vy": sin(a) * 7.0,
+			"dmg": dmg, "crit": false, "from": "p", "life": 32, "color": _col("#ffd1a8"),
+		})
+
 # ============================== Движущиеся платформы ==============================
 
 func update_moving_platforms() -> void:
@@ -2660,7 +2754,7 @@ func try_shoot() -> void:
 		return
 	if is_finite(slot.ammo):
 		slot.ammo -= 1
-	P.cd = max(3, roundi(w.cd * P.stats.cd_mul * (0.6 if adrenaline_active() else 1.0)))
+	P.cd = max(3, roundi(w.cd * P.stats.cd_mul * (0.6 if adrenaline_active() else 1.0) * (0.8 if P.get("momentum_t", 0.0) > 0.0 else 1.0)))
 	tut.shoot = true
 	var cx: float = P.x + P.w / 2.0
 	var cy: float = P.y + P.h / 2.0 - 2
@@ -2828,7 +2922,8 @@ func update_player() -> void:
 	var dir: int = input.move
 	if dir != 0:
 		tut.move = true
-	var target: float = dir * 4.3 * st.spd_mul * (1.4 if adrenaline_active() else 1.0)
+	var momentum := 1.25 if P.get("momentum_t", 0.0) > 0.0 else 1.0   # «Разгон» от убийств
+	var target: float = dir * 4.3 * st.spd_mul * (1.4 if adrenaline_active() else 1.0) * momentum
 	var accel := 0.8 if P.on_ground else 0.45
 	P.vx += clampf(target - P.vx, -accel, accel)
 	if abs(P.vx) < 0.05:
@@ -2932,6 +3027,8 @@ func update_player() -> void:
 			level_clear()
 			return
 
+	if P.get("momentum_t", 0.0) > 0.0:
+		P.momentum_t -= 1.0
 	if P.inv > 0:
 		P.inv -= 1
 	if P.cd > 0:
@@ -5781,20 +5878,19 @@ func _draw_overlays() -> void:
 			_text(Vector2(cx, hy + 4), "Геймпад: стики — движение/прицел, A — прыжок, RT/RB — огонь, LT/B — рывок, Y — ульта, LB — оружие", 12, Color("#6f7aa3"), true)
 			_btn(Rect2(cx - 90, hy + 26, 180, 40), "← Назад", "menu", false)
 		"achievements":
-			_text(Vector2(cx, 56), "Достижения", 34, Color("#ffe9b0"), true)
-			_text(Vector2(cx, 88), T("Открыто %d из %d") % [unlocked.size(), ACHIEVEMENTS.size()], 15, Color("#9be8ff"), true)
-			var ay := 118.0
-			for a in ACHIEVEMENTS:
+			_text(Vector2(cx, 44), "Достижения", 30, Color("#ffe9b0"), true)
+			_text(Vector2(cx, 72), T("Открыто %d из %d") % [unlocked.size(), ACHIEVEMENTS.size()], 14, Color("#9be8ff"), true)
+			var per_col := int(ceil(ACHIEVEMENTS.size() / 2.0))
+			for ai in range(ACHIEVEMENTS.size()):
+				var a: Dictionary = ACHIEVEMENTS[ai]
 				var got: bool = unlocked.has(a.id)
-				var rect := Rect2(cx - 280, ay, 560, 38)
-				_ci.draw_rect(rect, Color(0.16, 0.22, 0.14, 0.5) if got else Color(1, 1, 1, 0.04))
-				_ci.draw_rect(rect, Color(0.49, 0.95, 0.55, 0.6) if got else Color(1, 1, 1, 0.1), false, 1.0)
-				_text(Vector2(rect.position.x + 14, ay + 25), "✓" if got else "🔒", 18, Color("#7df2a5") if got else Color("#6f7aa3"))
-				_text(Vector2(rect.position.x + 44, ay + 24), a.name, 15, Color("#eaf0ff") if got else Color("#8d97bd"))
-				var dwx := font.get_string_size(T(a.desc), HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x
-				_text(Vector2(rect.position.x + 546 - dwx, ay + 24), a.desc, 12, Color("#aab3d6") if got else Color("#5a6385"))
-				ay += 44.0
-			_btn(Rect2(cx - 90, ay + 6, 180, 40), "← Назад", "menu", false)
+				var col_x := (cx - 300.0) if ai < per_col else (cx + 8.0)
+				var row := ai % per_col
+				var ry := 92.0 + row * 32.0
+				_text(Vector2(col_x, ry + 11), "✓" if got else "🔒", 13, Color("#7df2a5") if got else Color("#6f7aa3"))
+				_text(Vector2(col_x + 20, ry + 9), a.name, 13, Color("#eaf0ff") if got else Color("#8d97bd"))
+				_text(Vector2(col_x + 20, ry + 23), a.desc, 9, Color("#aab3d6") if got else Color("#5a6385"))
+			_btn(Rect2(cx - 90, 488, 180, 34), "← Назад", "menu", false)
 		"collection":
 			_text(Vector2(cx, 50), "Коллекция", 32, Color("#ffe9b0"), true)
 			_text(Vector2(cx, 80), T("Открыто %d из %d") % [_unlocks_count(), UNLOCK_DEFS.size()], 14, Color("#9be8ff"), true)
@@ -6226,6 +6322,35 @@ func check_achievements() -> void:
 		unlock("survivor")
 	if shots_fired >= 30 and accuracy() >= 0.9:
 		unlock("sharpshooter")
+	if max_combo >= 25:
+		unlock("combo_legend")
+	if score >= 2500:
+		unlock("rich_legend")
+	if coins >= 60:
+		unlock("coin_hoard")
+	if relics.size() >= 5:
+		unlock("relic_collector")
+	if damage_dealt >= 5000:
+		unlock("overkill")
+	if shots_fired >= 50 and accuracy() >= 0.95:
+		unlock("marksman")
+	if run_ticks >= 60 * 300:
+		unlock("iron_run")
+	if lvl >= 15:
+		unlock("deep_legend")
+	if daily_run:
+		unlock("daily_player")
+	# пожизненные вехи
+	if int(prog.get("kills", 0)) >= 1000:
+		unlock("veteran")
+	if int(prog.get("bosses", 0)) >= 10:
+		unlock("boss_legend")
+	if int(prog.get("chests", 0)) >= 25:
+		unlock("treasure_hunter")
+	if int(prog.get("runs", 0)) >= 25:
+		unlock("persistent")
+	if unlocks.size() >= UNLOCK_DEFS.size():
+		unlock("completionist")
 
 func _save_best(v: int) -> void:
 	best = v

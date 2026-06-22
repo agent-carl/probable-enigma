@@ -1413,6 +1413,58 @@ func _init() -> void:
 					elevated += 1   # сундук заметно выше уровня земли = на башне-платформе
 	_ok(elevated > 0, "reward towers place elevated chests (%d)" % elevated)
 
+	# ---------- 51. Новые реликвии ----------
+	game.state = "play"
+	game.P = game.make_player()
+	game.P.maxhp = 100.0
+	game.P.hp = 100.0
+	game.bullets = []
+	game._detonating = false
+	# hunter: +урон по «свежим» врагам
+	game.relics = { "hunter": true }
+	var eh: Dictionary = game._spawn_enemy("walker", 0, 0)
+	eh.hp = 100; eh.maxhp = 100
+	game.hurt_enemy(eh, 10, false, true)
+	_ok(eh.hp <= 87, "hunter boosts damage on full-HP enemy (hp=%d)" % int(eh.hp))
+	# bloodlust: +урон при низком HP
+	game.relics = { "bloodlust": true }
+	game.P.hp = 10.0
+	var eb: Dictionary = game._spawn_enemy("walker", 0, 0)
+	eb.hp = 100; eb.maxhp = 100
+	game.hurt_enemy(eb, 10, false, true)
+	_ok(eb.hp <= 86, "bloodlust boosts damage at low HP (hp=%d)" % int(eb.hp))
+	game.P.hp = 100.0
+	# siphon: урон даёт щит
+	game.relics = { "siphon": true }
+	game.P.shield = 0.0; game.P.max_shield = 0.0
+	var es: Dictionary = game._spawn_enemy("walker", 0, 0)
+	es.hp = 100; es.maxhp = 100
+	game.hurt_enemy(es, 30, false, false)
+	_ok(game.P.shield > 0.0, "siphon grants shield on hit (%.1f)" % game.P.shield)
+	# vengeance: следующий удар ×2 и расходуется
+	game.relics = { "vengeance": true }
+	game.P.vengeance = true
+	var ev: Dictionary = game._spawn_enemy("walker", 0, 0)
+	ev.hp = 100; ev.maxhp = 100
+	game.hurt_enemy(ev, 10, false, false)
+	_ok(ev.hp <= 80, "vengeance doubles next hit (hp=%d)" % int(ev.hp))
+	_ok(not game.P.vengeance, "vengeance consumed after hit")
+	# splinter: убийство выпускает осколки
+	game.relics = { "splinter": true }
+	game.bullets = []
+	var ek: Dictionary = game._spawn_enemy("walker", 100, 100)
+	ek.hp = 1; ek.maxhp = 100
+	game.hurt_enemy(ek, 50, false, true)
+	_ok(game.bullets.size() >= 5, "splinter spawns shrapnel (%d)" % game.bullets.size())
+	# momentum: убийство даёт разгон
+	game.relics = { "momentum": true }
+	var em: Dictionary = game._spawn_enemy("walker", 0, 0)
+	em.hp = 1; em.maxhp = 100
+	game.hurt_enemy(em, 50, false, true)
+	_ok(game.P.momentum_t > 0.0, "momentum set on kill")
+	game.relics = {}
+	game.bullets = []
+
 	if failures == 0:
 		print("\nALL TESTS PASSED")
 	else:
