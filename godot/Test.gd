@@ -631,7 +631,7 @@ func _init() -> void:
 			for en in game.generate_level(s5 * 311 + lv, lv).enemies:
 				if en.get("elite", false):
 					elites += 1
-					_ok(en.mod == "swift" or en.mod == "armored", "elite has a valid modifier")
+					_ok(en.mod in ["swift", "armored", "volatile", "regen"], "elite has a valid modifier")
 					_ok(not en.get("boss", false) and en.type != "shard", "elite is not boss/shard")
 	_ok(elites > 0, "elite enemies are generated (total %d)" % elites)
 
@@ -1517,6 +1517,38 @@ func _init() -> void:
 		else:
 			legends += 1
 	_ok(commons > legends * 2, "common picked far more than legendary (%d vs %d)" % [commons, legends])
+	game.state = "menu"
+
+	# ---------- 54. Синергии-наборы реликвий ----------
+	game.relics = {}
+	_ok(game._synergy_off() == 1.0, "no offense synergy with 0 relics")
+	game.relics = { "hunter": true, "chain": true, "splinter": true }   # 3 атакующие
+	_ok(game._synergy_tier("off") == 1, "3 offense relics -> tier 1")
+	_ok(game._synergy_off() > 1.0, "offense synergy boosts damage")
+	game.relics = { "vampire": true, "thorns": true, "regen": true, "siphon": true, "bulwark": true }  # 5 защитных
+	_ok(game._synergy_tier("def") == 2, "5 defense relics -> tier 2")
+	_ok(game._synergy_def() < 0.8, "defense synergy reduces incoming damage")
+	game.relics = { "midas": true, "frost": true, "overcharge": true }   # 3 поддержки
+	_ok(game._synergy_util_coins() >= 1, "utility synergy grants bonus coins")
+	# защита реально снижает урон игроку
+	game.state = "play"
+	game.P = game.make_player()
+	game.P.maxhp = 100.0
+	game.P.hp = 100.0
+	game.P.inv = 0
+	game.P.shield = 0.0
+	game.level = { "W": 4, "H": 4, "grid": PackedByteArray([0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0]), "px_w": 128, "px_h": 128 }
+	game.relics = {}
+	game.hurt_player(20, 0)
+	var dmg_plain: float = 100.0 - game.P.hp
+	game.P.hp = 100.0
+	game.P.inv = 0
+	game.relics = { "vampire": true, "thorns": true, "regen": true, "siphon": true, "bulwark": true }
+	game.hurt_player(20, 0)
+	var dmg_def: float = 100.0 - game.P.hp
+	_ok(dmg_def < dmg_plain, "defense synergy: less damage taken (%d < %d)" % [int(dmg_def), int(dmg_plain)])
+	game.relics = {}
+	game.level = {}
 	game.state = "menu"
 
 	if failures == 0:

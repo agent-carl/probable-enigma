@@ -114,6 +114,15 @@ const RARITY := {
 	"chain": 3, "second": 3, "overcharge": 3, "vengeance": 3,
 }
 
+# Категории реликвий для синергий-наборов: атака / защита / поддержка.
+# Набрав 3+ реликвии одной категории, получаешь бонус (5+ — усиленный).
+const RELIC_CAT := {
+	"glass": "off", "detonate": "off", "chain": "off", "executioner": "off", "hunter": "off",
+	"splinter": "off", "bloodlust": "off", "vengeance": "off", "momentum": "off",
+	"vampire": "def", "thorns": "def", "second": "def", "regen": "def", "siphon": "def", "bulwark": "def",
+	"midas": "util", "adrenaline": "util", "overcharge": "util", "frost": "util",
+}
+
 # Активные предметы (слот, клавиша E): мгновенные/area-способности с кулдауном
 const ACTIVES := {
 	"bomb":   { "icon": "💣", "name": "Бомба", "desc": "Взрыв по области у прицела", "cd": 300 },
@@ -581,6 +590,9 @@ const LOC_EN := {
 	"Обычная": "Common",
 	"Редкая": "Rare",
 	"Легендарная": "Legendary",
+	"Атк": "ATK",
+	"Защ": "DEF",
+	"Под": "UTL",
 	"ПРИЗЫВАТЕЛЬ": "SUMMONER",
 	"АРТИЛЛЕРИСТ": "ARTILLERIST",
 	"БОСС": "BOSS",
@@ -777,6 +789,9 @@ func _ready() -> void:
 					_set_state(a2[si + 1])
 			return  # остаёмся в меню/экране для проверки отрисовки
 		start_run(12345, "DEMO")
+		if "--synergy" in OS.get_cmdline_args():
+			for rid in ["hunter", "chain", "splinter", "vampire", "thorns"]:   # дебаг: показать бейджи синергий
+				relics[rid] = true
 		if "--boss" in OS.get_cmdline_args() or "--airboss" in OS.get_cmdline_args() or "--summoner" in OS.get_cmdline_args():
 			# прыжок на боссовый уровень с прокачкой — для проверки рендера босса
 			lvl = 5
@@ -1710,13 +1725,14 @@ func generate_level(seed_val: int, level_num: int) -> Dictionary:
 		enemy_list[i]["eid"] = i
 
 	# элитные враги с модификаторами (не боссы/осколки)
-	var elite_chance := clampf(0.05 + 0.02 * level_num, 0.0, 0.30)
+	var elite_chance := clampf(0.06 + 0.022 * level_num, 0.0, 0.34)
+	var elite_mods := ["swift", "armored", "volatile", "regen"]
 	for en in enemy_list:
 		if en.get("boss", false) or en.type == "shard":
 			continue
 		if r.randf() >= elite_chance:
 			continue
-		var mod := "swift" if r.randf() < 0.5 else "armored"
+		var mod: String = elite_mods[r.randi_range(0, elite_mods.size() - 1)]
 		en["elite"] = true
 		en["mod"] = mod
 		en.hp = int(round(en.hp * 2.2))
@@ -1727,6 +1743,8 @@ func generate_level(seed_val: int, level_num: int) -> Dictionary:
 			en.spd *= 1.6
 			if en.cd_max > 0:
 				en.cd_max = int(en.cd_max * 0.7)
+		elif mod == "volatile":
+			en["radius"] = 70.0   # взрыв при гибели
 
 	# нормализуем поля статусов (база скорости — после элитных модификаторов)
 	for en in enemy_list:
@@ -2096,6 +2114,43 @@ func apply_upgrade_stats(u: Dictionary) -> void:
 func has_relic(id: String) -> bool:
 	return relics.has(id)
 
+func _relic_cat_count(cat: String) -> int:
+	var n := 0
+	for rid in relics.keys():
+		if RELIC_CAT.get(rid, "") == cat:
+			n += 1
+	return n
+
+func _synergy_tier(cat: String) -> int:
+	# 0 нет бонуса, 1 — 3+ реликвии категории, 2 — 5+
+	var n := _relic_cat_count(cat)
+	if n >= 5:
+		return 2
+	if n >= 3:
+		return 1
+	return 0
+
+func _synergy_off() -> float:
+	# набор «Атака»: множитель урона
+	match _synergy_tier("off"):
+		2: return 1.25
+		1: return 1.12
+	return 1.0
+
+func _synergy_def() -> float:
+	# набор «Защита»: множитель получаемого урона (меньше — лучше)
+	match _synergy_tier("def"):
+		2: return 0.78
+		1: return 0.88
+	return 1.0
+
+func _synergy_util_coins() -> int:
+	# набор «Поддержка»: доп. монеты за убийство
+	match _synergy_tier("util"):
+		2: return 2
+		1: return 1
+	return 0
+
 func adrenaline_active() -> bool:
 	return has_relic("adrenaline") and not P.is_empty() and P.hp < 0.35 * P.maxhp
 
@@ -2351,7 +2406,7 @@ func level_clear() -> void:
 func hurt_player(dmg: float, from_dir: float, src := Vector2.INF) -> void:
 	if P.inv > 0 or state != "play":
 		return
-	var real: int = max(1, roundi(dmg * P.stats.armor_mul))
+	var real: int = max(1, roundi(dmg * P.stats.armor_mul * _synergy_def()))   # набор «Защита» снижает урон
 	P.inv = 55
 	if has_relic("vengeance"):
 		P.vengeance = true   # следующее попадание усилено
@@ -2529,6 +2584,9 @@ func hurt_enemy(en: Dictionary, dmg: int, crit: bool, silent := false) -> void:
 	if not silent and has_relic("vengeance") and P.get("vengeance", false):
 		dmg *= 2   # отложенный контрудар после полученного урона
 		P.vengeance = false
+	var soff := _synergy_off()   # набор реликвий «Атака»
+	if soff > 1.0:
+		dmg = int(round(dmg * soff))
 	en.hp -= dmg
 	en.hurt_t = 90
 	damage_dealt += dmg
@@ -2566,6 +2624,7 @@ func hurt_enemy(en: Dictionary, dmg: int, crit: bool, silent := false) -> void:
 			P.hp = min(P.maxhp, P.hp + 10)
 		if has_relic("midas"):
 			coins += 1
+		coins += _synergy_util_coins()   # набор «Поддержка»: доп. монеты
 		if has_relic("momentum"):
 			P.momentum_t = 90.0   # ~1.5 с разгона
 		if has_relic("splinter") and not en.get("boss", false) and not _detonating:
@@ -2616,6 +2675,10 @@ func hurt_enemy(en: Dictionary, dmg: int, crit: bool, silent := false) -> void:
 		# элита всегда роняет дополнительный лут (монеты + гарантированный предмет)
 		if en.get("elite", false):
 			var ecx: float = en.x + en.w / 2.0
+			if en.get("mod", "") == "volatile" and not _detonating:
+				_detonating = true   # взрыв элиты-«вулкана» при гибели
+				explode(en.x + en.w / 2.0, en.y + en.h / 2.0, float(en.get("radius", 70.0)), int(en.dmg), "e")
+				_detonating = false
 			for _c in range(rng.randi_range(2, 4)):
 				pickups.append({ "kind": "coin", "x": ecx - 6, "y": en.y, "w": 12, "h": 12, "vy": -3.0 - rng.randf() * 2.0, "t": 0.0 })
 			if rng.randf() < 0.5:
@@ -3184,6 +3247,9 @@ func update_enemies() -> void:
 				hurt_enemy(en, 4, false, true)
 				if en.dead:
 					continue
+		# элита-«регенератор» медленно восстанавливает здоровье
+		if en.get("mod", "") == "regen" and en.hp < en.maxhp and int(en.get("burn", 0)) <= 0 and tick % 24 == 0:
+			en.hp = mini(int(en.maxhp), int(en.hp) + maxi(1, int(en.maxhp * 0.02)))
 
 		if en.type == "walker" or en.type == "splitter" or en.type == "shard":
 			en.vy = min(en.vy + GRAV, MAX_FALL)
@@ -5231,10 +5297,12 @@ func _draw_enemies() -> void:
 		# аура элитного врага
 		if en.get("elite", false):
 			var ec := Vector2(en.x + en.w / 2.0, en.y + en.h / 2.0)
-			var acol := Color(1, 0.84, 0.3, 0.22) if en.mod == "swift" else Color(0.6, 0.78, 1.0, 0.22)
-			var rr := maxf(en.w, en.h) * 0.7 + sin(tick * 0.12 + float(en.eid)) * 3.0
+			var acol: Color = { "swift": Color(1, 0.84, 0.3, 0.24), "armored": Color(0.6, 0.78, 1.0, 0.24), "volatile": Color(1.0, 0.45, 0.25, 0.26), "regen": Color(0.45, 1.0, 0.6, 0.24) }.get(en.get("mod", "swift"), Color(1, 0.84, 0.3, 0.22))
+			var rr := maxf(en.w, en.h) * 0.72 + sin(tick * 0.12 + float(en.eid)) * 3.0
 			draw_circle(ec, rr, acol)
-			draw_arc(ec, rr, 0, TAU, 20, Color(acol.r, acol.g, acol.b, 0.7), 1.5)
+			draw_arc(ec, rr, 0, TAU, 20, Color(acol.r, acol.g, acol.b, 0.8), 1.5)
+			# звезда-метка над элиткой (заметнее)
+			_text_world(Vector2(ec.x - 5, en.y - 8), "★", 13, Color(acol.r, acol.g, acol.b, 0.9))
 		# тёмный контур для читаемости (кроме босса и летунов-кругов)
 		if en.type != "boss" and not en.get("fly", false):
 			draw_rect(Rect2(en.x - 1.5, en.y - 1.5, en.w + 3, en.h + 3), Color(0, 0, 0, 0.5))
@@ -5607,14 +5675,30 @@ func _draw_hud() -> void:
 			_ci.draw_rect(Rect2(12, 62, 26, 26.0 * cdf), Color(0, 0, 0, 0.55))   # затемнение сверху по кулдауну
 		_text(Vector2(41, 76), "E", 10, Color("#8d97bd"))
 
-	# реликвии забега — ряд иконок (под активным предметом)
+	# реликвии забега — ряд иконок (рамка по редкости)
 	if relics.size() > 0:
 		var rx := 12.0
 		for rid in relics.keys():
+			var brc := _rar_color(_rar(rid))
 			_ci.draw_rect(Rect2(rx, 92, 18, 18), Color(0.12, 0.10, 0.18, 0.7))
-			_ci.draw_rect(Rect2(rx, 92, 18, 18), Color(1, 0.85, 0.42, 0.5), false, 1.0)
+			_ci.draw_rect(Rect2(rx, 92, 18, 18), brc, false, 1.0)
 			_text(Vector2(rx + 3, 106), RELICS[rid].icon, 13, Color("#ffe9b0"))
 			rx += 22.0
+		# бейджи активных синергий-наборов (Атака/Защита/Поддержка)
+		var by := 114.0
+		var bx := 12.0
+		for cat in ["off", "def", "util"]:
+			var tier := _synergy_tier(cat)
+			if tier <= 0:
+				continue
+			var code: String = { "off": "Атк", "def": "Защ", "util": "Под" }[cat]
+			var bcol: Color = { "off": Color("#ff8f6b"), "def": Color("#7fd4ff"), "util": Color("#ffd86b") }[cat]
+			var lbl := T(code) + ("+" if tier >= 2 else "")
+			var bw := 30.0 if tier >= 2 else 26.0
+			_ci.draw_rect(Rect2(bx, by, bw, 14), Color(bcol.r, bcol.g, bcol.b, 0.2))
+			_ci.draw_rect(Rect2(bx, by, bw, 14), Color(bcol.r, bcol.g, bcol.b, 0.55), false, 1.0)
+			_text(Vector2(bx + 4, by + 11), lbl, 10, bcol)
+			bx += bw + 4.0
 
 	# серия убийств
 	if combo >= 3:
