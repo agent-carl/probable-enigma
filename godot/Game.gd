@@ -6146,8 +6146,8 @@ func _draw_overlays() -> void:
 			_btn(Rect2(cx + 6, 364, 180, 30), T("Мастерская  ◉ %d") % meta_cores, "meta", false)
 			_btn(Rect2(cx - 90, 396, 180, 30), T("Коллекция  %d/%d") % [_unlocks_count(), UNLOCK_DEFS.size()], "collection", false)
 			var bl := T("Рекорд: %d очков") % best if best > 0 else T("Удачного первого забега!")
-			_text(Vector2(cx, 430), bl, 12, Color("#6f7aa3"), true)
-			_text(Vector2(cx, 446), "Enter / клик — старт · ↑↓ — выбор", 11, Color("#6f7aa3"), true)
+			_text(Vector2(cx, 448), bl, 12, Color("#6f7aa3"), true)
+			_text(Vector2(cx, 466), "Enter / клик — старт · ↑↓ — выбор", 11, Color("#6f7aa3"), true)
 		"classes":
 			_text(Vector2(cx, 54), "Классы", 34, Color("#ffe9b0"), true)
 			_text(Vector2(cx, 86), T("Ядра: ◉ %d   (клик — выбрать / открыть)") % meta_cores, 14, Color("#9be8ff"), true)
@@ -6274,18 +6274,18 @@ func _draw_overlays() -> void:
 			var sx := cx - total / 2.0
 			for i in range(offer.size()):
 				var u: Dictionary = offer[i]
-				var rect := Rect2(sx + i * (cw + gap), 200, cw, 200)
+				var rect := Rect2(sx + i * (cw + gap), 196, cw, 214)
 				var rt := _rar(u.id)
 				var rcol := _rar_color(rt)
 				_ci.draw_rect(rect, Color(rcol.r, rcol.g, rcol.b, 0.07))
 				_ci.draw_rect(rect, Color(rcol.r, rcol.g, rcol.b, 0.85), false, 2.0 if rt < 3 else 3.0)
 				_ui_rects["card%d" % i] = rect
 				var ccx := rect.position.x + cw / 2.0
-				_text(Vector2(ccx, rect.position.y + 26), _rar_name(rt), 12, rcol, true)
-				_text(Vector2(ccx, rect.position.y + 72), u.icon, 44, Color("#ffe9b0"), true)
-				_text(Vector2(ccx, rect.position.y + 108), u.name, 18, rcol, true)
-				_draw_wrapped(u.desc, rect.position.x + 16, rect.position.y + 136, cw - 32, 14, Color("#aab3d6"))
-				_text(Vector2(ccx, rect.position.y + 188), "[%d]" % (i + 1), 14, Color("#8d97bd"), true)
+				_text(Vector2(ccx, rect.position.y + 24), _rar_name(rt), 12, rcol, true)
+				_text(Vector2(ccx, rect.position.y + 66), u.icon, 44, Color("#ffe9b0"), true)
+				_text(Vector2(ccx, rect.position.y + 100), u.name, 18, rcol, true)
+				_draw_wrapped(u.desc, rect.position.x + 16, rect.position.y + 124, cw - 32, 14, Color("#aab3d6"))
+				_text(Vector2(ccx, rect.position.y + 202), "[%d]" % (i + 1), 14, Color("#8d97bd"), true)
 		"shop":
 			_text(Vector2(cx, 80), "Магазин", 36, Color("#ffe9b0"), true)
 			_text(Vector2(cx, 116), T("Монеты: ● %d   (цифры или клик — купить)") % coins, 16, Color("#ffd86b"), true)
@@ -6296,7 +6296,7 @@ func _draw_overlays() -> void:
 			var sx := cx - total / 2.0
 			for i in range(n):
 				var it: Dictionary = shop_items[i]
-				var rect := Rect2(sx + i * (cw + gap), 160, cw, 210)
+				var rect := Rect2(sx + i * (cw + gap), 156, cw, 228)
 				var affordable: bool = coins >= it.price and not it.sold
 				# редкость для реликвий/улучшений в магазине
 				var srt := 1
@@ -6314,15 +6314,15 @@ func _draw_overlays() -> void:
 				var ccx := rect.position.x + cw / 2.0
 				var fade := 0.4 if it.sold else 1.0
 				var ncol: Color = srcol if srt > 1 else Color(1, 0.91, 0.69)
-				_text(Vector2(ccx, rect.position.y + 56), it.icon, 40, Color(1, 0.91, 0.69, fade), true)
-				_text(Vector2(ccx, rect.position.y + 92), it.name, 17, Color(ncol.r, ncol.g, ncol.b, fade), true)
-				_draw_wrapped(it.desc, rect.position.x + 12, rect.position.y + 118, cw - 24, 13, Color(0.67, 0.70, 0.84, fade))
+				_text(Vector2(ccx, rect.position.y + 54), it.icon, 40, Color(1, 0.91, 0.69, fade), true)
+				_text(Vector2(ccx, rect.position.y + 90), it.name, 17, Color(ncol.r, ncol.g, ncol.b, fade), true)
+				_draw_wrapped(it.desc, rect.position.x + 12, rect.position.y + 114, cw - 24, 13, Color(0.67, 0.70, 0.84, fade))
 				if it.sold:
-					_text(Vector2(ccx, rect.position.y + 176), "куплено", 14, Color("#7df2a5"), true)
+					_text(Vector2(ccx, rect.position.y + 196), "куплено", 14, Color("#7df2a5"), true)
 				else:
 					var pc := Color("#ffd86b") if affordable else Color("#ff6b5e")
-					_text(Vector2(ccx, rect.position.y + 176), "● %d" % it.price, 16, pc, true)
-				_text(Vector2(ccx, rect.position.y + 198), "[%d]" % (i + 1), 13, Color("#8d97bd"), true)
+					_text(Vector2(ccx, rect.position.y + 196), "● %d" % it.price, 16, pc, true)
+				_text(Vector2(ccx, rect.position.y + 218), "[%d]" % (i + 1), 13, Color("#8d97bd"), true)
 			_btn(Rect2(cx - 110, 396, 220, 48), "Дальше →", "shop_continue")
 		"meta":
 			_text(Vector2(cx, 64), "Мастерская", 34, Color("#ffe9b0"), true)
