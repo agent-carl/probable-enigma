@@ -6161,9 +6161,11 @@ func _draw_overlays() -> void:
 				_ci.draw_rect(rect, Color(0.49, 0.95, 0.55, 0.8) if chosen else (Color(1, 0.85, 0.42, 0.5) if owned else Color(1, 1, 1, 0.12)), false, 1.5)
 				_ui_rects["class_%d" % i] = rect
 				_text(Vector2(rect.position.x + 16, ky + 24), "%s  %s" % [c.icon, T(c.name)], 17, Color("#ffe9b0") if owned else Color("#8d97bd"))
-				_draw_wrapped(c.desc, rect.position.x + 150, ky + 14, 360, 12, Color("#aab3d6") if owned else Color("#6f7aa3"))
+				_draw_wrapped(c.desc, rect.position.x + 150, ky + 13, 250, 12, Color("#aab3d6") if owned else Color("#6f7aa3"))
 				var tag := (T("Выбран") if chosen else T("Выбрать")) if owned else (T("◉ %d — открыть") % c.cost)
-				_text(Vector2(rect.position.x + 524, ky + 30), tag, 13, Color("#7df2a5") if chosen else (Color("#ffd86b") if owned else (Color("#ffd86b") if meta_cores >= int(c.cost) else Color("#ff6b5e"))))
+				var tcol: Color = Color("#7df2a5") if chosen else (Color("#ffd86b") if owned else (Color("#ffd86b") if meta_cores >= int(c.cost) else Color("#ff6b5e")))
+				var tw := font.get_string_size(tag, HORIZONTAL_ALIGNMENT_LEFT, -1, 13).x   # выравнивание тега по правому краю карты
+				_ci.draw_string(font, Vector2(rect.position.x + 566 - tw, ky + 31), tag, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, tcol)
 				ky += 56.0
 			_btn(Rect2(cx - 90, ky + 4, 180, 38), "← Назад", "menu", false)
 		"help":
