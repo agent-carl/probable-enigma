@@ -1578,6 +1578,41 @@ func _init() -> void:
 	game.unlocks = {}
 	game.state = "menu"
 
+	# ---------- 56. Активный предмет: турель ----------
+	_ok(game.ACTIVES.has("turret"), "turret active defined")
+	var tWS := 24
+	var tHS := 12
+	var tgrid := PackedByteArray()
+	tgrid.resize(tWS * tHS)
+	for ty in range(10, tHS):
+		for tx in range(tWS):
+			tgrid[ty * tWS + tx] = 1
+	game.level = { "W": tWS, "H": tHS, "grid": tgrid, "px_w": tWS * 32, "px_h": tHS * 32, "crate_hp": {} }
+	game.state = "play"
+	game.P = game.make_player()
+	game.P.x = 100.0
+	game.P.y = 9 * 32 - 30
+	game.give_active("turret")
+	game.P.active_cd = 0
+	game.turrets = []
+	game.use_active()
+	_ok(game.turrets.size() == 1, "turret deployed on use")
+	game.enemies = [game._spawn_enemy("walker", 240.0, 9 * 32 - 30)]
+	game.bullets = []
+	for i in range(40):
+		game.update_turrets()
+	_ok(game.bullets.size() > 0, "turret fires at a nearby enemy")
+	# истечение срока: турель исчезает
+	for t in game.turrets:
+		t.life = 1.0
+	game.update_turrets()
+	_ok(game.turrets.size() == 0, "turret expires after its lifetime")
+	game.enemies = []
+	game.bullets = []
+	game.turrets = []
+	game.level = {}
+	game.state = "menu"
+
 	if failures == 0:
 		print("\nALL TESTS PASSED")
 	else:

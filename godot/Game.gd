@@ -135,6 +135,7 @@ const ACTIVES := {
 	"freeze": { "icon": "❄", "name": "Заморозка", "desc": "Замораживает врагов вокруг", "cd": 480 },
 	"medkit": { "icon": "✚", "name": "Аптечка", "desc": "Мгновенно +40 HP", "cd": 600 },
 	"nova":   { "icon": "✺", "name": "Щит-нова", "desc": "Щит + отталкивающая волна", "cd": 480 },
+	"turret": { "icon": "🛠", "name": "Турель", "desc": "Ставит авто-турель, что стреляет по врагам", "cd": 540 },
 }
 
 # Классы персонажей: разные стартовые наборы (разблок за «ядра»)
@@ -298,6 +299,7 @@ var parts := []
 var pickups := []
 var texts := []
 var muzzles := []        # вспышки выстрела {x,y,ang,life}
+var turrets := []        # развёрнутые турели игрока {x,y,life,cd,ang}
 var shockwaves := []     # расходящиеся кольца взрывов {x,y,r,max_r,life,col}
 var flash := 0.0         # полноэкранная вспышка (0..1)
 var flash_color := Color.WHITE
@@ -518,6 +520,8 @@ const LOC_EN := {
 	"Мгновенно +40 HP": "Instantly +40 HP",
 	"Щит-нова": "Shield Nova",
 	"Щит + отталкивающая волна": "Shield + knockback wave",
+	"Турель": "Turret",
+	"Ставит авто-турель, что стреляет по врагам": "Deploys an auto-turret that fires at enemies",
 	# Классы
 	"Солдат": "Soldier",
 	"Сбалансирован. Старт: пистолет + ПП «Оса».": "Balanced. Start: pistol + SMG \"Wasp\".",
@@ -877,6 +881,11 @@ func _demo_step() -> void:
 		hazards.append({ "type": "saw", "r": 18.0, "cx": sxp, "cy": syp, "ax": 0.0, "ay": 0.0,
 			"phase": 0.0, "speed": 0.0, "x": sxp, "y": syp, "spin": 1.0 })
 		P.vx = 0.0
+		P.inv = 999
+	if demo_frame % 70 == 20 and "--turret" in OS.get_cmdline_args() and state == "play":
+		give_active("turret")   # дебаг: разворачиваем турель для скриншота
+		P.active_cd = 0
+		use_active()
 		P.inv = 999
 	if demo_frame == 70 and "--elite" in OS.get_cmdline_args() and state == "play":
 		# делаем ближайших врагов элитными и показываем индикатор урона
@@ -1989,6 +1998,7 @@ func start_level() -> void:
 	bullets = []
 	parts = []
 	texts = []
+	turrets = []
 	afterimages = []
 	hurt_dirs = []
 	muzzles = []
@@ -2528,6 +2538,11 @@ func use_active() -> void:
 						en.vx += signf(ev.x) * 6.0
 						en.vy -= 3.0
 						hurt_enemy(en, 12, false)
+		"turret":
+			if turrets.size() >= 2:
+				turrets.pop_front()   # не больше двух турелей одновременно
+			turrets.append({ "x": cx, "y": cy, "life": 420.0, "cd": 0, "ang": 0.0 })
+			burst(cx, cy, 12, Color("#ffd86b"))
 	P.active_cd = P.active_max
 	play_sfx("portal")
 
@@ -3036,6 +3051,7 @@ func sim_step() -> void:
 		if state == "play":
 			update_enemies()
 			update_bullets()
+			update_turrets()
 			update_pickups()
 			update_chests()
 			update_shrines()
@@ -3803,6 +3819,45 @@ func update_pickups() -> void:
 		alive.append(pk)
 	pickups = alive
 
+func update_turrets() -> void:
+	# развёрнутые турели: наводятся на ближайшего врага и стреляют пулями игрока
+	var alive := []
+	for t in turrets:
+		t.life -= 1.0
+		if t.life <= 0.0:
+			burst(t.x, t.y, 8, Color("#ffb14d"))
+			continue
+		t.vy = minf(float(t.get("vy", 0.0)) + GRAV, MAX_FALL)   # падает на землю при установке
+		var ny: float = t.y + t.vy
+		if solid_px(t.x, ny + 8.0):
+			t.vy = 0.0
+		else:
+			t.y = ny
+		# ближайший живой враг в радиусе
+		var best = null
+		var bestd := 360.0
+		for en in enemies:
+			if en.dead:
+				continue
+			var d: float = Vector2(en.x + en.w / 2.0 - t.x, en.y + en.h / 2.0 - t.y).length()
+			if d < bestd:
+				bestd = d
+				best = en
+		if best != null:
+			t.ang = Vector2(best.x + best.w / 2.0 - t.x, best.y + best.h / 2.0 - t.y).angle()
+			t.cd -= 1
+			if t.cd <= 0:
+				t.cd = 14
+				var dmg: int = maxi(4, int(9 * P.stats.dmg_mul))
+				bullets.append({
+					"x": t.x + cos(t.ang) * 10.0, "y": t.y + sin(t.ang) * 10.0,
+					"vx": cos(t.ang) * 9.0, "vy": sin(t.ang) * 9.0,
+					"dmg": dmg, "crit": false, "from": "p", "life": 70, "color": _col("#ffd86b"),
+				})
+				muzzles.append({ "x": t.x + cos(t.ang) * 12.0, "y": t.y + sin(t.ang) * 12.0, "ang": t.ang, "life": 4.0 })
+		alive.append(t)
+	turrets = alive
+
 func update_chests() -> void:
 	for ch in level.get("chests", []):
 		if ch.opened:
@@ -4224,6 +4279,7 @@ func _draw() -> void:
 		_draw_portal()
 		_draw_chests()
 		_draw_shrines()
+		_draw_turrets()
 		_draw_pickups()
 		_draw_enemies()
 		_draw_player()
@@ -5220,6 +5276,25 @@ func _draw_shrines() -> void:
 
 func _text_world(pos: Vector2, s: String, size: int, color: Color) -> void:
 	draw_string(font, pos, s, HORIZONTAL_ALIGNMENT_LEFT, -1, size, color)
+
+func _draw_turrets() -> void:
+	for t in turrets:
+		var x: float = t.x
+		var y: float = t.y
+		if x < _cam_draw.x - 40.0 or x > _cam_draw.x + VW + 40.0:
+			continue
+		var fade := clampf(float(t.life) / 60.0, 0.3, 1.0)   # мигает перед исчезновением
+		if t.life < 60.0 and int(t.life) % 8 < 4:
+			fade *= 0.5
+		# тренога-основание
+		draw_rect(Rect2(x - 7, y + 2, 14, 6), Color(0.18, 0.16, 0.12, fade))
+		draw_line(Vector2(x - 5, y + 8), Vector2(x - 8, y + 14), Color(0.3, 0.27, 0.2, fade), 2.0)
+		draw_line(Vector2(x + 5, y + 8), Vector2(x + 8, y + 14), Color(0.3, 0.27, 0.2, fade), 2.0)
+		# корпус + ствол по направлению
+		draw_circle(Vector2(x, y), 6.0, Color(0.85, 0.7, 0.35, fade))
+		draw_circle(Vector2(x, y), 3.0, Color(0.4, 0.32, 0.16, fade))
+		var ba: float = t.get("ang", 0.0)
+		draw_line(Vector2(x, y), Vector2(x + cos(ba) * 12.0, y + sin(ba) * 12.0), Color(0.95, 0.82, 0.4, fade), 3.0)
 
 func _draw_chests() -> void:
 	for ch in level.get("chests", []):
