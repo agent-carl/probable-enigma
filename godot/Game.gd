@@ -394,7 +394,8 @@ var demo := false
 var demo_frame := 0
 var _want_shot := false
 var audio_enabled := true
-var font: Font = null
+var font: Font = null         # основной шрифт интерфейса (Play)
+var title_font: Font = null   # шрифт заголовков (Russo One)
 var rng := RandomNumberGenerator.new()      # глобальный (эффекты)
 
 # Прямоугольники кнопок UI (для кликов)
@@ -758,7 +759,7 @@ const LOC_EN := {
 func _ready() -> void:
 	rng.randomize()
 	_ci = self
-	font = ThemeDB.fallback_font
+	_load_fonts()
 	_build_cracks()
 	_build_vignette()
 	_build_light_tex()
@@ -4757,6 +4758,25 @@ func _update_fx() -> void:
 	if rip.size() > 0:
 		fx_mat.set_shader_parameter("ripples", rip)
 
+func _load_fonts() -> void:
+	# кастомные OFL-шрифты (Play — текст, Russo One — заголовки) с фоллбэком
+	# на системный шрифт для эмодзи-иконок. Грузим напрямую из data, без импорта.
+	var fb := ThemeDB.fallback_font
+	font = _load_ttf("res://fonts/Play-Regular.ttf", fb)
+	title_font = _load_ttf("res://fonts/RussoOne-Regular.ttf", fb)
+
+func _load_ttf(path: String, fb: Font) -> Font:
+	if not FileAccess.file_exists(path):
+		return fb
+	var bytes := FileAccess.get_file_as_bytes(path)
+	if bytes.is_empty():
+		return fb
+	var ff := FontFile.new()
+	ff.data = bytes
+	if fb != null:
+		ff.fallbacks = [fb]   # эмодзи-иконки берём из системного шрифта
+	return ff
+
 func _build_cracks() -> void:
 	# статичный узор трещин «разбитого стекла» от краёв к центру
 	_cracks = []
@@ -5711,11 +5731,12 @@ func _draw_texts() -> void:
 
 func _text(pos: Vector2, s: String, size: int, color: Color, center := false) -> void:
 	s = T(s)
+	var f: Font = title_font if size >= 26 else font   # крупный текст — шрифтом заголовков
 	var px := pos
 	if center:
-		var sz := font.get_string_size(s, HORIZONTAL_ALIGNMENT_LEFT, -1, size)
+		var sz := f.get_string_size(s, HORIZONTAL_ALIGNMENT_LEFT, -1, size)
 		px.x -= sz.x / 2.0
-	_ci.draw_string(font, px, s, HORIZONTAL_ALIGNMENT_LEFT, -1, size, color)
+	_ci.draw_string(f, px, s, HORIZONTAL_ALIGNMENT_LEFT, -1, size, color)
 
 func _draw_hud() -> void:
 	# здоровье
