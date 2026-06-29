@@ -34,6 +34,8 @@ const THEMES := [
 	  "ground": "#4a3a20", "top": "#e6b566", "plat": "#f4ce8d", "spike": "#ffe9c2", "weather": "sand", "wcol": "#f0d29a", "lava": "#ff7a1a" },
 	{ "name": "Аметистовая бездна", "sky0": "#140a24", "sky1": "#33183f", "hill_far": "#1f1030", "hill_near": "#2d1942",
 	  "ground": "#352048", "top": "#9d6bff", "plat": "#bf9bff", "spike": "#ecd9ff", "weather": "rain", "wcol": "#cba6ff", "lava": "#b24aff" },
+	{ "name": "Обсидиановая кузница", "sky0": "#0a0608", "sky1": "#2a1210", "hill_far": "#170c0c", "hill_near": "#271514",
+	  "ground": "#1d1618", "top": "#ff7a2a", "plat": "#ffae5c", "spike": "#ffd9a0", "weather": "ash", "wcol": "#9a8478", "lava": "#ff5a1a" },
 ]
 
 # Профиль рельефа по биому (порядок как в THEMES) — задаёт «характер» карты.
@@ -46,6 +48,7 @@ const TERRAIN := [
 	{ "pit": 0.16, "pit_max": 4, "plateau": 0.12, "cliff": 0.06, "step_up": 2, "lava": 0.12 },  # Токсичные топи
 	{ "pit": 0.10, "pit_max": 3, "plateau": 0.18, "cliff": 0.13, "step_up": 3, "lava": 0.0 },   # Пустынный форт — террасы
 	{ "pit": 0.18, "pit_max": 4, "plateau": 0.16, "cliff": 0.15, "step_up": 3, "lava": 0.1 },   # Аметистовая бездна — вертикаль
+	{ "pit": 0.20, "pit_max": 4, "plateau": 0.10, "cliff": 0.13, "step_up": 3, "lava": 0.35 },  # Обсидиановая кузница — рваный, много лавы
 ]
 
 const WEAPONS := {
@@ -420,6 +423,7 @@ const LOC_EN := {
 	"Токсичные топи": "Toxic Swamps",
 	"Пустынный форт": "Desert Fort",
 	"Аметистовая бездна": "Amethyst Abyss",
+	"Обсидиановая кузница": "Obsidian Forge",
 	# Оружие
 	"Пистолет": "Pistol",
 	"ПП «Оса»": "SMG \"Wasp\"",
@@ -4113,7 +4117,7 @@ func _new_ambient_particle(at_random_y: bool) -> Dictionary:
 	var x := rng.randf() * VW
 	var y := rng.randf() * VH
 	match weather:
-		"snow", "sand", "spores", "rain":
+		"snow", "sand", "spores", "rain", "ash":
 			if not at_random_y:
 				y = -8.0  # появляются сверху
 		"embers", "bubbles":
@@ -4141,6 +4145,10 @@ func _new_ambient_particle(at_random_y: bool) -> Dictionary:
 			vx = 0.6 + rng.randf() * 0.5      # лёгкий снос ветром
 			vy = 3.0 + rng.randf() * 1.8      # быстрые падающие струйки
 			sz = 1.0 + rng.randf() * 1.0
+		"ash":
+			vx = (rng.randf() - 0.4) * 0.5    # медленно оседающий пепел
+			vy = 0.35 + rng.randf() * 0.6
+			sz = 1.0 + rng.randf() * 2.0
 		_:  # spores — мягкое парение
 			vx = (rng.randf() - 0.5) * 0.5
 			vy = (rng.randf() - 0.5) * 0.4
@@ -5967,6 +5975,7 @@ func _set_grade(theme_idx: int) -> void:
 		{ "mul": Vector3(0.95, 1.09, 0.95), "add": Vector3(0, 0.012, 0), "con": 1.05 },   # топи (яд)
 		{ "mul": Vector3(1.12, 1.02, 0.88), "add": Vector3(0.02, 0.008, 0), "con": 1.06 }, # форт (янтарь)
 		{ "mul": Vector3(1.05, 0.94, 1.13), "add": Vector3(0.014, 0, 0.02), "con": 1.06 },  # бездна (аметист)
+		{ "mul": Vector3(1.16, 0.97, 0.82), "add": Vector3(0.03, 0.006, 0), "con": 1.09 }, # кузница (жар/обсидиан)
 	]
 	var gr: Dictionary = grades[theme_idx % grades.size()] if theme_idx >= 0 else { "mul": Vector3.ONE, "add": Vector3.ZERO, "con": 1.0 }
 	fx_mat.set_shader_parameter("grade_mul", gr.mul)

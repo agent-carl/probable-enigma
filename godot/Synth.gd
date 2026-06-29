@@ -62,7 +62,7 @@ static func build_music(theme_idx: int, intense: bool) -> AudioStreamWAV:
 	var n := beats * bn
 	var samples := PackedFloat32Array()
 	samples.resize(n)
-	var roots := [220.0, 196.0, 174.61, 233.08, 207.65, 246.94]
+	var roots := [220.0, 196.0, 174.61, 233.08, 207.65, 246.94, 164.81]
 	var root: float = roots[theme_idx % roots.size()]
 	var penta := [0, 3, 5, 7, 10, 12]
 	var prog := [0, -2, -4, 3]  # смена аккорда каждые 4 доли

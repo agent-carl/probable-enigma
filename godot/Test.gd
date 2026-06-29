@@ -1269,13 +1269,15 @@ func _init() -> void:
 	game.lang = "ru"
 	game._save_settings()   # не оставляем EN в конфиге после тестов
 
-	# ---------- 44. Шестой биом (Аметистовая бездна) ----------
-	_ok(game.THEMES.size() == 6, "six biomes present")
+	# ---------- 44. Биомы (Аметистовая бездна, Обсидиановая кузница) ----------
+	_ok(game.THEMES.size() == 7, "seven biomes present")
 	_ok(game.THEMES[5].name == "Аметистовая бездна", "6th biome is Amethyst Abyss")
 	_ok(game.THEMES[5].weather == "rain", "6th biome uses rain weather")
+	_ok(game.THEMES[6].name == "Обсидиановая кузница", "7th biome is Obsidian Forge")
+	_ok(game.THEMES[6].weather == "ash", "7th biome uses ash weather")
 	var SynthScript = load("res://Synth.gd")
-	var m5 = SynthScript.build_music(5, false)
-	_ok(m5 != null and m5.data.size() > 0, "music builds for 6th biome index")
+	var m5 = SynthScript.build_music(6, false)
+	_ok(m5 != null and m5.data.size() > 0, "music builds for 7th biome index")
 
 	# ---------- 45. Враг-сфера (orbiter) ----------
 	var oWS := 24
