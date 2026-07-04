@@ -9,7 +9,7 @@
 Пуш тега `v1.0.0` запускает workflow «GUNFALL build»: соберёт Windows/Linux
 и создаст релиз с архивами (веб-версия не планируется — релиз только в Steam).
 Кнопка «Run workflow» станет доступна после попадания workflow в основную
-ветку. Либо локально:
+ветку (например, мержем PR #1). Либо локально:
 
 ```bash
 godot --headless --path godot --export-release "Windows" build/windows/gunfall.exe
