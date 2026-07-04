@@ -1613,6 +1613,17 @@ func _init() -> void:
 	game.level = {}
 	game.state = "menu"
 
+	# ---------- 57. Визуал: декор и небесное тело генерируются ----------
+	var dec_total := 0
+	for lv in range(1, 8):
+		dec_total += game.generate_level(lv * 31 + 5, lv).decor.size()
+	_ok(dec_total > 0, "biome decor generated (%d across 7 levels)" % dec_total)
+	game.level = game.generate_level(777, 1)
+	game._build_background(777)
+	_ok(not game.moon.is_empty() and game.moon.r > 0, "celestial body built")
+	_ok(game.fog_bands.size() > 0, "fog bands built")
+	game.level = {}
+
 	if failures == 0:
 		print("\nALL TESTS PASSED")
 	else:

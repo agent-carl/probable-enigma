@@ -308,6 +308,9 @@ var fade := 0.0          # затемнение перехода уровня (1
 # Фон (кэш на уровень)
 var th := {}           # цвета темы (Color)
 var stars := []        # [Vector3(x,y,size_alpha)]
+var moon := {}         # небесное тело биома {x,y,r,col,ring,craters}
+var fog_bands := []    # мягкие полосы дымки у горизонта [{x,y,w,h,a,spd}]
+var decor := []        # декор на земле по биому [{x,y,kind,s}]
 var hill_farther := PackedVector2Array()
 var hill_far := PackedVector2Array()
 var hill_near := PackedVector2Array()
@@ -1507,6 +1510,19 @@ func generate_level(seed_val: int, level_num: int) -> Dictionary:
 			shrines.append({ "x": sx * TILE - 2.0, "y": ground_y[sx] * TILE - 30.0, "w": 36.0, "h": 30.0, "type": stype, "used": false })
 			break
 
+	# --- декор на земле по биому (чисто визуальный): грибы/камни/кристаллы... ---
+	var decor_list := []
+	var biome_idx := (level_num - 1) % THEMES.size()
+	for _i in range(int(W / 7.0)):
+		var dxc := _rr(r, 10, W - 10)
+		if spike_cols.has(dxc):
+			continue
+		var dgy: int = ground_y[dxc]
+		if _cell(grid, W, H, dxc, dgy - 1) != T_EMPTY or _cell(grid, W, H, dxc, dgy) != T_SOLID:
+			continue
+		decor_list.append({ "x": dxc * TILE + r.randf() * (TILE - 10.0), "y": dgy * TILE,
+			"kind": biome_idx, "s": 0.7 + r.randf() * 0.6, "v": r.randi_range(0, 2) })
+
 	# --- движущиеся платформы/лифты в открытых местах ---
 	var movers := []
 	var mover_tries := 4 + level_num
@@ -1783,7 +1799,7 @@ func generate_level(seed_val: int, level_num: int) -> Dictionary:
 		"spawn": Vector2(2 * TILE + 6, ground_y[2] * TILE - 31),
 		"exit_px": exit_px, "enemies": enemy_list, "pickups": pickup_list,
 		"has_boss": is_boss_level, "crate_hp": crate_hp, "movers": movers, "hazards": hazards,
-		"lava_cells": lava_cells, "chests": chests, "shrines": shrines,
+		"lava_cells": lava_cells, "chests": chests, "shrines": shrines, "decor": decor_list,
 	}
 
 # ============================== Доступ к карте (рантайм) ==============================
@@ -4069,6 +4085,28 @@ func _build_background(seed_val: int) -> void:
 	stars = []
 	for _i in range(70):
 		stars.append(Vector3(r.randf() * VW, r.randf() * VH * 0.7, 0.4 + r.randf() * 1.2))
+	# небесное тело биома: луна/планета в верхней трети неба, цвет от темы
+	var mcol: Color = _col(level.theme.top).lerp(Color(1, 1, 1), 0.45)
+	var craters := []
+	var mr := 26.0 + r.randf() * 16.0
+	for _i in range(3):
+		var ca := r.randf() * TAU
+		var cd := r.randf() * 0.55
+		craters.append(Vector3(cos(ca) * mr * cd, sin(ca) * mr * cd, mr * (0.10 + r.randf() * 0.14)))
+	moon = {
+		"x": VW * (0.16 + r.randf() * 0.66), "y": VH * (0.10 + r.randf() * 0.16),
+		"r": mr, "col": mcol,
+		"ring": (lvl - 1) % THEMES.size() in [5, 6],   # кольцо у бездны/кузницы
+		"craters": craters,
+	}
+	# дымка у горизонта: мягкие дрейфующие полосы над холмами
+	fog_bands = []
+	for i in range(5):
+		fog_bands.append({
+			"x": r.randf() * VW, "y": VH * (0.52 + 0.09 * i) + r.randf() * 18.0,
+			"w": 360.0 + r.randf() * 300.0, "h": 60.0 + r.randf() * 40.0,
+			"a": 0.05 + r.randf() * 0.05, "spd": (0.06 + r.randf() * 0.10) * (1 if i % 2 == 0 else -1),
+		})
 	hill_farther = _make_hills(r, 250, 16)
 	hill_far = _make_hills(r, 330, 26)
 	hill_near = _make_hills(r, 420, 34)
@@ -4278,6 +4316,7 @@ func _draw() -> void:
 		# небо/холмы рисуются на bg_node (слой -1, позади мира) — см. _paint_bg()
 		draw_set_transform(-c)
 		_draw_tiles(c)
+		_draw_decor()
 		_draw_lava_reflection()
 		_draw_movers()
 		_draw_hazards()
@@ -4667,6 +4706,7 @@ func _paint_bg() -> void:
 		_draw_sky()
 		_draw_hills(hill_farther, th.hill_farther, c, 0.13)
 		_draw_hills(hill_far, th.hill_far, c, 0.25)
+		_draw_fog()   # дымка между слоями холмов — глубина
 		_draw_hills(hill_near, th.hill_near, c, 0.45)
 	_ci = self
 
@@ -5111,6 +5151,7 @@ func _shadow(cx: float, by: float, w: float) -> void:
 func _draw_sky() -> void:
 	if sky_tex:
 		_ci.draw_texture_rect(sky_tex, Rect2(0, 0, VW, VH), false)
+	_draw_moon()
 	# дрейфующие полосы-сияние (мягкие шторы света в небе)
 	var acol: Color = th.get("top", Color(0.6, 0.8, 1.0))
 	for layer in range(3):
@@ -5123,6 +5164,38 @@ func _draw_sky() -> void:
 	for sv in stars:
 		var tw := 0.45 + 0.35 * sin(tick * 0.05 + sv.x * 0.3)  # мерцание
 		_ci.draw_rect(Rect2(sv.x, sv.y, sv.z, sv.z), Color(1, 1, 1, tw))
+
+func _draw_moon() -> void:
+	# небесное тело биома: мягкое гало, диск с терминатором, кратеры, кольцо
+	if moon.is_empty():
+		return
+	var mc := Vector2(moon.x, moon.y)
+	var col: Color = moon.col
+	var r0: float = moon.r
+	_ci.draw_circle(mc, r0 * 2.1, Color(col.r, col.g, col.b, 0.05))   # гало
+	_ci.draw_circle(mc, r0 * 1.45, Color(col.r, col.g, col.b, 0.08))
+	_ci.draw_circle(mc, r0, col)                                       # диск
+	_ci.draw_circle(mc + Vector2(-r0 * 0.28, -r0 * 0.24), r0 * 0.78, col.lightened(0.18))  # освещённая сторона
+	for cr in moon.craters:                                            # кратеры
+		_ci.draw_circle(mc + Vector2(cr.x, cr.y), cr.z, col.darkened(0.18))
+	_ci.draw_circle(mc + Vector2(r0 * 0.55, r0 * 0.42), r0 * 0.95, Color(sky0.r, sky0.g, sky0.b, 0.55))  # терминатор
+	if moon.get("ring", false):
+		# кольцо: сплюснутый эллипс через трансформ-масштаб дуги
+		_ci.draw_set_transform(mc, -0.35, Vector2(1.0, 0.32))
+		_ci.draw_arc(Vector2.ZERO, r0 * 1.75, 0, TAU, 40, Color(col.r, col.g, col.b, 0.35), 3.0)
+		_ci.draw_arc(Vector2.ZERO, r0 * 1.55, 0, TAU, 40, Color(col.r, col.g, col.b, 0.18), 2.0)
+		_ci.draw_set_transform(Vector2.ZERO)
+
+func _draw_fog() -> void:
+	# дымка у горизонта: мягкие дрейфующие эллипсы (light_tex растянут в полосу)
+	if light_tex == null or fog_bands.is_empty():
+		return
+	var fcol: Color = sky1.lightened(0.25)
+	for f in fog_bands:
+		var fx: float = fmod(f.x + tick * f.spd - _cam_draw.x * 0.05, VW + f.w) - f.w
+		var fy: float = f.y - _cam_draw.y * 0.06
+		_ci.draw_texture_rect(light_tex, Rect2(fx, fy, f.w, f.h), false,
+			Color(fcol.r, fcol.g, fcol.b, f.a))
 
 func _draw_hills(pts: PackedVector2Array, color: Color, c: Vector2, par: float) -> void:
 	if pts.size() < 3:
@@ -5225,6 +5298,49 @@ func _draw_tiles(c: Vector2) -> void:
 					draw_line(Vector2(px + 8, py + 4), Vector2(px + 12, py + TILE - 5), Color(0, 0, 0, 0.45), 1.5)
 				if dmgf > 0.6:
 					draw_line(Vector2(px + TILE - 7, py + 6), Vector2(px + 16, py + TILE - 4), Color(0, 0, 0, 0.5), 1.5)
+
+func _draw_decor() -> void:
+	# декор на земле по биому: чисто визуальные мелочи для «обжитости» карты
+	var gl := 1.5 if bloom_on else 1.0
+	for d in level.get("decor", []):
+		var x: float = d.x
+		var y: float = d.y
+		if x < _cam_draw.x - 40.0 or x > _cam_draw.x + VW + 40.0:
+			continue
+		var s: float = d.s
+		match int(d.kind):
+			0:  # пещеры — светящийся гриб
+				draw_rect(Rect2(x - 1.5 * s, y - 8 * s, 3 * s, 8 * s), Color("#cfd8b8"))
+				draw_circle(Vector2(x, y - 8 * s), 5 * s, th.top.darkened(0.1))
+				draw_circle(Vector2(x, y - 9 * s), 1.6 * s, Color(0.6 * gl, 1.1 * gl, 0.9 * gl, 0.9))
+			1:  # руины — обломки камня
+				draw_rect(Rect2(x - 5 * s, y - 4 * s, 7 * s, 4 * s), th.ground.lightened(0.12))
+				draw_rect(Rect2(x + 1 * s, y - 7 * s, 5 * s, 7 * s), th.ground.lightened(0.2))
+			2:  # шахты — ледяной осколок
+				draw_colored_polygon(PackedVector2Array([
+					Vector2(x, y - 13 * s), Vector2(x + 4 * s, y), Vector2(x - 4 * s, y)]), Color(0.75, 0.9, 1.0, 0.85))
+				draw_colored_polygon(PackedVector2Array([
+					Vector2(x, y - 9 * s), Vector2(x + 1.6 * s, y), Vector2(x - 1.6 * s, y)]), Color(1, 1, 1, 0.7))
+			3:  # топи — камыш
+				for k in range(3):
+					var bx := x + (k - 1) * 3.0 * s
+					var sway := sin(tick * 0.03 + x * 0.1 + k) * 2.0
+					draw_line(Vector2(bx, y), Vector2(bx + sway, y - (9 + k * 3) * s), th.top.darkened(0.15), 1.5)
+			4:  # форт — кактус
+				draw_rect(Rect2(x - 2 * s, y - 12 * s, 4 * s, 12 * s), Color("#5f9e4a"))
+				draw_rect(Rect2(x - 6 * s, y - 9 * s, 4 * s, 2.5 * s), Color("#5f9e4a"))
+				draw_rect(Rect2(x - 6 * s, y - 12 * s, 2.5 * s, 5 * s), Color("#5f9e4a"))
+			5:  # бездна — кристаллы
+				draw_colored_polygon(PackedVector2Array([
+					Vector2(x, y - 12 * s), Vector2(x + 3.5 * s, y), Vector2(x - 3.5 * s, y)]), th.top)
+				draw_colored_polygon(PackedVector2Array([
+					Vector2(x + 5 * s, y - 7 * s), Vector2(x + 8 * s, y), Vector2(x + 2 * s, y)]), th.plat)
+				draw_circle(Vector2(x, y - 10 * s), 1.3 * s, Color(1.2 * gl, 1.0 * gl, 1.5 * gl, 0.8))
+			6:  # кузница — обсидиан с раскалённой трещиной
+				draw_colored_polygon(PackedVector2Array([
+					Vector2(x - 5 * s, y), Vector2(x - 2 * s, y - 8 * s), Vector2(x + 4 * s, y - 5 * s), Vector2(x + 6 * s, y)]), Color("#1a1416"))
+				var puls := 0.6 + 0.4 * sin(tick * 0.06 + x * 0.07)
+				draw_line(Vector2(x - 2 * s, y - 6 * s), Vector2(x + 2 * s, y - 1 * s), Color(1.4 * gl, 0.5 * gl, 0.15 * gl, puls), 1.5)
 
 func _draw_hazards() -> void:
 	for hz in hazards:
@@ -5740,6 +5856,9 @@ func _text(pos: Vector2, s: String, size: int, color: Color, center := false) ->
 	if center:
 		var sz := f.get_string_size(s, HORIZONTAL_ALIGNMENT_LEFT, -1, size)
 		px.x -= sz.x / 2.0
+	# мягкая тень для читаемости (крупнее текст — глубже тень)
+	var off := 2.0 if size >= 26 else 1.0
+	_ci.draw_string(f, px + Vector2(off, off), s, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color(0, 0, 0, 0.45 * color.a))
 	_ci.draw_string(f, px, s, HORIZONTAL_ALIGNMENT_LEFT, -1, size, color)
 
 func _draw_hud() -> void:
@@ -6025,7 +6144,11 @@ func _btn(rect: Rect2, label: String, key: String, primary := true) -> void:
 		bg = Color("#ffd86b") if active else Color("#ffc24d")
 	else:
 		bg = Color(1, 1, 1, 0.22) if active else Color(1, 1, 1, 0.10)
+	_ci.draw_rect(Rect2(rect.position + Vector2(0, 3), rect.size), Color(0, 0, 0, 0.35))   # тень-подложка
 	_ci.draw_rect(rect, bg)
+	# лёгкий градиент: светлая кромка сверху, затемнение снизу
+	_ci.draw_rect(Rect2(rect.position, Vector2(rect.size.x, 2)), Color(1, 1, 1, 0.30 if primary else 0.10))
+	_ci.draw_rect(Rect2(rect.position + Vector2(0, rect.size.y - 2), Vector2(rect.size.x, 2)), Color(0, 0, 0, 0.18))
 	if active:   # рамка-подсветка
 		_ci.draw_rect(rect, Color(1, 0.96, 0.74, 0.9), false, 2.0)
 	var tc := Color("#2a1c04") if primary else (Color("#ffffff") if active else Color("#cfd6f5"))
@@ -6128,6 +6251,9 @@ func _draw_overlays() -> void:
 	var cx := VW / 2.0
 	match state:
 		"menu":
+			if light_tex:   # мягкое пульсирующее свечение за заголовком
+				var tp := 0.5 + 0.5 * sin(tick * 0.03)
+				_ci.draw_texture_rect(light_tex, Rect2(cx - 260, 62, 520, 110), false, Color(1.0, 0.82, 0.35, 0.10 + 0.06 * tp))
 			_text(Vector2(cx, 132), "GUNFALL", 66, Color("#ffce5a"), true)
 			_text(Vector2(cx, 170), "Платформер-рогалик: каждый забег — новая карта", 15, Color("#aab3d6"), true)
 			# выбор сложности (Ascension)
