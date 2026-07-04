@@ -807,13 +807,17 @@ func _ready() -> void:
 		if "--synergy" in OS.get_cmdline_args():
 			for rid in ["hunter", "chain", "splinter", "vampire", "thorns"]:   # дебаг: показать бейджи синергий
 				relics[rid] = true
-		if "--boss" in OS.get_cmdline_args() or "--airboss" in OS.get_cmdline_args() or "--summoner" in OS.get_cmdline_args():
+		if "--boss" in OS.get_cmdline_args() or "--airboss" in OS.get_cmdline_args() or "--crystal" in OS.get_cmdline_args() or "--summoner" in OS.get_cmdline_args() or "--artillery" in OS.get_cmdline_args():
 			# прыжок на боссовый уровень с прокачкой — для проверки рендера босса
 			lvl = 5
 			if "--airboss" in OS.get_cmdline_args():
 				lvl = 10
+			elif "--crystal" in OS.get_cmdline_args():
+				lvl = 15   # ротация: ground/air/crystal/summoner/artillery
 			elif "--summoner" in OS.get_cmdline_args():
-				lvl = 15
+				lvl = 20
+			elif "--artillery" in OS.get_cmdline_args():
+				lvl = 25
 			P.weapons.append({ "id": "rifle", "ammo": 999 })
 			P.wi = 1
 			P.stats.dmg_mul = 3.0
@@ -863,7 +867,7 @@ func _demo_step() -> void:
 		max_combo = 7
 		P.inv = 0
 		hurt_player(99999, 0)
-	if demo_frame == 60 and ("--boss" in OS.get_cmdline_args() or "--airboss" in OS.get_cmdline_args() or "--summoner" in OS.get_cmdline_args()) and state == "play":
+	if demo_frame == 60 and ("--boss" in OS.get_cmdline_args() or "--airboss" in OS.get_cmdline_args() or "--crystal" in OS.get_cmdline_args() or "--summoner" in OS.get_cmdline_args() or "--artillery" in OS.get_cmdline_args()) and state == "play":
 		for en in enemies:
 			if en.get("boss", false):
 				P.x = en.x - 120
