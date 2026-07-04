@@ -8,6 +8,8 @@ config/description="Платформер-рогалик с процедурно�
 run/main_scene="res://Main.tscn"
 config/features=PackedStringArray("4.6", "Forward Plus")
 config/icon="res://icon.svg"
+boot_splash/bg_color=Color(0.0509804, 0.0627451, 0.12549, 1)
+boot_splash/show_image=false
 
 [display]
 

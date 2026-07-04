@@ -6,10 +6,10 @@
 
 ## 1. Билды (уже автоматизировано)
 
-**GitHub Actions → «GUNFALL build» → Run workflow**, в поле версии ввести
-`v1.0.0` → workflow соберёт Windows/Linux, создаст тег и релиз с архивами
-(веб-версия не планируется — релиз только в Steam).
-Либо локально:
+Пуш тега `v1.0.0` запускает workflow «GUNFALL build»: соберёт Windows/Linux
+и создаст релиз с архивами (веб-версия не планируется — релиз только в Steam).
+Кнопка «Run workflow» станет доступна после попадания workflow в основную
+ветку. Либо локально:
 
 ```bash
 godot --headless --path godot --export-release "Windows" build/windows/gunfall.exe
@@ -46,7 +46,10 @@ Developer ID-сертификатом и пройти нотаризацию (`x
    `Data.gd::ACHIEVEMENTS` (23 шт.: FIRST_BLOOD, COMBO_MASTER, ...).
 5. **Облачные сейвы**: в Steamworks включить Steam Cloud для
    `gunfall.cfg` (авто-облако по пути Godot `user://`) — кода не требует.
-6. **Страница**: capsule-арт, 5+ скриншотов (в игре есть дебаг-флаги
+6. **Старые GPU**: игра проверена и на GL Compatibility; при жалобах на
+   запуск без Vulkan — параметр запуска в Steam:
+   `--rendering-driver opengl3`.
+7. **Страница**: capsule-арт, 5+ скриншотов (в игре есть дебаг-флаги
    `--lvl N`, `--boss`, `--portal` для чистых кадров), трейлер, описание
    RU+EN (тексты механик — в `README.md`).
 

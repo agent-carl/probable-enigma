@@ -305,7 +305,6 @@ const EN := {
 	"Мастерская": "Workshop",
 	"Ядра: ◉ %d   (клик — купить улучшение)": "Cores: ◉ %d   (click to buy upgrade)",
 	"МАКС": "MAX",
-	"Громкость  ( − / + )": "Volume  ( − / + )",
 	"Достижение: ": "Achievement: ",
 	"Язык: %s": "Language: %s",
 	"Открыто: ": "Unlocked: ",
