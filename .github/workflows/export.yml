@@ -1,6 +1,6 @@
 name: GUNFALL build
 
-# Сборка готовых билдов (Windows / Linux / Web) и выгрузка их как артефактов.
+# Сборка готовых билдов (Windows / Linux) и выгрузка их как артефактов.
 # Запускается вручную (workflow_dispatch) или по тегу вида v1.0.0 — экспорт
 # тяжёлый (скачивает ~1.2 ГБ шаблонов), поэтому не на каждый push.
 on:
@@ -54,13 +54,11 @@ jobs:
       - name: Export builds
         run: |
           GODOT=~/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64
-          mkdir -p build/linux build/windows build/web
+          mkdir -p build/linux build/windows
           "$GODOT" --headless --path godot --export-release "Linux"   "$PWD/build/linux/gunfall.x86_64"
           "$GODOT" --headless --path godot --export-release "Windows" "$PWD/build/windows/gunfall.exe"
-          "$GODOT" --headless --path godot --export-release "Web"     "$PWD/build/web/index.html"
           test -s build/linux/gunfall.x86_64
           test -s build/windows/gunfall.exe
-          test -s build/web/index.html
 
       - uses: actions/upload-artifact@v4
         with:
@@ -70,17 +68,12 @@ jobs:
         with:
           name: gunfall-windows
           path: build/windows/
-      - uses: actions/upload-artifact@v4
-        with:
-          name: gunfall-web
-          path: build/web/
 
       # Релиз: по тегу vX.Y.Z или по ручному запуску с указанной версией
       - name: Package release archives
         if: startsWith(github.ref, 'refs/tags/v') || github.event.inputs.version != ''
         run: |
           cd build
-          (cd web && zip -qr ../gunfall-web.zip .)
           (cd windows && zip -q ../gunfall-windows.zip gunfall.exe)
           (cd linux && zip -q ../gunfall-linux.zip gunfall.x86_64)
           ls -la
@@ -95,4 +88,3 @@ jobs:
           files: |
             build/gunfall-windows.zip
             build/gunfall-linux.zip
-            build/gunfall-web.zip

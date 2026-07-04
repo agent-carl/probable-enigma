@@ -21,9 +21,9 @@
 
 1. На GitHub: **Actions → «GUNFALL build» → Run workflow**.
 2. В поле версии введите `v0.1.0` и запустите.
-3. Workflow соберёт Windows/Linux/Web, создаст **тег и релиз** этой версии и
-   прикрепит к нему `gunfall-windows.zip` (`.exe`), `gunfall-linux.zip` и
-   `gunfall-web.zip` (играть в браузере) + авто-заметки об изменениях.
+3. Workflow соберёт Windows/Linux, создаст **тег и релиз** этой версии и
+   прикрепит к нему `gunfall-windows.zip` (`.exe`) и `gunfall-linux.zip`
+   + авто-заметки об изменениях.
 
 Альтернатива: **Releases → Draft a new release**, создать тег `vX.Y.Z` и нажать
 **Publish release** — тот же workflow прикрепит к нему билды.
@@ -34,14 +34,7 @@
 ### Скачать билды из прогона CI (без релиза)
 
 Можно и без релиза: **Actions → «GUNFALL build» → Run workflow** — артефакты
-`gunfall-windows` / `gunfall-linux` / `gunfall-web` появятся на странице прогона.
-
-### Играть в браузере (GitHub Pages, опционально)
-
-Workflow **GUNFALL web (Pages)** публикует Web-версию на GitHub Pages.
-Сначала включите **Settings → Pages → Source = «GitHub Actions»** (для
-приватного репозитория нужен подходящий тариф), затем запустите его вручную
-(**Actions → «GUNFALL web (Pages)» → Run workflow**).
+`gunfall-windows` / `gunfall-linux` появятся на странице прогона.
 
 ### Собрать локально
 
@@ -366,7 +359,8 @@ Y — ультимейт, LB — смена оружия. На паузе мож
 - `Test.gd` — headless-автотесты генерации и симуляции геймплея.
 - `fonts/` — шрифты интерфейса **Play** (текст) и **Russo One** (заголовки),
   OFL 1.1, грузятся в рантайме; см. `fonts/README.md`.
-- `export_presets.cfg` — пресеты экспорта (Windows / Linux / Web).
+- `export_presets.cfg` — пресеты экспорта (Windows / Linux; macOS добавляется
+  на маке при подготовке Steam-сборки).
 - `icon.svg` — иконка проекта.
 
 ## Автотесты
