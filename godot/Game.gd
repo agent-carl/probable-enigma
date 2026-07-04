@@ -5963,6 +5963,7 @@ func _draw_overlays() -> void:
 			var bl := T("Рекорд: %d очков") % best if best > 0 else T("Удачного первого забега!")
 			_text(Vector2(cx, 448), bl, 12, C_6f7aa3, true)
 			_text(Vector2(cx, 466), "Enter / клик — старт · ↑↓ — выбор", 11, C_6f7aa3, true)
+			_text(Vector2(VW - 64.0, VH - 10.0), "v" + GAME_VERSION, 10, Color(1, 1, 1, 0.25))
 		"classes":
 			_text(Vector2(cx, 54), "Классы", 34, C_ffe9b0, true)
 			_text(Vector2(cx, 86), T("Ядра: ◉ %d   (клик — выбрать / открыть)") % meta_cores, 14, C_9be8ff, true)
@@ -6296,6 +6297,7 @@ func _stop_music() -> void:
 func _cfg_path() -> String:
 	return "user://gunfall.cfg"
 
+const GAME_VERSION := "1.0.0"   # версия игры (метка в меню, для баг-репортов)
 const SAVE_VERSION := 1   # версия формата user://gunfall.cfg (для миграций)
 
 func _load_settings() -> void:
