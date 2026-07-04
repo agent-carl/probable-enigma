@@ -363,6 +363,7 @@ var _ui_rects := {}
 var _audio_players := []
 var _music_player: AudioStreamPlayer = null
 var _music_cache := {}
+var _music_warming := {}   # ключи треков, уже строящихся в фоне
 var _music_key := ""
 var _audio_idx := 0
 var _sfx_cache := {}
@@ -475,6 +476,7 @@ func _ready() -> void:
 func _physics_process(_delta: float) -> void:
 	if test_mode:
 		return
+	_flush_settings_tick()
 	if demo:
 		_demo_step()
 		return
@@ -681,6 +683,10 @@ func gather_input() -> void:
 	for i in range(8):
 		_prev_keys["d%d" % i] = Input.is_key_pressed(KEY_1 + i)
 	_prev_mouse = shoot_now
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_CLOSE_REQUEST and _settings_save_t > 0:
+		_save_settings()   # не потерять отложенные настройки при выходе
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
@@ -1677,6 +1683,7 @@ func start_level() -> void:
 		intro_text = T("Уровень %d — %s") % [lvl, T(level.theme.name)]
 	_build_background(level_seed)
 	_play_music((lvl - 1) % THEMES.size(), boss_alive)
+	_warm_music(lvl % THEMES.size(), (lvl + 1) % 5 == 0)   # трек следующего уровня — заранее в фоне
 	if not test_mode:
 		_save_run()   # автосейв забега на старте уровня (для «Продолжить»)
 
@@ -4553,11 +4560,24 @@ func _ray_seg(o: Vector2, dir: Vector2, a: Vector2, b: Vector2) -> float:
 		return t
 	return -1.0
 
+var _seg_cache := {}          # кэш рёбер-окклюдеров: тайл центра + радиус + число ящиков
+var _seg_cache_level = null   # ссылка на level, для которого кэш валиден
+
 func _occluder_segments(c: Vector2, R: float) -> Array:
-	# силуэтные рёбра твёрдых тайлов/ящиков в радиусе R вокруг точки c
+	# силуэтные рёбра твёрдых тайлов/ящиков в радиусе R вокруг точки c.
+	# Кэшируется по тайлу центра: пока свет в том же тайле (почти каждый кадр) —
+	# скан сетки не повторяется; ломающиеся ящики инвалидируют через crate_hp.size().
 	var segs := []
 	if level.is_empty():
 		return segs
+	if not is_same(_seg_cache_level, level):
+		_seg_cache.clear()
+		_seg_cache_level = level
+	var rq := (int(R / 32.0) + 1) * 32.0   # квант радиуса вверх — кэш переживает пульсацию света
+	var key := "%d:%d:%d:%d" % [int(c.x / TILE), int(c.y / TILE), int(rq), level.get("crate_hp", {}).size()]
+	if _seg_cache.has(key):
+		return _seg_cache[key]
+	R = rq
 	var tx0 := int(floor((c.x - R) / TILE))
 	var tx1 := int(floor((c.x + R) / TILE))
 	var ty0 := int(floor((c.y - R) / TILE))
@@ -4577,6 +4597,9 @@ func _occluder_segments(c: Vector2, R: float) -> Array:
 				segs.append([Vector2(px, py), Vector2(px + TILE, py)])
 			if not is_blocking(tile_at(tx, ty + 1)):
 				segs.append([Vector2(px, py + TILE), Vector2(px + TILE, py + TILE)])
+	if _seg_cache.size() > 64:
+		_seg_cache.clear()   # страховка от разрастания (ключей мало, но на всякий)
+	_seg_cache[key] = segs
 	return segs
 
 func _visibility_polygon(L: Vector2, R: float, segs: Array) -> PackedVector2Array:
@@ -5781,7 +5804,11 @@ func _btn(rect: Rect2, label: String, key: String, primary := true) -> void:
 		_ci.draw_rect(rect, Color(1, 0.96, 0.74, 0.9), false, 2.0)
 	var tc := C_2a1c04 if primary else (C_ffffff if active else C_cfd6f5)
 	var lift := 1.0 if active else 0.0
-	_text(Vector2(rect.position.x + rect.size.x / 2.0, rect.position.y + rect.size.y / 2.0 + 6 - lift), label, 16, tc, true)
+	# авто-ужатие: динамические подписи (счётчики/локаль) не должны вылезать за кнопку
+	var fs := 16
+	while fs > 11 and font.get_string_size(T(label), HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x > rect.size.x - 10.0:
+		fs -= 1
+	_text(Vector2(rect.position.x + rect.size.x / 2.0, rect.position.y + rect.size.y / 2.0 + 6 - lift), label, fs, tc, true)
 	_ui_rects[key] = rect
 
 func _shake_offset() -> Vector2:
@@ -6200,11 +6227,33 @@ func _play_music(theme_idx: int, intense: bool) -> void:
 		return
 	_music_key = key
 	if not _music_cache.has(key):
-		_music_cache[key] = Synth.build_music(theme_idx, intense)
+		_warm_music(theme_idx, intense)   # построится в фоне и заиграет по готовности
+		return
 	if not audio_enabled:
 		return
 	_music_player.stream = _music_cache[key]
 	_music_player.play()
+
+func _warm_music(theme_idx: int, intense: bool) -> void:
+	# фоновая генерация трека в WorkerThreadPool — без фриза при входе в биом
+	if _music_player == null:
+		return
+	var key := "%d_%s" % [theme_idx % THEMES.size(), intense]
+	if _music_cache.has(key) or _music_warming.has(key):
+		return
+	_music_warming[key] = true
+	var idx := theme_idx % THEMES.size()
+	WorkerThreadPool.add_task(func() -> void:
+		var stream := Synth.build_music(idx, intense)
+		call_deferred("_store_music", key, stream))
+
+func _store_music(key: String, stream: AudioStreamWAV) -> void:
+	_music_cache[key] = stream
+	_music_warming.erase(key)
+	# если этот трек уже «заказан» текущим уровнем — запускаем по готовности
+	if key == _music_key and audio_enabled and _music_player and not _music_player.playing:
+		_music_player.stream = stream
+		_music_player.play()
 
 func _stop_music() -> void:
 	_music_key = ""
@@ -6449,21 +6498,32 @@ func _save_best(v: int) -> void:
 	best = v
 	_save_settings()
 
+var _settings_save_t := 0   # тики до отложенной записи настроек (дебаунс серий кликов)
+
+func _queue_save_settings() -> void:
+	_settings_save_t = 40   # ~0.66 с после последнего клика
+
+func _flush_settings_tick() -> void:
+	if _settings_save_t > 0:
+		_settings_save_t -= 1
+		if _settings_save_t == 0:
+			_save_settings()
+
 func set_volume(v: float) -> void:
 	volume = clampf(v, 0.0, 1.0)
 	_apply_volume()
-	_save_settings()
+	_queue_save_settings()
 
 func adjust_music(d: float) -> void:
 	music_vol = clampf(music_vol + d, 0.0, 1.0)
 	_apply_volume()
-	_save_settings()
+	_queue_save_settings()
 
 func adjust_sfx(d: float) -> void:
 	sfx_vol = clampf(sfx_vol + d, 0.0, 1.0)
 	_apply_volume()
 	play_sfx("pickup")   # пример громкости
-	_save_settings()
+	_queue_save_settings()
 
 func _apply_volume() -> void:
 	# мастер-шина 0; музыка/звуки регулируются на самих плеерах (относительно мастера)
