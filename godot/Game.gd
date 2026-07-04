@@ -21,6 +21,150 @@ const T_CRATE := 5   # разрушаемый ящик (твёрдый, лома
 const T_LAVA := 6    # светящаяся лава/кислота на дне ям (урон + поджиг, не твёрдая)
 const T_SPRING := 7  # пружина-батут: подбрасывает игрока вверх (твёрдая)
 
+# Предразобранные цвета: Color("#hex") парсит строку при каждом вызове,
+# а в draw-путях это сотни вызовов за кадр — константы разбираются один раз.
+const C_0d1020 := Color("#0d1020")
+const C_10243a := Color("#10243a")
+const C_10302a := Color("#10302a")
+const C_11314a := Color("#11314a")
+const C_161d31 := Color("#161d31")
+const C_1a1416 := Color("#1a1416")
+const C_1a1622 := Color("#1a1622")
+const C_1c3a4a := Color("#1c3a4a")
+const C_1e2740 := Color("#1e2740")
+const C_222b3d := Color("#222b3d")
+const C_226b5c := Color("#226b5c")
+const C_241f33 := Color("#241f33")
+const C_2a0f0e := Color("#2a0f0e")
+const C_2a0f2e := Color("#2a0f2e")
+const C_2a1244 := Color("#2a1244")
+const C_2a1640 := Color("#2a1640")
+const C_2a1a0c := Color("#2a1a0c")
+const C_2a1c04 := Color("#2a1c04")
+const C_2a2535 := Color("#2a2535")
+const C_2a3018 := Color("#2a3018")
+const C_2a3040 := Color("#2a3040")
+const C_2b2118 := Color("#2b2118")
+const C_2b2f44 := Color("#2b2f44")
+const C_2b4a63 := Color("#2b4a63")
+const C_2c5f8a := Color("#2c5f8a")
+const C_2c917b := Color("#2c917b")
+const C_34204a := Color("#34204a")
+const C_3a2440 := Color("#3a2440")
+const C_3a2810 := Color("#3a2810")
+const C_3a2f22 := Color("#3a2f22")
+const C_3a3145 := Color("#3a3145")
+const C_3a6c8c := Color("#3a6c8c")
+const C_3b3550 := Color("#3b3550")
+const C_3d7eb0 := Color("#3d7eb0")
+const C_3ec6a8 := Color("#3ec6a8")
+const C_3f7fb0 := Color("#3f7fb0")
+const C_3fae6a := Color("#3fae6a")
+const C_56d98b := Color("#56d98b")
+const C_5a3a14 := Color("#5a3a14")
+const C_5a3a1a := Color("#5a3a1a")
+const C_5a4632 := Color("#5a4632")
+const C_5a6385 := Color("#5a6385")
+const C_5a6478 := Color("#5a6478")
+const C_5a6b3a := Color("#5a6b3a")
+const C_5f9e4a := Color("#5f9e4a")
+const C_5fb0e8 := Color("#5fb0e8")
+const C_5fe0c0 := Color("#5fe0c0")
+const C_5fe0c2 := Color("#5fe0c2")
+const C_6b4420 := Color("#6b4420")
+const C_6bb8ff := Color("#6bb8ff")
+const C_6be0ff := Color("#6be0ff")
+const C_6f7aa3 := Color("#6f7aa3")
+const C_7a2e6e := Color("#7a2e6e")
+const C_7a3fd0 := Color("#7a3fd0")
+const C_7a4aa8 := Color("#7a4aa8")
+const C_7a5418 := Color("#7a5418")
+const C_7a5a2c := Color("#7a5a2c")
+const C_7a5a3a := Color("#7a5a3a")
+const C_7a6b8a := Color("#7a6b8a")
+const C_7a85aa := Color("#7a85aa")
+const C_7df2a5 := Color("#7df2a5")
+const C_7fd4ff := Color("#7fd4ff")
+const C_7fdcff := Color("#7fdcff")
+const C_8a4fd0 := Color("#8a4fd0")
+const C_8a6f2c := Color("#8a6f2c")
+const C_8be0ff := Color("#8be0ff")
+const C_8d97bd := Color("#8d97bd")
+const C_9aa3c8 := Color("#9aa3c8")
+const C_9bb05a := Color("#9bb05a")
+const C_9be8ff := Color("#9be8ff")
+const C_9c3a8c := Color("#9c3a8c")
+const C_9c6a28 := Color("#9c6a28")
+const C_9c7a4a := Color("#9c7a4a")
+const C_9d6bff := Color("#9d6bff")
+const C_a8e6ff := Color("#a8e6ff")
+const C_aab3d6 := Color("#aab3d6")
+const C_aab8d8 := Color("#aab8d8")
+const C_b06ee8 := Color("#b06ee8")
+const C_b07c3e := Color("#b07c3e")
+const C_b85ad0 := Color("#b85ad0")
+const C_b88f2e := Color("#b88f2e")
+const C_bf9bff := Color("#bf9bff")
+const C_c08bff := Color("#c08bff")
+const C_c0c0d0 := Color("#c0c0d0")
+const C_c79a5b := Color("#c79a5b")
+const C_c79bff := Color("#c79bff")
+const C_c8893a := Color("#c8893a")
+const C_c8922e := Color("#c8922e")
+const C_c93a34 := Color("#c93a34")
+const C_c9a0f5 := Color("#c9a0f5")
+const C_c9d2e0 := Color("#c9d2e0")
+const C_caa64a := Color("#caa64a")
+const C_cdd6f0 := Color("#cdd6f0")
+const C_cfd6f5 := Color("#cfd6f5")
+const C_cfd8b8 := Color("#cfd8b8")
+const C_cfe3ff := Color("#cfe3ff")
+const C_d06be0 := Color("#d06be0")
+const C_d8484f := Color("#d8484f")
+const C_d98ae8 := Color("#d98ae8")
+const C_d9b25a := Color("#d9b25a")
+const C_d9b3ff := Color("#d9b3ff")
+const C_dfe5ff := Color("#dfe5ff")
+const C_e0c24a := Color("#e0c24a")
+const C_e2554f := Color("#e2554f")
+const C_e9f4ff := Color("#e9f4ff")
+const C_eaf0ff := Color("#eaf0ff")
+const C_eafff0 := Color("#eafff0")
+const C_eaffff := Color("#eaffff")
+const C_ecd9ff := Color("#ecd9ff")
+const C_f2f5ff := Color("#f2f5ff")
+const C_ff3b3b := Color("#ff3b3b")
+const C_ff4db0 := Color("#ff4db0")
+const C_ff5050 := Color("#ff5050")
+const C_ff5a2a := Color("#ff5a2a")
+const C_ff5e57 := Color("#ff5e57")
+const C_ff6a2d := Color("#ff6a2d")
+const C_ff6b5e := Color("#ff6b5e")
+const C_ff6b7a := Color("#ff6b7a")
+const C_ff7a3d := Color("#ff7a3d")
+const C_ff7a4d := Color("#ff7a4d")
+const C_ff8a3d := Color("#ff8a3d")
+const C_ff8f6b := Color("#ff8f6b")
+const C_ff8f8f := Color("#ff8f8f")
+const C_ff9d6b := Color("#ff9d6b")
+const C_ff9e4d := Color("#ff9e4d")
+const C_ffb0a0 := Color("#ffb0a0")
+const C_ffb14d := Color("#ffb14d")
+const C_ffc24d := Color("#ffc24d")
+const C_ffcb45 := Color("#ffcb45")
+const C_ffce5a := Color("#ffce5a")
+const C_ffd06b := Color("#ffd06b")
+const C_ffd0a0 := Color("#ffd0a0")
+const C_ffd1a8 := Color("#ffd1a8")
+const C_ffd86b := Color("#ffd86b")
+const C_ffe14d := Color("#ffe14d")
+const C_ffe79a := Color("#ffe79a")
+const C_ffe9b0 := Color("#ffe9b0")
+const C_fff0b0 := Color("#fff0b0")
+const C_fff0c0 := Color("#fff0c0")
+const C_fff2b0 := Color("#fff2b0")
+const C_ffffff := Color("#ffffff")
+
 const THEMES := [
 	{ "name": "Изумрудные пещеры", "sky0": "#0e1830", "sky1": "#1d3250", "hill_far": "#15233c", "hill_near": "#1b2c4a",
 	  "ground": "#2c3a55", "top": "#58c98f", "plat": "#7fdcae", "spike": "#bcd0ff", "weather": "spores", "wcol": "#9ff0c0", "lava": "#37e0c0" },
@@ -2097,9 +2241,9 @@ func _rar_weight(t: int) -> float:
 
 func _rar_color(t: int) -> Color:
 	match t:
-		2: return Color("#6bb8ff")   # редкая — синяя
-		3: return Color("#ffcb45")   # легендарная — золотая
-	return Color("#cfd6f5")          # обычная — бледная
+		2: return C_6bb8ff   # редкая — синяя
+		3: return C_ffcb45   # легендарная — золотая
+	return C_cfd6f5          # обычная — бледная
 
 func _rar_name(t: int) -> String:
 	match t:
@@ -2465,12 +2609,12 @@ func hurt_player(dmg: float, from_dir: float, src := Vector2.INF) -> void:
 		var absorbed: int = int(min(P.shield, real))
 		P.shield -= absorbed
 		real -= absorbed
-		add_text(P.x + P.w / 2.0, P.y - 14, T("щит -%d") % absorbed, Color("#7fd4ff"))
-		burst(P.x + P.w / 2.0, P.y + P.h / 2.0, 8, Color("#7fd4ff"))
+		add_text(P.x + P.w / 2.0, P.y - 14, T("щит -%d") % absorbed, C_7fd4ff)
+		burst(P.x + P.w / 2.0, P.y + P.h / 2.0, 8, C_7fd4ff)
 	if real > 0:
 		P.hp -= real
-		add_text(P.x + P.w / 2.0, P.y - 6, "-%d" % real, Color("#ff6b5e"))
-		burst(P.x + P.w / 2.0, P.y + P.h / 2.0, 8, Color("#ff6b5e"))
+		add_text(P.x + P.w / 2.0, P.y - 6, "-%d" % real, C_ff6b5e)
+		burst(P.x + P.w / 2.0, P.y + P.h / 2.0, 8, C_ff6b5e)
 		if has_relic("thorns"):   # ответный удар по окружающим врагам
 			var pc := Vector2(P.x + P.w / 2.0, P.y + P.h / 2.0)
 			for en in enemies:
@@ -2482,14 +2626,14 @@ func hurt_player(dmg: float, from_dir: float, src := Vector2.INF) -> void:
 			P.hp = 1
 			P.inv = max(P.inv, 100)
 			flash = maxf(flash, 0.5)
-			flash_color = Color("#7df2a5")
+			flash_color = C_7df2a5
 			toasts.append({ "text": T("Второе дыхание!"), "life": 150.0 })
 			return
 		P.hp = 0
 		die()
 
 func die() -> void:
-	burst(P.x + P.w / 2.0, P.y + P.h / 2.0, 30, Color("#ff6b5e"))
+	burst(P.x + P.w / 2.0, P.y + P.h / 2.0, 30, C_ff6b5e)
 	play_sfx("die")
 	prog.deaths = int(prog.get("deaths", 0)) + 1   # пожизненный счётчик смертей
 	prog.deep = maxi(int(prog.get("deep", 0)), lvl)
@@ -2536,20 +2680,20 @@ func use_active() -> void:
 			P.inv = max(P.inv, 24)
 			for i in range(4):
 				afterimages.append({ "x": P.x - cos(a) * i * 10.0, "y": P.y - sin(a) * i * 10.0, "life": 12.0 })
-			burst(cx, cy, 12, Color("#9be8ff"))
+			burst(cx, cy, 12, C_9be8ff)
 		"freeze":
 			for en in enemies:
 				if not en.dead and en.type != "boss" and Vector2(en.x + en.w / 2.0 - cx, en.y + en.h / 2.0 - cy).length() < 280.0:
 					apply_chill(en, 200)
-			shockwaves.append({ "x": cx, "y": cy, "r": 8.0, "max_r": 280.0, "life": 22.0, "col": Color("#a8e6ff") })
+			shockwaves.append({ "x": cx, "y": cy, "r": 8.0, "max_r": 280.0, "life": 22.0, "col": C_a8e6ff })
 		"medkit":
 			P.hp = min(P.maxhp, P.hp + 40)
-			add_text(cx, P.y - 10, "+40 HP", Color("#7df2a5"))
-			burst(cx, cy, 12, Color("#7df2a5"))
+			add_text(cx, P.y - 10, "+40 HP", C_7df2a5)
+			burst(cx, cy, 12, C_7df2a5)
 		"nova":
 			P.max_shield = maxf(P.max_shield, 40.0)
 			P.shield = P.max_shield
-			shockwaves.append({ "x": cx, "y": cy, "r": 10.0, "max_r": 160.0, "life": 20.0, "col": Color("#7fd4ff") })
+			shockwaves.append({ "x": cx, "y": cy, "r": 10.0, "max_r": 160.0, "life": 20.0, "col": C_7fd4ff })
 			for en in enemies:
 				if not en.dead:
 					var ev := Vector2(en.x + en.w / 2.0 - cx, en.y + en.h / 2.0 - cy)
@@ -2561,7 +2705,7 @@ func use_active() -> void:
 			if turrets.size() >= 2:
 				turrets.pop_front()   # не больше двух турелей одновременно
 			turrets.append({ "x": cx, "y": cy, "life": 420.0, "cd": 0, "ang": 0.0 })
-			burst(cx, cy, 12, Color("#ffd86b"))
+			burst(cx, cy, 12, C_ffd86b)
 	P.active_cd = P.active_max
 	play_sfx("portal")
 
@@ -2573,11 +2717,11 @@ func activate_ult() -> void:
 	shake = min(24.0, shake + 16.0)
 	hitstop = 6
 	_radial = 0.85   # радиальный блюр-всплеск
-	burst(cx, cy, 50, Color("#9be8ff"))
-	burst(cx, cy, 30, Color("#ffffff"))
-	shockwaves.append({ "x": cx, "y": cy, "r": 10.0, "max_r": 200.0, "life": 22.0, "col": Color("#9be8ff") })
+	burst(cx, cy, 50, C_9be8ff)
+	burst(cx, cy, 30, C_ffffff)
+	shockwaves.append({ "x": cx, "y": cy, "r": 10.0, "max_r": 200.0, "life": 22.0, "col": C_9be8ff })
 	flash = 0.6
-	flash_color = Color("#9be8ff")
+	flash_color = C_9be8ff
 	play_sfx("portal")
 	# урон и отбрасывание врагов в радиусе
 	var radius := 200.0
@@ -2639,8 +2783,8 @@ func hurt_enemy(en: Dictionary, dmg: int, crit: bool, silent := false) -> void:
 		P.shield = minf(P.max_shield, P.shield + maxf(1.0, dmg * 0.08))
 	ult = min(ULT_MAX, ult + dmg * (1.6 if has_relic("overcharge") else 1.0))  # урон заряжает ультимейт
 	if not silent:
-		add_text(en.x + en.w / 2.0, en.y - 4, str(dmg), Color("#ffd86b") if crit else Color.WHITE)
-		burst(en.x + en.w / 2.0, en.y + en.h / 2.0, 7 if crit else 4, Color("#ffd1a8"))
+		add_text(en.x + en.w / 2.0, en.y - 4, str(dmg), C_ffd86b if crit else Color.WHITE)
+		burst(en.x + en.w / 2.0, en.y + en.h / 2.0, 7 if crit else 4, C_ffd1a8)
 		_hitmark = 12.0   # хит-маркер на прицеле
 		play_sfx("hit")
 		if has_relic("chain"):
@@ -2656,7 +2800,7 @@ func hurt_enemy(en: Dictionary, dmg: int, crit: bool, silent := false) -> void:
 		_combo_pop = 12.0   # всплеск текста серии
 		if combo >= 5 and combo % 5 == 0:   # вспышка на майлстоунах серии
 			flash = maxf(flash, 0.22)
-			flash_color = Color("#ffd86b")
+			flash_color = C_ffd86b
 		max_combo = max(max_combo, combo)
 		var mult := combo_mult()
 		var gained: int = int(round(en.score * mult))
@@ -2676,14 +2820,14 @@ func hurt_enemy(en: Dictionary, dmg: int, crit: bool, silent := false) -> void:
 			_detonating = true   # труп взрывается (без цепной рекурсии)
 			explode(en.x + en.w / 2.0, en.y + en.h / 2.0, 58.0, 18, "p")
 			_detonating = false
-		burst(en.x + en.w / 2.0, en.y + en.h / 2.0, 16, Color("#ff9d6b"))
+		burst(en.x + en.w / 2.0, en.y + en.h / 2.0, 16, C_ff9d6b)
 		if not en.get("boss", false):
-			shockwaves.append({ "x": en.x + en.w / 2.0, "y": en.y + en.h / 2.0, "r": 4.0, "max_r": en.w * 1.3, "life": 10.0, "col": Color("#ffd1a8") })
+			shockwaves.append({ "x": en.x + en.w / 2.0, "y": en.y + en.h / 2.0, "r": 4.0, "max_r": en.w * 1.3, "life": 10.0, "col": C_ffd1a8 })
 			_burst_particles(Vector2(en.x + en.w / 2.0, en.y + en.h / 2.0), Color(1.0, 0.55, 0.45), 16, 130.0, 0.5)  # гибы
 		var label := "+%d" % gained
 		if mult > 1.0:
 			label += " x%.1f" % mult
-		add_text(en.x + en.w / 2.0, en.y - 14, label, Color("#9be8ff"))
+		add_text(en.x + en.w / 2.0, en.y - 14, label, C_9be8ff)
 		play_sfx("kill")
 		if en.get("boss", false):
 			boss_alive = false
@@ -2692,11 +2836,11 @@ func hurt_enemy(en: Dictionary, dmg: int, crit: bool, silent := false) -> void:
 			shake = 16.0
 			_burst_particles(Vector2(en.x + en.w / 2.0, en.y + en.h / 2.0), Color(1.0, 0.85, 0.35), 80, 280.0, 1.0)
 			_start_slowmo(0.32, 0.75)   # эффектное замедление времени при гибели босса
-			burst(en.x + en.w / 2.0, en.y + en.h / 2.0, 60, Color("#ffd86b"))
-			shockwaves.append({ "x": en.x + en.w / 2.0, "y": en.y + en.h / 2.0, "r": 12.0, "max_r": 160.0, "life": 26.0, "col": Color("#ffd86b") })
+			burst(en.x + en.w / 2.0, en.y + en.h / 2.0, 60, C_ffd86b)
+			shockwaves.append({ "x": en.x + en.w / 2.0, "y": en.y + en.h / 2.0, "r": 12.0, "max_r": 160.0, "life": 26.0, "col": C_ffd86b })
 			flash = 0.7
-			flash_color = Color("#ffe9b0")
-			add_text(en.x + en.w / 2.0, en.y - 30, T("БОСС ПОВЕРЖЕН! +500"), Color("#ffd86b"))
+			flash_color = C_ffe9b0
+			add_text(en.x + en.w / 2.0, en.y - 30, T("БОСС ПОВЕРЖЕН! +500"), C_ffd86b)
 			play_sfx("portal")
 			unlock("boss_slayer")
 			if difficulty >= 2:
@@ -2738,17 +2882,17 @@ func _spawn_shards(en: Dictionary) -> void:
 		sh.vx = s * 2.0
 		sh.vy = -3.0
 		enemies.append(sh)
-	burst(cx, en.y + en.h / 2.0, 10, Color("#d06be0"))
+	burst(cx, en.y + en.h / 2.0, 10, C_d06be0)
 
 func explode(x: float, y: float, radius: float, dmg: int, from: String) -> void:
 	# улучшение «Сапёр» усиливает взрывы игрока
 	if from == "p" and not P.is_empty():
 		radius *= P.stats.blast_mul
 		dmg = int(round(dmg * P.stats.blast_mul))
-	burst(x, y, 26, Color("#ffd06b"))
-	burst(x, y, 14, Color("#ff7a4d"))
+	burst(x, y, 26, C_ffd06b)
+	burst(x, y, 14, C_ff7a4d)
 	_burst_particles(Vector2(x, y), Color(1.0, 0.55, 0.2), 36, 200.0, 0.7)
-	shockwaves.append({ "x": x, "y": y, "r": 8.0, "max_r": radius, "life": 16.0, "col": Color("#ffd06b") })
+	shockwaves.append({ "x": x, "y": y, "r": 8.0, "max_r": radius, "life": 16.0, "col": C_ffd06b })
 	shake = min(20.0, shake + 9.0)
 	play_sfx("boom")
 	var c := Vector2(x, y)
@@ -2790,7 +2934,7 @@ func damage_crate(tx: int, ty: int, dmg: int) -> void:
 	if crates[idx] <= 0:
 		crates.erase(idx)
 		level.grid[idx] = T_EMPTY
-		burst(px, py, 14, Color("#c79a5b"))
+		burst(px, py, 14, C_c79a5b)
 		burst(px, py, 8, _col(level.theme.top))
 		_burst_particles(Vector2(px, py), Color(0.78, 0.58, 0.32), 14, 110.0, 0.6)  # щепки
 		play_sfx("hit")
@@ -2917,7 +3061,7 @@ func try_shoot() -> void:
 	if not want or P.cd > 0:
 		return
 	if slot.ammo <= 0:
-		add_text(P.x + P.w / 2.0, P.y - 8, T("Нет патронов!"), Color("#ff6b5e"))
+		add_text(P.x + P.w / 2.0, P.y - 8, T("Нет патронов!"), C_ff6b5e)
 		low_ammo_t = 60
 		switch_weapon(0)
 		return
@@ -2946,7 +3090,7 @@ func try_shoot() -> void:
 		for _f in range(4):
 			var fa: float = angle + (rng.randf() - 0.5) * w.cone * 2.0
 			var fs := 3.0 + rng.randf() * 5.0
-			var fc := Color("#ffd86b") if rng.randf() < 0.4 else Color("#ff6a2d")
+			var fc := C_ffd86b if rng.randf() < 0.4 else C_ff6a2d
 			parts.append({ "x": cx + cos(angle) * 14, "y": cy + sin(angle) * 14,
 				"vx": cos(fa) * fs + P.vx * 0.3, "vy": sin(fa) * fs, "life": 7.0 + rng.randf() * 8.0,
 				"color": fc, "size": 2.0 + rng.randf() * 2.5, "grav": -0.04 })
@@ -2984,12 +3128,12 @@ func try_shoot() -> void:
 		shots_fired += 1
 	P.vx = clampf(P.vx - cos(angle) * w.kick * 0.35, -9, 9)
 	shake = min(12.0, shake + w.kick * 0.55)
-	burst(cx + cos(angle) * 18, cy + sin(angle) * 18, 3, Color("#fff2b0"))
+	burst(cx + cos(angle) * 18, cy + sin(angle) * 18, 3, C_fff2b0)
 	_recoil = 1.0   # прицел раскрывается при выстреле
 	# вылетающая гильза (назад-вверх, падает с гравитацией)
 	var ejang := angle + PI + (rng.randf() - 0.5) * 0.6
 	parts.append({ "x": cx, "y": cy - 3.0, "vx": cos(ejang) * 1.6 + (rng.randf() - 0.5),
-		"vy": -1.6 - rng.randf() * 1.4, "life": 28.0, "color": Color("#d9b25a"), "size": 2.0, "grav": 0.18 })
+		"vy": -1.6 - rng.randf() * 1.4, "life": 28.0, "color": C_d9b25a, "size": 2.0, "grav": 0.18 })
 	muzzles.append({ "x": cx + cos(angle) * 17, "y": cy + sin(angle) * 17, "ang": angle, "life": 5.0, "len": w.len })
 	if slot.id == "shotgun" or is_gren:
 		play_sfx("shotgun")
@@ -3003,12 +3147,12 @@ func give_weapon(id: String) -> void:
 		if s.id == id:
 			if is_finite(s.ammo):
 				s.ammo += WEAPONS[id].ammo
-			add_text(P.x + P.w / 2.0, P.y - 10, T("%s: +патроны") % T(WEAPONS[id].name), Color("#9be8ff"))
+			add_text(P.x + P.w / 2.0, P.y - 10, T("%s: +патроны") % T(WEAPONS[id].name), C_9be8ff)
 			return
 	P.weapons.append({ "id": id, "ammo": WEAPONS[id].ammo })
 	if P.weapons.size() > 1:
 		P.wi = P.weapons.size() - 1
-	add_text(P.x + P.w / 2.0, P.y - 10, "%s!" % T(WEAPONS[id].name), Color("#ffd86b"))
+	add_text(P.x + P.w / 2.0, P.y - 10, "%s!" % T(WEAPONS[id].name), C_ffd86b)
 
 func give_ammo() -> void:
 	var slot: Dictionary = P.weapons[P.wi]
@@ -3021,10 +3165,10 @@ func give_ammo() -> void:
 	if not slot.is_empty():
 		var add: int = roundi(WEAPONS[slot.id].ammo * 0.6)
 		slot.ammo += add
-		add_text(P.x + P.w / 2.0, P.y - 10, T("+%d патронов") % add, Color("#9be8ff"))
+		add_text(P.x + P.w / 2.0, P.y - 10, T("+%d патронов") % add, C_9be8ff)
 	else:
 		score += 25
-		add_text(P.x + P.w / 2.0, P.y - 10, T("+25 очков"), Color("#9be8ff"))
+		add_text(P.x + P.w / 2.0, P.y - 10, T("+25 очков"), C_9be8ff)
 
 # ============================== Эффекты ==============================
 
@@ -3044,7 +3188,7 @@ func spark(x: float, y: float, vx: float, vy: float, n: int) -> void:
 	for _i in range(n):
 		var a := base + (rng.randf() - 0.5) * 1.4
 		var s := 2.0 + rng.randf() * 4.0
-		var bright := Color("#fff0c0") if rng.randf() < 0.5 else Color("#ffc24d")
+		var bright := C_fff0c0 if rng.randf() < 0.5 else C_ffc24d
 		parts.append({
 			"x": x, "y": y, "vx": cos(a) * s, "vy": sin(a) * s,
 			"life": 8.0 + rng.randf() * 12.0, "color": bright,
@@ -3122,7 +3266,7 @@ func update_player() -> void:
 		elif P.air_jumps > 0:
 			P.air_jumps -= 1
 			do_jump()
-			burst(P.x + P.w / 2.0, P.y + P.h, 6, Color("#cfe3ff"))
+			burst(P.x + P.w / 2.0, P.y + P.h, 6, C_cfe3ff)
 	if not input.jump_held and P.vy < -4.5:
 		P.vy = -4.5
 	if P.drop > 0:
@@ -3164,7 +3308,7 @@ func update_player() -> void:
 			P.on_ground = false
 			play_sfx("jump")
 			shake = max(shake, 4.0)
-			burst(P.x + P.w / 2.0, P.y + P.h, 8, Color("#8be0ff"))
+			burst(P.x + P.w / 2.0, P.y + P.h, 8, C_8be0ff)
 	# пыль при приземлении после падения
 	if P.on_ground and not was_grounded and pre_vy > 4.5:
 		P.squash = minf(1.0, pre_vy / 13.0)   # присед тем сильнее, чем жёстче падение
@@ -3184,7 +3328,7 @@ func update_player() -> void:
 	if P.inv <= 0 and overlaps_tile(P, T_LAVA):
 		P.vy = -8.0   # выталкивает наверх, чтобы можно было выбраться
 		hurt_player(12, 0)
-		var lcol: Color = th.get("lava", Color("#ff5a2a"))
+		var lcol: Color = th.get("lava", C_ff5a2a)
 		for _i in range(6):
 			parts.append({ "x": P.x + P.w / 2.0 + (rng.randf() - 0.5) * P.w, "y": P.y + P.h,
 				"vx": (rng.randf() - 0.5) * 1.5, "vy": -1.5 - rng.randf() * 2.0,
@@ -3192,7 +3336,7 @@ func update_player() -> void:
 	if overlaps_tile(P, T_EXIT):
 		if boss_alive:
 			if tick % 45 == 0:
-				add_text(P.x + P.w / 2.0, P.y - 12, T("Сначала победите босса!"), Color("#ff6b5e"))
+				add_text(P.x + P.w / 2.0, P.y - 12, T("Сначала победите босса!"), C_ff6b5e)
 		else:
 			level_clear()
 			return
@@ -3242,7 +3386,7 @@ func do_jump() -> void:
 	P.buffer = 0
 	tut.jump = true
 	play_sfx("jump")
-	burst(P.x + P.w / 2.0, P.y + P.h, 4, Color("#aab8d8"))
+	burst(P.x + P.w / 2.0, P.y + P.h, 4, C_aab8d8)
 
 func _eshot(x: float, y: float, a: float, spd: float, dmg: int, color: String) -> void:
 	bullets.append({
@@ -3287,7 +3431,7 @@ func update_enemies() -> void:
 		if int(en.get("burn", 0)) > 0:
 			en.burn -= 1
 			if int(en.burn) % 12 == 0:
-				burst(ecx, en.y, 2, Color("#ff8a3d"))
+				burst(ecx, en.y, 2, C_ff8a3d)
 				hurt_enemy(en, 4, false, true)
 				if en.dead:
 					continue
@@ -3386,7 +3530,7 @@ func update_enemies() -> void:
 							"vx": cos(a) * spd, "vy": sin(a) * spd,
 							"dmg": en.dmg, "crit": false, "from": "e", "life": 240, "color": _col("#ff7a6b"),
 						})
-					burst(ecx + en.dir * (en.w / 2.0 + 6), ecy, 3, Color("#ffb0a0"))
+					burst(ecx + en.dir * (en.w / 2.0 + 6), ecy, 3, C_ffb0a0)
 			else:
 				en.cd = max(en.cd, 25)
 		elif en.type == "flyer":
@@ -3463,8 +3607,8 @@ func update_enemies() -> void:
 			en.atk_t -= 1
 			if en.atk_t <= 0:
 				en.atk_t = 210
-				burst(ecx, ecy, 24, Color("#c79bff"))
-				shockwaves.append({ "x": ecx, "y": ecy, "r": 6.0, "max_r": 60.0, "life": 12.0, "col": Color("#c79bff") })
+				burst(ecx, ecy, 24, C_c79bff)
+				shockwaves.append({ "x": ecx, "y": ecy, "r": 6.0, "max_r": 60.0, "life": 12.0, "col": C_c79bff })
 				var side := -1.0 if rng.randf() < 0.5 else 1.0
 				var nx := clampf(pcx + side * 190.0, 2.0 * TILE, level.px_w - 2.0 * TILE)
 				var ny := clampf(pcy - 120.0, 2.0 * TILE, level.px_h - 6.0 * TILE)
@@ -3472,7 +3616,7 @@ func update_enemies() -> void:
 				en.y = ny - en.h / 2.0
 				en.vx = 0.0
 				en.vy = 0.0
-				burst(nx, ny, 24, Color("#c79bff"))
+				burst(nx, ny, 24, C_c79bff)
 				for k in range(18):
 					_eshot(nx, ny, k * TAU / 18.0 + en.phase, 4.0, en.dmg, "#c79bff")
 				shake = max(shake, 6.0)
@@ -3498,7 +3642,7 @@ func update_enemies() -> void:
 						minions += 1
 				if minions < 5:
 					shake = max(shake, 6.0)
-					burst(ecx, ecy, 18, Color("#c08bff"))
+					burst(ecx, ecy, 18, C_c08bff)
 					for s in [-1, 1]:
 						var mtype := "flyer" if rng.randf() < 0.5 else "walker"
 						var m := _spawn_enemy(mtype, ecx + s * 28 - 12, ecy + 10)
@@ -3622,7 +3766,7 @@ func update_enemies() -> void:
 					en["rush"] = 0
 					en["stun"] = 48   # врезался в стену — оглушён
 					shake = max(shake, 8.0)
-					burst(ecx + en.dir * en.w / 2.0, ecy, 8, Color("#ffd0a0"))
+					burst(ecx + en.dir * en.w / 2.0, ecy, 8, C_ffd0a0)
 			elif en.charge > 0:
 				en.charge += 1   # разгон-телеграф: стоит и трясётся
 				en.vx = 0.0
@@ -3681,10 +3825,10 @@ func update_enemies() -> void:
 					if Vector2(e2.x + e2.w / 2.0 - ecx, e2.y + e2.h / 2.0 - ecy).length() < 150.0 and e2.hp < e2.maxhp:
 						e2.hp = min(e2.maxhp, int(e2.hp) + 14)
 						healed = true
-						add_text(e2.x + e2.w / 2.0, e2.y - 6, "+14", Color("#7df2a5"))
+						add_text(e2.x + e2.w / 2.0, e2.y - 6, "+14", C_7df2a5)
 				if healed:
-					shockwaves.append({ "x": ecx, "y": ecy, "r": 6.0, "max_r": 150.0, "life": 16.0, "col": Color("#7df2a5") })
-					burst(ecx, ecy, 10, Color("#7df2a5"))
+					shockwaves.append({ "x": ecx, "y": ecy, "r": 6.0, "max_r": 150.0, "life": 16.0, "col": C_7df2a5 })
+					burst(ecx, ecy, 10, C_7df2a5)
 
 		if en.hurt_t > 0:
 			en.hurt_t -= 1
@@ -3737,7 +3881,7 @@ func update_bullets() -> void:
 					if tile_at(htx, hty) == T_CRATE:
 						damage_crate(htx, hty, b.dmg)
 					if not is_gren:
-						burst(b.x, b.y, 2, Color("#cdd6f0"))
+						burst(b.x, b.y, 2, C_cdd6f0)
 						spark(b.x, b.y, b.vx, b.vy, 5)
 					hit = true
 					break
@@ -3817,17 +3961,17 @@ func update_pickups() -> void:
 				give_weapon(pk.weapon)
 			elif pk.kind == "med":
 				P.hp = min(P.maxhp, P.hp + pk.heal)
-				add_text(P.x + P.w / 2.0, P.y - 10, "+%d HP" % pk.heal, Color("#7df2a5"))
+				add_text(P.x + P.w / 2.0, P.y - 10, "+%d HP" % pk.heal, C_7df2a5)
 			elif pk.kind == "ammo":
 				give_ammo()
 			elif pk.kind == "shield":
 				P.max_shield = max(P.max_shield, pk.shield)
 				P.shield = min(P.max_shield, P.shield + pk.shield)
-				add_text(P.x + P.w / 2.0, P.y - 10, T("+%d щит") % int(pk.shield), Color("#7fd4ff"))
+				add_text(P.x + P.w / 2.0, P.y - 10, T("+%d щит") % int(pk.shield), C_7fd4ff)
 			elif pk.kind == "coin":
 				score += 5
 				coins += 1
-				add_text(pk.x, pk.y - 6, "+1●", Color("#ffd86b"))
+				add_text(pk.x, pk.y - 6, "+1●", C_ffd86b)
 			# вспышка-сияние при подборе
 			var shc: Color = { "weapon": Color(1, 0.85, 0.42), "med": Color(0.5, 1, 0.65), "ammo": Color(0.82, 0.66, 0.3), "coin": Color(1, 0.85, 0.42), "shield": Color(0.5, 0.83, 1.0) }.get(pk.kind, Color(1, 1, 1))
 			var pcc := Vector2(pk.x + pk.w / 2.0, pk.y + pk.h / 2.0)
@@ -3844,7 +3988,7 @@ func update_turrets() -> void:
 	for t in turrets:
 		t.life -= 1.0
 		if t.life <= 0.0:
-			burst(t.x, t.y, 8, Color("#ffb14d"))
+			burst(t.x, t.y, 8, C_ffb14d)
 			continue
 		t.vy = minf(float(t.get("vy", 0.0)) + GRAV, MAX_FALL)   # падает на землю при установке
 		var ny: float = t.y + t.vy
@@ -3913,20 +4057,20 @@ func resolve_shrine(accept: bool) -> void:
 					grant_relic(rid)
 				else:
 					coins += 12   # реликвий не осталось — компенсация
-					add_text(cx, P.y - 10, "+12●", Color("#ffd86b"))
+					add_text(cx, P.y - 10, "+12●", C_ffd86b)
 			"gamble":
 				var bet := int(coins / 2.0)
 				if bet <= 0:
-					add_text(cx, P.y - 10, T("Нет монет"), Color("#ff6b5e"))
+					add_text(cx, P.y - 10, T("Нет монет"), C_ff6b5e)
 				elif rng.randf() < 0.5:
 					coins += bet
-					add_text(cx, P.y - 10, T("Выигрыш! +%d●") % bet, Color("#7df2a5"))
+					add_text(cx, P.y - 10, T("Выигрыш! +%d●") % bet, C_7df2a5)
 				else:
 					coins -= bet
-					add_text(cx, P.y - 10, T("Проигрыш… −%d●") % bet, Color("#ff6b5e"))
+					add_text(cx, P.y - 10, T("Проигрыш… −%d●") % bet, C_ff6b5e)
 			"power":
 				P.stats.dmg_mul *= 1.25
-				add_text(cx, P.y - 10, T("Ярость! +25% урона"), Color("#ffb14d"))
+				add_text(cx, P.y - 10, T("Ярость! +25% урона"), C_ffb14d)
 				_summon_wave(3 + lvl / 2)
 			"spring":
 				P.maxhp = maxi(30, int(P.maxhp * 0.9))
@@ -3934,7 +4078,7 @@ func resolve_shrine(accept: bool) -> void:
 				if P.max_shield <= 0.0:
 					P.max_shield = 30.0
 				P.shield = P.max_shield
-				add_text(cx, P.y - 10, T("Исцеление!"), Color("#7df2a5"))
+				add_text(cx, P.y - 10, T("Исцеление!"), C_7df2a5)
 		flash = maxf(flash, 0.25)
 		play_sfx("portal")
 	_set_state("play")
@@ -3950,7 +4094,7 @@ func _summon_wave(n: int) -> void:
 		sy = clampf(sy, TILE, level.px_h - TILE)
 		var en := _spawn_enemy(types[rng.randi_range(0, types.size() - 1)], sx, sy)
 		enemies.append(en)
-		burst(sx + en.w / 2.0, sy + en.h / 2.0, 8, Color("#c08bff"))
+		burst(sx + en.w / 2.0, sy + en.h / 2.0, 8, C_c08bff)
 
 func open_chest(ch: Dictionary) -> void:
 	ch.opened = true
@@ -4306,7 +4450,7 @@ func _make_hills(r: RandomNumberGenerator, base_y: float, amp: float) -> PackedV
 func _draw() -> void:
 	_ui_rects.clear()
 	if level.is_empty():
-		draw_rect(Rect2(0, 0, VW, VH), Color("#0d1020"))
+		draw_rect(Rect2(0, 0, VW, VH), C_0d1020)
 	else:
 		var c := cam + _shake_offset()
 		_cam_draw = c
@@ -4425,7 +4569,7 @@ func _draw_ambient() -> void:
 
 func _build_crate_texture() -> void:
 	# деревянный ящик: горизонтальная текстура волокон + тёмная рамка
-	var base := Color("#b07c3e")
+	var base := C_b07c3e
 	var tr := RandomNumberGenerator.new()
 	tr.seed = 0xC0FFEE
 	var img := Image.create(TILE, TILE, false, Image.FORMAT_RGBA8)
@@ -4867,8 +5011,8 @@ func _draw_menu_bg() -> void:
 		var ey := VH - fmod(tick * 0.35 + i * 71.0, VH + 40.0)
 		_ci.draw_rect(Rect2(ex, ey, 2, 2), Color(1.0, 0.7, 0.4, 0.35 + 0.25 * sin(tick * 0.06 + i)))
 	# силуэты холмов с медленным параллаксом
-	_draw_menu_hills(menu_hills_far, Color("#161d31"), tick * 0.25, -40.0)
-	_draw_menu_hills(menu_hills_near, Color("#1e2740"), tick * 0.45, 0.0)
+	_draw_menu_hills(menu_hills_far, C_161d31, tick * 0.25, -40.0)
+	_draw_menu_hills(menu_hills_near, C_1e2740, tick * 0.45, 0.0)
 
 func _draw_menu_hills(pts: PackedVector2Array, color: Color, scroll: float, yoff: float) -> void:
 	if pts.size() < 3:
@@ -5255,7 +5399,7 @@ func _draw_tiles(c: Vector2) -> void:
 				draw_line(Vector2(px + 16, py + TILE), Vector2(px + 24, py + 6), lit, 1.5)
 				draw_rect(Rect2(px, py + TILE - 3, TILE, 3), th.ground.darkened(0.12))
 			elif t == T_LAVA:
-				var lc: Color = th.get("lava", Color("#ff5a2a"))
+				var lc: Color = th.get("lava", C_ff5a2a)
 				# тело лавы (тёмное снизу → яркое сверху)
 				draw_rect(Rect2(px, py, TILE, TILE), lc.darkened(0.45))
 				draw_rect(Rect2(px, py + 6, TILE, TILE - 6), lc.darkened(0.25))
@@ -5275,12 +5419,12 @@ func _draw_tiles(c: Vector2) -> void:
 			elif t == T_SPRING:
 				# основание + пружина-гармошка + площадка со стрелками
 				var bob := absf(sin(tick * 0.12)) * 2.0   # лёгкое «дыхание»
-				draw_rect(Rect2(px, py + TILE - 5, TILE, 5), Color("#2b2f44"))
+				draw_rect(Rect2(px, py + TILE - 5, TILE, 5), C_2b2f44)
 				for zi in range(3):
-					draw_rect(Rect2(px + 5, py + TILE - 9 - zi * 4 + bob, TILE - 10, 2), Color("#9aa3c8"))
-				draw_rect(Rect2(px + 2, py + 2 + bob, TILE - 4, 6), Color("#6be0ff"))
+					draw_rect(Rect2(px + 5, py + TILE - 9 - zi * 4 + bob, TILE - 10, 2), C_9aa3c8)
+				draw_rect(Rect2(px + 2, py + 2 + bob, TILE - 4, 6), C_6be0ff)
 				draw_colored_polygon(PackedVector2Array([
-					Vector2(px + TILE / 2.0, py + bob), Vector2(px + TILE / 2.0 + 5, py + 5 + bob), Vector2(px + TILE / 2.0 - 5, py + 5 + bob)]), Color("#eaffff"))
+					Vector2(px + TILE / 2.0, py + bob), Vector2(px + TILE / 2.0 + 5, py + 5 + bob), Vector2(px + TILE / 2.0 - 5, py + 5 + bob)]), C_eaffff)
 			elif t == T_CRATE:
 				var idx: int = ty * level.W + tx
 				var chp: float = level.crate_hp.get(idx, 24)
@@ -5288,10 +5432,10 @@ func _draw_tiles(c: Vector2) -> void:
 				if crate_tex:
 					draw_texture_rect(crate_tex, Rect2(px, py, TILE, TILE), false)
 				else:
-					draw_rect(Rect2(px + 1, py + 1, TILE - 2, TILE - 2), Color("#b07c3e"))
+					draw_rect(Rect2(px + 1, py + 1, TILE - 2, TILE - 2), C_b07c3e)
 				# доски-крест
-				draw_line(Vector2(px + 3, py + 3), Vector2(px + TILE - 3, py + TILE - 3), Color("#6b4420"), 2.0)
-				draw_line(Vector2(px + TILE - 3, py + 3), Vector2(px + 3, py + TILE - 3), Color("#6b4420"), 2.0)
+				draw_line(Vector2(px + 3, py + 3), Vector2(px + TILE - 3, py + TILE - 3), C_6b4420, 2.0)
+				draw_line(Vector2(px + TILE - 3, py + 3), Vector2(px + 3, py + TILE - 3), C_6b4420, 2.0)
 				if dmgf > 0.25:
 					draw_line(Vector2(px + 8, py + 4), Vector2(px + 12, py + TILE - 5), Color(0, 0, 0, 0.45), 1.5)
 				if dmgf > 0.6:
@@ -5308,7 +5452,7 @@ func _draw_decor() -> void:
 		var s: float = d.s
 		match int(d.kind):
 			0:  # пещеры — светящийся гриб
-				draw_rect(Rect2(x - 1.5 * s, y - 8 * s, 3 * s, 8 * s), Color("#cfd8b8"))
+				draw_rect(Rect2(x - 1.5 * s, y - 8 * s, 3 * s, 8 * s), C_cfd8b8)
 				draw_circle(Vector2(x, y - 8 * s), 5 * s, th.top.darkened(0.1))
 				draw_circle(Vector2(x, y - 9 * s), 1.6 * s, Color(0.6 * gl, 1.1 * gl, 0.9 * gl, 0.9))
 			1:  # руины — обломки камня
@@ -5325,9 +5469,9 @@ func _draw_decor() -> void:
 					var sway := sin(tick * 0.03 + x * 0.1 + k) * 2.0
 					draw_line(Vector2(bx, y), Vector2(bx + sway, y - (9 + k * 3) * s), th.top.darkened(0.15), 1.5)
 			4:  # форт — кактус
-				draw_rect(Rect2(x - 2 * s, y - 12 * s, 4 * s, 12 * s), Color("#5f9e4a"))
-				draw_rect(Rect2(x - 6 * s, y - 9 * s, 4 * s, 2.5 * s), Color("#5f9e4a"))
-				draw_rect(Rect2(x - 6 * s, y - 12 * s, 2.5 * s, 5 * s), Color("#5f9e4a"))
+				draw_rect(Rect2(x - 2 * s, y - 12 * s, 4 * s, 12 * s), C_5f9e4a)
+				draw_rect(Rect2(x - 6 * s, y - 9 * s, 4 * s, 2.5 * s), C_5f9e4a)
+				draw_rect(Rect2(x - 6 * s, y - 12 * s, 2.5 * s, 5 * s), C_5f9e4a)
 			5:  # бездна — кристаллы
 				draw_colored_polygon(PackedVector2Array([
 					Vector2(x, y - 12 * s), Vector2(x + 3.5 * s, y), Vector2(x - 3.5 * s, y)]), th.top)
@@ -5336,7 +5480,7 @@ func _draw_decor() -> void:
 				draw_circle(Vector2(x, y - 10 * s), 1.3 * s, Color(1.2 * gl, 1.0 * gl, 1.5 * gl, 0.8))
 			6:  # кузница — обсидиан с раскалённой трещиной
 				draw_colored_polygon(PackedVector2Array([
-					Vector2(x - 5 * s, y), Vector2(x - 2 * s, y - 8 * s), Vector2(x + 4 * s, y - 5 * s), Vector2(x + 6 * s, y)]), Color("#1a1416"))
+					Vector2(x - 5 * s, y), Vector2(x - 2 * s, y - 8 * s), Vector2(x + 4 * s, y - 5 * s), Vector2(x + 6 * s, y)]), C_1a1416)
 				var puls := 0.6 + 0.4 * sin(tick * 0.06 + x * 0.07)
 				draw_line(Vector2(x - 2 * s, y - 6 * s), Vector2(x + 2 * s, y - 1 * s), Color(1.4 * gl, 0.5 * gl, 0.15 * gl, puls), 1.5)
 
@@ -5350,14 +5494,14 @@ func _draw_hazards() -> void:
 			var a: float = hz.spin + i * PI / teeth
 			var rad: float = hz.r if (i % 2 == 0) else hz.r * 0.66
 			pts.append(c + Vector2(cos(a), sin(a)) * rad)
-		draw_colored_polygon(pts, Color("#c9d2e0"))
-		draw_circle(c, hz.r * 0.4, Color("#5a6478"))
-		draw_circle(c, hz.r * 0.15, Color("#2a3040"))
+		draw_colored_polygon(pts, C_c9d2e0)
+		draw_circle(c, hz.r * 0.4, C_5a6478)
+		draw_circle(c, hz.r * 0.15, C_2a3040)
 
 func _draw_movers() -> void:
 	for mp in moving_platforms:
-		draw_rect(Rect2(mp.x, mp.y, mp.w, mp.h), Color("#8d97bd"))
-		draw_rect(Rect2(mp.x, mp.y, mp.w, 3), Color("#cfd6f5"))
+		draw_rect(Rect2(mp.x, mp.y, mp.w, mp.h), C_8d97bd)
+		draw_rect(Rect2(mp.x, mp.y, mp.w, 3), C_cfd6f5)
 		draw_rect(Rect2(mp.x, mp.y + mp.h - 2, mp.w, 2), Color(0, 0, 0, 0.35))
 		# индикатор направления движения
 		var horiz: bool = mp.ax > 0.0
@@ -5389,18 +5533,18 @@ func _draw_shrines() -> void:
 			continue
 		var cxp: float = x + sh.w / 2.0
 		var def: Dictionary = SHRINES.get(sh.type, {})
-		var tint: Color = { "blood": Color("#d8484f"), "gamble": Color("#e0c24a"), "power": Color("#ff7a3d"), "spring": Color("#5fe0c0") }.get(sh.type, Color("#9d6bff"))
+		var tint: Color = { "blood": C_d8484f, "gamble": C_e0c24a, "power": C_ff7a3d, "spring": C_5fe0c0 }.get(sh.type, C_9d6bff)
 		if sh.used:
 			# погасший алтарь — тёмный камень
-			draw_rect(Rect2(x + 6, y + 18, sh.w - 12, 12), Color("#2a2535"))
-			draw_rect(Rect2(x + 2, y + 28, sh.w - 4, 4), Color("#1a1622"))
+			draw_rect(Rect2(x + 6, y + 18, sh.w - 12, 12), C_2a2535)
+			draw_rect(Rect2(x + 2, y + 28, sh.w - 4, 4), C_1a1622)
 		else:
 			var pul := 0.5 + 0.5 * sin(tick * 0.08 + x * 0.05)
 			# свечение
 			draw_circle(Vector2(cxp, y + 8), sh.w * 0.7 + pul * 4.0, Color(tint.r, tint.g, tint.b, 0.14))
 			# постамент
-			draw_rect(Rect2(x + 4, y + 18, sh.w - 8, 12), Color("#3b3550"))
-			draw_rect(Rect2(x + 2, y + 28, sh.w - 4, 4), Color("#241f33"))
+			draw_rect(Rect2(x + 4, y + 18, sh.w - 8, 12), C_3b3550)
+			draw_rect(Rect2(x + 2, y + 28, sh.w - 4, 4), C_241f33)
 			# парящий кристалл/чаша
 			var gl := 1.5 if bloom_on else 1.0
 			var fy := y + 6 + sin(tick * 0.06) * 2.0
@@ -5442,18 +5586,18 @@ func _draw_chests() -> void:
 			continue
 		if ch.opened:
 			# открытый: тёмный корпус с откинутой крышкой
-			draw_rect(Rect2(x, y + 6, ch.w, ch.h - 6), Color("#5a3a1a"))
-			draw_rect(Rect2(x + 1, y + 7, ch.w - 2, 4), Color("#2a1a0c"))
+			draw_rect(Rect2(x, y + 6, ch.w, ch.h - 6), C_5a3a1a)
+			draw_rect(Rect2(x + 1, y + 7, ch.w - 2, 4), C_2a1a0c)
 			draw_colored_polygon(PackedVector2Array([
-				Vector2(x, y + 6), Vector2(x + ch.w, y + 6), Vector2(x + ch.w - 3, y - 4), Vector2(x + 3, y - 4)]), Color("#6b4420"))
+				Vector2(x, y + 6), Vector2(x + ch.w, y + 6), Vector2(x + ch.w - 3, y - 4), Vector2(x + 3, y - 4)]), C_6b4420)
 		else:
 			# закрытый: золотой сундук с пульсирующим сиянием и блёстками
 			var pul := 0.5 + 0.5 * sin(tick * 0.1 + x * 0.05)
 			draw_circle(Vector2(x + ch.w / 2.0, y + ch.h / 2.0), ch.w * 0.8 + pul * 3.0, Color(1.0, 0.82, 0.35, 0.12))
-			draw_rect(Rect2(x, y, ch.w, ch.h), Color("#7a5418"))
-			draw_rect(Rect2(x + 1, y + 1, ch.w - 2, ch.h - 2), Color("#c8922e"))
-			draw_rect(Rect2(x, y + ch.h * 0.42, ch.w, 4), Color("#5a3a14"))   # стык крышки
-			draw_rect(Rect2(x + ch.w / 2.0 - 2, y + ch.h * 0.42 - 1, 4, 6), Color("#ffe79a"))  # замок
+			draw_rect(Rect2(x, y, ch.w, ch.h), C_7a5418)
+			draw_rect(Rect2(x + 1, y + 1, ch.w - 2, ch.h - 2), C_c8922e)
+			draw_rect(Rect2(x, y + ch.h * 0.42, ch.w, 4), C_5a3a14)   # стык крышки
+			draw_rect(Rect2(x + ch.w / 2.0 - 2, y + ch.h * 0.42 - 1, 4, 6), C_ffe79a)  # замок
 			var gl := 1.4 if bloom_on else 1.0
 			draw_circle(Vector2(x + ch.w / 2.0, y + ch.h * 0.45 + 2), 1.6 + pul, Color(1.6 * gl, 1.4 * gl, 0.8 * gl))
 			# блёстки
@@ -5468,20 +5612,20 @@ func _draw_pickups() -> void:
 		var x: float = pk.x
 		var y: float = pk.y + bob
 		# свечение-ореол по типу предмета
-		var gcol: Color = { "weapon": Color("#ffd86b"), "med": Color("#ff6b7a"), "ammo": Color("#caa64a"), "coin": Color("#ffd86b"), "shield": Color("#7fd4ff") }.get(pk.kind, Color("#ffffff"))
+		var gcol: Color = { "weapon": C_ffd86b, "med": C_ff6b7a, "ammo": C_caa64a, "coin": C_ffd86b, "shield": C_7fd4ff }.get(pk.kind, C_ffffff)
 		_glow(Vector2(x + pk.w / 2.0, y + pk.h / 2.0), 16.0 + sin(pk.t * 3) * 2.0, gcol)
 		if pk.kind == "weapon":
 			var w: Dictionary = WEAPONS[pk.weapon]
 			draw_rect(Rect2(x - 3, y - 3, pk.w + 6, pk.h + 6), Color(1, 1, 1, 0.10))
-			draw_rect(Rect2(x, y, pk.w, pk.h), Color("#1e2740"))
+			draw_rect(Rect2(x, y, pk.w, pk.h), C_1e2740)
 			draw_rect(Rect2(x + 4, y + pk.h / 2.0 - 2, pk.w - 8, 4), _col(w.color))
 		elif pk.kind == "med":
-			draw_rect(Rect2(x, y, pk.w, pk.h), Color("#f2f5ff"))
-			draw_rect(Rect2(x + pk.w / 2.0 - 2, y + 4, 4, pk.h - 8), Color("#ff5e57"))
-			draw_rect(Rect2(x + 5, y + pk.h / 2.0 - 2, pk.w - 10, 4), Color("#ff5e57"))
+			draw_rect(Rect2(x, y, pk.w, pk.h), C_f2f5ff)
+			draw_rect(Rect2(x + pk.w / 2.0 - 2, y + 4, 4, pk.h - 8), C_ff5e57)
+			draw_rect(Rect2(x + 5, y + pk.h / 2.0 - 2, pk.w - 10, 4), C_ff5e57)
 		elif pk.kind == "ammo":
-			draw_rect(Rect2(x, y, pk.w, pk.h), Color("#caa64a"))
-			draw_rect(Rect2(x, y + 5, pk.w, 3), Color("#8a6f2c"))
+			draw_rect(Rect2(x, y, pk.w, pk.h), C_caa64a)
+			draw_rect(Rect2(x, y + 5, pk.w, 3), C_8a6f2c)
 		elif pk.kind == "coin":
 			# вращающаяся блестящая монета (ширина меняется → эффект спина)
 			var cc := Vector2(x + 6, y + 6)
@@ -5490,8 +5634,8 @@ func _draw_pickups() -> void:
 			for i in range(14):
 				var aa := i * TAU / 14.0
 				ell.append(cc + Vector2(cos(aa) * rxw, sin(aa) * 6.0))
-			draw_colored_polygon(ell, Color("#ffd86b"))
-			draw_line(cc + Vector2(0, -6), cc + Vector2(0, 6), Color("#b88f2e"), 1.5)
+			draw_colored_polygon(ell, C_ffd86b)
+			draw_line(cc + Vector2(0, -6), cc + Vector2(0, 6), C_b88f2e, 1.5)
 			if rxw > 3.0:
 				draw_circle(cc + Vector2(-rxw * 0.4, -2), 1.4, Color(1, 1, 1, 0.8))
 		elif pk.kind == "shield":
@@ -5500,9 +5644,9 @@ func _draw_pickups() -> void:
 			# щит-герб
 			draw_colored_polygon(PackedVector2Array([
 				Vector2(sc.x, y), Vector2(x + pk.w, y + 4), Vector2(x + pk.w, y + pk.h * 0.6),
-				Vector2(sc.x, y + pk.h), Vector2(x, y + pk.h * 0.6), Vector2(x, y + 4)]), Color("#7fd4ff"))
+				Vector2(sc.x, y + pk.h), Vector2(x, y + pk.h * 0.6), Vector2(x, y + 4)]), C_7fd4ff)
 			draw_colored_polygon(PackedVector2Array([
-				Vector2(sc.x, y + 4), Vector2(x + pk.w - 4, y + 6), Vector2(sc.x, y + pk.h - 4), Vector2(x + 4, y + 6)]), Color("#2b4a63"))
+				Vector2(sc.x, y + 4), Vector2(x + pk.w - 4, y + 6), Vector2(sc.x, y + pk.h - 4), Vector2(x + 4, y + 6)]), C_2b4a63)
 
 func _draw_enemies() -> void:
 	for en in enemies:
@@ -5533,18 +5677,18 @@ func _draw_enemies() -> void:
 		if en.type != "boss" and not en.get("fly", false):
 			draw_rect(Rect2(en.x - 1.5, en.y - 1.5, en.w + 3, en.h + 3), Color(0, 0, 0, 0.5))
 		if en.type == "walker":
-			draw_rect(Rect2(en.x, en.y, en.w, en.h), Color.WHITE if flash else Color("#e2554f"))
+			draw_rect(Rect2(en.x, en.y, en.w, en.h), Color.WHITE if flash else C_e2554f)
 			var exx: float = en.x + en.w / 2.0 + en.dir * 5
-			draw_rect(Rect2(exx - 3, en.y + 8, 3, 5), Color("#2a0f0e"))
-			draw_rect(Rect2(exx + 2, en.y + 8, 3, 5), Color("#2a0f0e"))
+			draw_rect(Rect2(exx - 3, en.y + 8, 3, 5), C_2a0f0e)
+			draw_rect(Rect2(exx + 2, en.y + 8, 3, 5), C_2a0f0e)
 		elif en.type == "splitter" or en.type == "shard":
-			var base_c := Color("#b85ad0") if en.type == "splitter" else Color("#d98ae8")
+			var base_c := C_b85ad0 if en.type == "splitter" else C_d98ae8
 			draw_rect(Rect2(en.x, en.y, en.w, en.h), Color.WHITE if flash else base_c)
 			# линия раскола
 			draw_line(Vector2(en.x + en.w / 2.0, en.y + 2), Vector2(en.x + en.w / 2.0, en.y + en.h - 2), Color(0, 0, 0, 0.3), 2.0)
 			var sxx: float = en.x + en.w / 2.0 + en.dir * (3 if en.type == "shard" else 5)
-			draw_rect(Rect2(sxx - 3, en.y + en.h * 0.3, 2, 4), Color("#2a0f2e"))
-			draw_rect(Rect2(sxx + 2, en.y + en.h * 0.3, 2, 4), Color("#2a0f2e"))
+			draw_rect(Rect2(sxx - 3, en.y + en.h * 0.3, 2, 4), C_2a0f2e)
+			draw_rect(Rect2(sxx + 2, en.y + en.h * 0.3, 2, 4), C_2a0f2e)
 		elif en.type == "sniper":
 			# луч-прицел во время зарядки выстрела
 			if en.charge > 0:
@@ -5552,61 +5696,61 @@ func _draw_enemies() -> void:
 				var beam := clampf(en.charge / 54.0, 0, 1)
 				var origin := Vector2(en.x + en.w / 2.0, en.y + en.h / 2.0)
 				draw_line(origin, origin + Vector2(cos(a), sin(a)) * 600, Color(1, 0.23, 0.23, 0.25 + beam * 0.55), 1.0 + beam * 2.0)
-			draw_rect(Rect2(en.x, en.y, en.w, en.h), Color.WHITE if flash else Color("#5a6b3a"))
-			draw_rect(Rect2(en.x + 4, en.y + 4, en.w - 8, 6), Color("#2a3018"))
+			draw_rect(Rect2(en.x, en.y, en.w, en.h), Color.WHITE if flash else C_5a6b3a)
+			draw_rect(Rect2(en.x + 4, en.y + 4, en.w - 8, 6), C_2a3018)
 			# «глаз-прицел»
-			draw_circle(Vector2(en.x + en.w / 2.0 + en.dir * 4, en.y + 16), 4, Color("#ff3b3b") if en.charge > 0 else Color("#9bb05a"))
+			draw_circle(Vector2(en.x + en.w / 2.0 + en.dir * 4, en.y + 16), 4, C_ff3b3b if en.charge > 0 else C_9bb05a)
 		elif en.type == "shooter":
-			draw_rect(Rect2(en.x, en.y, en.w, en.h), Color.WHITE if flash else Color("#b06ee8"))
-			draw_rect(Rect2(en.x + en.w / 2.0 - 2 + en.dir * 4, en.y + 9, 5, 5), Color("#34204a"))
-			draw_rect(Rect2(en.x + en.w / 2.0 + (4 if en.dir > 0 else -16), en.y + en.h / 2.0 - 2, 12, 4), Color.WHITE if flash else Color("#7a4aa8"))
+			draw_rect(Rect2(en.x, en.y, en.w, en.h), Color.WHITE if flash else C_b06ee8)
+			draw_rect(Rect2(en.x + en.w / 2.0 - 2 + en.dir * 4, en.y + 9, 5, 5), C_34204a)
+			draw_rect(Rect2(en.x + en.w / 2.0 + (4 if en.dir > 0 else -16), en.y + en.h / 2.0 - 2, 12, 4), Color.WHITE if flash else C_7a4aa8)
 		elif en.type == "flyer":
 			var flap := sin(tick * 0.3 + en.phase) * 5
 			var ec := Vector2(en.x + en.w / 2.0, en.y + en.h / 2.0)
-			draw_circle(ec, en.w / 2.0, Color.WHITE if flash else Color("#5fb0e8"))
-			var wing := Color.WHITE if flash else Color("#3d7eb0")
+			draw_circle(ec, en.w / 2.0, Color.WHITE if flash else C_5fb0e8)
+			var wing := Color.WHITE if flash else C_3d7eb0
 			draw_colored_polygon(PackedVector2Array([
 				Vector2(en.x + 2, ec.y), Vector2(en.x - 7, ec.y - 6 + flap), Vector2(en.x + 4, ec.y + 4)]), wing)
 			draw_colored_polygon(PackedVector2Array([
 				Vector2(en.x + en.w - 2, ec.y), Vector2(en.x + en.w + 7, ec.y - 6 + flap), Vector2(en.x + en.w - 4, ec.y + 4)]), wing)
-			draw_rect(Rect2(ec.x + en.dir * 4 - 2, ec.y - 3, 4, 4), Color("#10243a"))
+			draw_rect(Rect2(ec.x + en.dir * 4 - 2, ec.y - 3, 4, 4), C_10243a)
 		elif en.type == "orbiter":
 			var ec := Vector2(en.x + en.w / 2.0, en.y + en.h / 2.0)
 			var aura := 0.5 + 0.5 * sin(tick * 0.12 + en.phase)
 			draw_circle(ec, en.w * 0.72 + aura * 3.0, Color(0.62, 0.42, 1.0, 0.14))  # фиолетовая аура
-			draw_circle(ec, en.w / 2.0, Color.WHITE if flash else Color("#9d6bff"))
-			draw_circle(ec, en.w / 2.0 - 4, Color("#2a1640"))                        # тёмное ядро
+			draw_circle(ec, en.w / 2.0, Color.WHITE if flash else C_9d6bff)
+			draw_circle(ec, en.w / 2.0 - 4, C_2a1640)                        # тёмное ядро
 			var ga: float = tick * 0.14 + float(en.phase)                            # вращающийся спутник-глинт
 			draw_circle(ec + Vector2(cos(ga), sin(ga)) * (en.w * 0.6), 2.4, Color(0.85, 0.7, 1.0))
-			draw_circle(ec + Vector2(en.dir * 3, 0), 2.0, Color("#ecd9ff"))          # зрачок к игроку
+			draw_circle(ec + Vector2(en.dir * 3, 0), 2.0, C_ecd9ff)          # зрачок к игроку
 		elif en.type == "tank":
-			draw_rect(Rect2(en.x, en.y + 8, en.w, en.h - 8), Color.WHITE if flash else Color("#c8893a"))
-			draw_circle(Vector2(en.x + en.w / 2.0, en.y + 12), en.w / 2.0 - 4, Color.WHITE if flash else Color("#9c6a28"))
-			draw_rect(Rect2(en.x + en.w / 2.0 + (6 if en.dir > 0 else -22), en.y + en.h / 2.0, 16, 5), Color("#3a2810"))
+			draw_rect(Rect2(en.x, en.y + 8, en.w, en.h - 8), Color.WHITE if flash else C_c8893a)
+			draw_circle(Vector2(en.x + en.w / 2.0, en.y + 12), en.w / 2.0 - 4, Color.WHITE if flash else C_9c6a28)
+			draw_rect(Rect2(en.x + en.w / 2.0 + (6 if en.dir > 0 else -22), en.y + en.h / 2.0, 16, 5), C_3a2810)
 		elif en.type == "exploder":
 			# пульсирующий телеграф подрыва
 			var blink := (sin(en.phase) * 0.5 + 0.5)
-			var body := Color("#ff7a3d").lerp(Color("#fff0b0"), blink)
+			var body := C_ff7a3d.lerp(C_fff0b0, blink)
 			draw_circle(Vector2(en.x + en.w / 2.0, en.y + en.h / 2.0), en.w / 2.0 + 1, Color(1, 0.5, 0.2, 0.18 + blink * 0.2))
 			draw_rect(Rect2(en.x, en.y, en.w, en.h), Color.WHITE if flash else body)
-			draw_rect(Rect2(en.x + en.w / 2.0 - 2, en.y - 4, 4, 4), Color("#ffe14d"))  # фитиль
-			draw_rect(Rect2(en.x + 4, en.y + 8, 4, 4), Color("#2a0f0e"))
-			draw_rect(Rect2(en.x + en.w - 8, en.y + 8, 4, 4), Color("#2a0f0e"))
+			draw_rect(Rect2(en.x + en.w / 2.0 - 2, en.y - 4, 4, 4), C_ffe14d)  # фитиль
+			draw_rect(Rect2(en.x + 4, en.y + 8, 4, 4), C_2a0f0e)
+			draw_rect(Rect2(en.x + en.w - 8, en.y + 8, 4, 4), C_2a0f0e)
 		elif en.type == "charger":
 			var winding: bool = en.charge > 0
 			var rushing: bool = en.get("rush", 0) > 0
-			var bcol := Color("#7a6b8a")
+			var bcol := C_7a6b8a
 			if flash:
 				bcol = Color.WHITE
 			elif winding:
-				bcol = Color("#7a6b8a").lerp(Color("#ffd0a0"), 0.5 + 0.5 * sin(en.phase))
+				bcol = C_7a6b8a.lerp(C_ffd0a0, 0.5 + 0.5 * sin(en.phase))
 			draw_rect(Rect2(en.x, en.y, en.w, en.h), bcol)
 			var hx: float = en.x + en.w if en.dir > 0 else en.x
 			var hs: float = 1.0 if en.dir > 0 else -1.0
 			draw_colored_polygon(PackedVector2Array([
 				Vector2(hx, en.y + 2), Vector2(hx + hs * 11.0, en.y + en.h / 2.0), Vector2(hx, en.y + en.h - 2)]),
-				Color.WHITE if flash else Color("#3a3145"))
-			draw_rect(Rect2(en.x + en.w / 2.0 + en.dir * 4 - 6, en.y + 8, 12, 4), Color("#ff5050") if (winding or rushing) else Color("#c0c0d0"))
+				Color.WHITE if flash else C_3a3145)
+			draw_rect(Rect2(en.x + en.w / 2.0 + en.dir * 4 - 6, en.y + 8, 12, 4), C_ff5050 if (winding or rushing) else C_c0c0d0)
 			if rushing:
 				for i in range(3):
 					draw_line(Vector2(en.x - en.dir * (i * 8 + 4), en.y + 6 + i * 8), Vector2(en.x - en.dir * (i * 8 + 20), en.y + 6 + i * 8), Color(1, 1, 1, 0.4), 2.0)
@@ -5615,9 +5759,9 @@ func _draw_enemies() -> void:
 			var pul := 0.5 + 0.5 * sin(en.phase * 2.0)
 			draw_circle(hc, en.w * 0.7 + pul * 4.0, Color(0.5, 1.0, 0.6, 0.16))
 			draw_arc(hc, en.w * 0.7, 0, TAU, 18, Color(0.5, 1.0, 0.6, 0.5), 1.5)
-			draw_circle(hc, en.w / 2.0, Color.WHITE if flash else Color("#3fae6a"))
-			draw_rect(Rect2(hc.x - 2, hc.y - 6, 4, 12), Color("#eafff0"))
-			draw_rect(Rect2(hc.x - 6, hc.y - 2, 12, 4), Color("#eafff0"))
+			draw_circle(hc, en.w / 2.0, Color.WHITE if flash else C_3fae6a)
+			draw_rect(Rect2(hc.x - 2, hc.y - 6, 4, 12), C_eafff0)
+			draw_rect(Rect2(hc.x - 6, hc.y - 2, 12, 4), C_eafff0)
 		elif en.type == "boss" and en.get("variant", "ground") == "crystal":
 			var ecc := Vector2(en.x + en.w / 2.0, en.y + en.h / 2.0)
 			var charging: bool = int(en.atk_t) < 22   # вот-вот телепорт-нова
@@ -5627,15 +5771,15 @@ func _draw_enemies() -> void:
 				var oa: float = en.phase * 2.0 + oi * TAU / 6.0
 				var op: Vector2 = ecc + Vector2(cos(oa), sin(oa)) * (en.w * 0.75)
 				draw_colored_polygon(PackedVector2Array([
-					op + Vector2(0, -4), op + Vector2(3, 0), op + Vector2(0, 4), op + Vector2(-3, 0)]), Color("#d9b3ff"))
+					op + Vector2(0, -4), op + Vector2(3, 0), op + Vector2(0, 4), op + Vector2(-3, 0)]), C_d9b3ff)
 			# гранёное кристальное ядро (ромб в ромбе)
-			var cc := Color.WHITE if flash else Color("#7a3fd0")
+			var cc := Color.WHITE if flash else C_7a3fd0
 			draw_colored_polygon(PackedVector2Array([
 				ecc + Vector2(0, -en.h / 2.0), ecc + Vector2(en.w / 2.0, 0),
 				ecc + Vector2(0, en.h / 2.0), ecc + Vector2(-en.w / 2.0, 0)]), cc)
 			draw_colored_polygon(PackedVector2Array([
 				ecc + Vector2(0, -en.h / 3.0), ecc + Vector2(en.w / 3.0, 0),
-				ecc + Vector2(0, en.h / 3.0), ecc + Vector2(-en.w / 3.0, 0)]), Color.WHITE if flash else Color("#bf9bff"))
+				ecc + Vector2(0, en.h / 3.0), ecc + Vector2(-en.w / 3.0, 0)]), Color.WHITE if flash else C_bf9bff)
 			var gl := 1.6 if bloom_on else 1.0
 			draw_circle(ecc, 5, Color(1.3 * gl, 1.1 * gl, 1.6 * gl))
 		elif en.type == "boss" and en.get("variant", "ground") == "summoner":
@@ -5643,53 +5787,53 @@ func _draw_enemies() -> void:
 			draw_circle(ecs, en.w * 0.85 + sin(tick * 0.1) * 5, Color(0.75, 0.55, 1.0, 0.18))
 			for oi in range(5):
 				var oa: float = en.phase * 1.5 + oi * TAU / 5.0
-				draw_circle(ecs + Vector2(cos(oa), sin(oa)) * (en.w * 0.7), 3.0, Color("#d9b3ff"))
-			var rcol := Color.WHITE if flash else Color("#8a4fd0")
+				draw_circle(ecs + Vector2(cos(oa), sin(oa)) * (en.w * 0.7), 3.0, C_d9b3ff)
+			var rcol := Color.WHITE if flash else C_8a4fd0
 			draw_colored_polygon(PackedVector2Array([
 				ecs + Vector2(0, -en.h / 2.0), ecs + Vector2(en.w / 2.0, 0),
 				ecs + Vector2(0, en.h / 2.0), ecs + Vector2(-en.w / 2.0, 0)]), rcol)
 			draw_colored_polygon(PackedVector2Array([
 				ecs + Vector2(0, -en.h / 3.0), ecs + Vector2(en.w / 3.0, 0),
-				ecs + Vector2(0, en.h / 3.0), ecs + Vector2(-en.w / 3.0, 0)]), Color.WHITE if flash else Color("#c9a0f5"))
-			draw_circle(ecs, 5, Color("#2a1244"))
+				ecs + Vector2(0, en.h / 3.0), ecs + Vector2(-en.w / 3.0, 0)]), Color.WHITE if flash else C_c9a0f5)
+			draw_circle(ecs, 5, C_2a1244)
 		elif en.type == "boss" and en.get("variant", "ground") == "air":
 			var ecb := Vector2(en.x + en.w / 2.0, en.y + en.h / 2.0)
 			var aura: Color = [Color(0.5, 0.83, 1.0, 0.18), Color(0.5, 0.83, 1.0, 0.18), Color(1.0, 0.5, 0.4, 0.22)][en.atk]
 			draw_circle(ecb, en.w * 0.8 + sin(tick * 0.12) * 5, aura)
 			# крылья
 			var flap := sin(tick * 0.25 + en.phase) * 8
-			var wing := Color.WHITE if flash else Color("#3f7fb0")
+			var wing := Color.WHITE if flash else C_3f7fb0
 			draw_colored_polygon(PackedVector2Array([
 				Vector2(en.x + 6, ecb.y), Vector2(en.x - 22, ecb.y - 14 + flap), Vector2(en.x + 8, ecb.y + 12)]), wing)
 			draw_colored_polygon(PackedVector2Array([
 				Vector2(en.x + en.w - 6, ecb.y), Vector2(en.x + en.w + 22, ecb.y - 14 + flap), Vector2(en.x + en.w - 8, ecb.y + 12)]), wing)
 			# ядро-глаз
-			draw_circle(ecb, en.w / 2.0, Color.WHITE if flash else Color("#2c5f8a"))
-			draw_circle(ecb, en.w / 2.0 - 6, Color.WHITE if flash else Color("#7fd4ff"))
-			draw_circle(Vector2(ecb.x + en.dir * 6, ecb.y), 7, Color("#11314a"))
+			draw_circle(ecb, en.w / 2.0, Color.WHITE if flash else C_2c5f8a)
+			draw_circle(ecb, en.w / 2.0 - 6, Color.WHITE if flash else C_7fd4ff)
+			draw_circle(Vector2(ecb.x + en.dir * 6, ecb.y), 7, C_11314a)
 		elif en.type == "boss" and en.get("variant", "ground") == "artillery":
 			var eca := Vector2(en.x + en.w / 2.0, en.y + en.h / 2.0)
 			var charging: bool = en.cd < 18   # вот-вот залп
 			draw_circle(eca, en.w * 0.8 + sin(tick * 0.1) * 4, Color(1.0, 0.6, 0.2, 0.34 if charging else 0.2))
-			draw_rect(Rect2(en.x + 4, eca.y - 6, en.w - 8, en.h / 2.0), Color.WHITE if flash else Color("#7a5a3a"))
-			draw_rect(Rect2(en.x + 4, eca.y - 6, en.w - 8, 6), Color.WHITE if flash else Color("#9c7a4a"))
+			draw_rect(Rect2(en.x + 4, eca.y - 6, en.w - 8, en.h / 2.0), Color.WHITE if flash else C_7a5a3a)
+			draw_rect(Rect2(en.x + 4, eca.y - 6, en.w - 8, 6), Color.WHITE if flash else C_9c7a4a)
 			for mi in range(3):
 				var mxb: float = en.x + 10 + mi * (en.w - 20) / 2.0
-				draw_rect(Rect2(mxb - 3, en.y - 6, 7, 16), Color.WHITE if flash else Color("#3a2f22"))
-				draw_circle(Vector2(mxb + 0.5, en.y - 6), 4, Color("#ffb14d") if charging else Color("#5a4632"))
-			draw_rect(Rect2(en.x, eca.y + en.h / 2.0 - 6, en.w, 8), Color("#2b2118"))
+				draw_rect(Rect2(mxb - 3, en.y - 6, 7, 16), Color.WHITE if flash else C_3a2f22)
+				draw_circle(Vector2(mxb + 0.5, en.y - 6), 4, C_ffb14d if charging else C_5a4632)
+			draw_rect(Rect2(en.x, eca.y + en.h / 2.0 - 6, en.w, 8), C_2b2118)
 		elif en.type == "boss":
 			var ecb := Vector2(en.x + en.w / 2.0, en.y + en.h / 2.0)
 			# аура по фазе атаки
 			var aura: Color = [Color(1, 0.37, 0.77, 0.18), Color(1, 0.5, 0.3, 0.18), Color(0.6, 0.4, 1.0, 0.18)][en.atk]
 			draw_circle(ecb, en.w * 0.75 + sin(tick * 0.1) * 4, aura)
-			draw_rect(Rect2(en.x, en.y + 10, en.w, en.h - 10), Color.WHITE if flash else Color("#7a2e6e"))
-			draw_circle(Vector2(ecb.x, en.y + 16), en.w / 2.0 - 6, Color.WHITE if flash else Color("#9c3a8c"))
+			draw_rect(Rect2(en.x, en.y + 10, en.w, en.h - 10), Color.WHITE if flash else C_7a2e6e)
+			draw_circle(Vector2(ecb.x, en.y + 16), en.w / 2.0 - 6, Color.WHITE if flash else C_9c3a8c)
 			# глаза
-			draw_rect(Rect2(ecb.x + en.dir * 8 - 10, en.y + 22, 8, 8), Color("#ffe14d"))
-			draw_rect(Rect2(ecb.x + en.dir * 8 + 2, en.y + 22, 8, 8), Color("#ffe14d"))
+			draw_rect(Rect2(ecb.x + en.dir * 8 - 10, en.y + 22, 8, 8), C_ffe14d)
+			draw_rect(Rect2(ecb.x + en.dir * 8 + 2, en.y + 22, 8, 8), C_ffe14d)
 			# пушки
-			draw_rect(Rect2(en.x - 6, ecb.y + 6, en.w + 12, 8), Color("#3a2440"))
+			draw_rect(Rect2(en.x - 6, ecb.y + 6, en.w + 12, 8), C_3a2440)
 
 		# верхний блик (объём), кроме босса и летунов
 		if en.type != "boss" and not en.get("fly", false) and not flash:
@@ -5699,12 +5843,12 @@ func _draw_enemies() -> void:
 			draw_rect(Rect2(en.x, en.y, en.w, en.h), Color(0.5, 0.83, 1.0, 0.30))
 		if int(en.get("burn", 0)) > 0:
 			draw_rect(Rect2(en.x, en.y, en.w, en.h), Color(1.0, 0.45, 0.2, 0.22))
-			draw_circle(Vector2(en.x + en.w / 2.0 + sin(tick * 0.5 + float(en.eid)) * 4, en.y - 2), 2.5, Color("#ff8a3d"))
+			draw_circle(Vector2(en.x + en.w / 2.0 + sin(tick * 0.5 + float(en.eid)) * 4, en.y - 2), 2.5, C_ff8a3d)
 
 		if en.type != "boss" and en.hurt_t > 0 and en.hp < en.maxhp:
 			var bw: float = en.w + 8
 			draw_rect(Rect2(en.x - 4, en.y - 9, bw, 4), Color(0, 0, 0, 0.55))
-			draw_rect(Rect2(en.x - 4, en.y - 9, bw * clampf(float(en.hp) / en.maxhp, 0, 1), 4), Color("#ff5e57"))
+			draw_rect(Rect2(en.x - 4, en.y - 9, bw * clampf(float(en.hp) / en.maxhp, 0, 1), 4), C_ff5e57)
 
 func _draw_lava_reflection() -> void:
 	# отражение игрока на поверхности лавы: перевёрнутое, дрожащее, в цвете лавы
@@ -5737,7 +5881,7 @@ func _draw_lava_reflection() -> void:
 		if a <= 0.02:
 			continue
 		var ox := wob * (1.0 + k * 0.4)
-		var bc := Color("#3ec6a8").lerp(lc, 0.45)
+		var bc := C_3ec6a8.lerp(lc, 0.45)
 		draw_rect(Rect2(rx0 + ox, ry, rx1 - rx0, seg + 1.0), Color(bc.r, bc.g, bc.b, a))
 
 func _draw_player() -> void:
@@ -5751,7 +5895,7 @@ func _draw_player() -> void:
 	if P.inv > 0 and (tick & 4) != 0:
 		return
 	var pcx: float = P.x + P.w / 2.0
-	_glow(Vector2(pcx, P.y + P.h / 2.0), P.w * 1.05, Color("#3ec6a8"))
+	_glow(Vector2(pcx, P.y + P.h / 2.0), P.w * 1.05, C_3ec6a8)
 	# squash & stretch: сжатие при приземлении, вытягивание в полёте
 	var sqx := 1.0
 	var sqy := 1.0
@@ -5777,26 +5921,26 @@ func _draw_player() -> void:
 	var ph := tick * 0.45
 	var l1: float = (sin(ph) * 2.5) if moving else 0.0
 	var l2: float = (sin(ph + PI) * 2.5) if moving else 0.0
-	draw_rect(Rect2(P.x + 2 + l1, P.y + P.h - 4, 6, 4), Color("#226b5c"))
-	draw_rect(Rect2(P.x + P.w - 8 + l2, P.y + P.h - 4, 6, 4), Color("#226b5c"))
-	draw_rect(Rect2(P.x - 1.5, P.y + 2.5, P.w + 3, P.h - 2.5), Color("#10302a"))  # контур
-	draw_rect(Rect2(P.x, P.y + 4, P.w, P.h - 4), Color("#3ec6a8"))
-	draw_rect(Rect2(P.x + 2, P.y + 5, P.w - 4, 3), Color("#5fe0c2"))  # верхний блик
-	draw_rect(Rect2(P.x, P.y + P.h - 7, P.w, 7), Color("#2c917b"))
+	draw_rect(Rect2(P.x + 2 + l1, P.y + P.h - 4, 6, 4), C_226b5c)
+	draw_rect(Rect2(P.x + P.w - 8 + l2, P.y + P.h - 4, 6, 4), C_226b5c)
+	draw_rect(Rect2(P.x - 1.5, P.y + 2.5, P.w + 3, P.h - 2.5), C_10302a)  # контур
+	draw_rect(Rect2(P.x, P.y + 4, P.w, P.h - 4), C_3ec6a8)
+	draw_rect(Rect2(P.x + 2, P.y + 5, P.w - 4, 3), C_5fe0c2)  # верхний блик
+	draw_rect(Rect2(P.x, P.y + P.h - 7, P.w, 7), C_2c917b)
 	# глаз-визор с редким морганием
 	var blink: bool = (tick % 200) < 6
 	if blink:
-		draw_rect(Rect2(P.x + (8 if P.face > 0 else 2), P.y + 11, 10, 2), Color("#1c3a4a"))
+		draw_rect(Rect2(P.x + (8 if P.face > 0 else 2), P.y + 11, 10, 2), C_1c3a4a)
 	else:
-		draw_rect(Rect2(P.x + (8 if P.face > 0 else 2), P.y + 8, 10, 5), Color("#e9f4ff"))
-		draw_rect(Rect2(P.x + (13 if P.face > 0 else 3), P.y + 9, 4, 3), Color("#1c3a4a"))
+		draw_rect(Rect2(P.x + (8 if P.face > 0 else 2), P.y + 8, 10, 5), C_e9f4ff)
+		draw_rect(Rect2(P.x + (13 if P.face > 0 else 3), P.y + 9, 4, 3), C_1c3a4a)
 	draw_set_transform(-_cam_draw)   # сброс squash перед оружием
 	# оружие, повёрнутое к прицелу
 	var w: Dictionary = WEAPONS[P.weapons[P.wi].id]
 	var gx: float = P.x + P.w / 2.0 - _cam_draw.x
 	var gy: float = P.y + P.h / 2.0 - 2 - _cam_draw.y
 	draw_set_transform(Vector2(gx, gy), P.aim)
-	draw_rect(Rect2(2, -3, w.len, 6), Color("#222b3d"))
+	draw_rect(Rect2(2, -3, w.len, 6), C_222b3d)
 	draw_rect(Rect2(w.len - 3, -2, 4, 4), _col(w.color))
 	draw_set_transform(-_cam_draw)
 	# кольцо щита
@@ -5868,42 +6012,42 @@ func _draw_hud() -> void:
 	var gfrac := clampf(_hp_ghost / P.maxhp, 0, 1)
 	if gfrac > frac:
 		_ci.draw_rect(Rect2(14, 14, hpw * gfrac, 16), Color(1.0, 0.45, 0.45, 0.7))
-	var hpcol := Color("#56d98b")
+	var hpcol := C_56d98b
 	if frac <= 0.35:
-		hpcol = Color("#ff5e57") if (tick % 30 < 15) else Color("#c93a34")
+		hpcol = C_ff5e57 if (tick % 30 < 15) else C_c93a34
 	_ci.draw_rect(Rect2(14, 14, hpw * frac, 16), hpcol)
 	# полоса щита поверх верхнего края HP
 	if P.shield > 0:
 		var sw := hpw * clampf(P.shield / P.maxhp, 0, 1)
-		_ci.draw_rect(Rect2(14, 12, sw, 4), Color("#7fd4ff"))
-	_text(Vector2(20, 27), "%d / %d" % [ceili(P.hp), int(P.maxhp)], 12, Color("#eaf0ff"))
+		_ci.draw_rect(Rect2(14, 12, sw, 4), C_7fd4ff)
+	_text(Vector2(20, 27), "%d / %d" % [ceili(P.hp), int(P.maxhp)], 12, C_eaf0ff)
 
 	# индикатор рывка
 	var dy := 38.0
 	_ci.draw_rect(Rect2(12, dy, 120, 8), Color(0, 0, 0, 0.45))
 	var dfrac := 1.0 - clampf(float(P.dash_cd) / 55.0, 0, 1)
-	_ci.draw_rect(Rect2(13, dy + 1, 118 * dfrac, 6), Color("#7fdcff") if dfrac >= 1.0 else Color("#3a6c8c"))
-	_text(Vector2(136, dy + 8), "рывок (Shift/ПКМ)", 10, Color("#8d97bd"))
+	_ci.draw_rect(Rect2(13, dy + 1, 118 * dfrac, 6), C_7fdcff if dfrac >= 1.0 else C_3a6c8c)
+	_text(Vector2(136, dy + 8), "рывок (Shift/ПКМ)", 10, C_8d97bd)
 
 	# заряд ультимейта
 	var uy := 50.0
 	_ci.draw_rect(Rect2(12, uy, 120, 8), Color(0, 0, 0, 0.45))
 	var ufrac := clampf(ult / ULT_MAX, 0, 1)
 	var ready := ufrac >= 1.0
-	var ucol := Color("#ffd86b") if (ready and (tick % 20 < 10)) else (Color("#ff9e4d") if ready else Color("#7a5a2c"))
+	var ucol := C_ffd86b if (ready and (tick % 20 < 10)) else (C_ff9e4d if ready else C_7a5a2c)
 	_ci.draw_rect(Rect2(13, uy + 1, 118 * ufrac, 6), ucol)
-	_text(Vector2(136, uy + 8), "ПЕРЕГРУЗКА (Q)" if ready else "перегрузка (Q)", 10, Color("#ffd86b") if ready else Color("#8d97bd"))
+	_text(Vector2(136, uy + 8), "ПЕРЕГРУЗКА (Q)" if ready else "перегрузка (Q)", 10, C_ffd86b if ready else C_8d97bd)
 
 	# активный предмет (слот, клавиша E) с индикатором перезарядки
 	if P.get("active", "") != "":
 		var aready: bool = P.active_cd <= 0
 		_ci.draw_rect(Rect2(12, 62, 26, 26), Color(0, 0, 0, 0.5))
-		_ci.draw_rect(Rect2(12, 62, 26, 26), Color("#7fd4ff") if aready else Color(1, 1, 1, 0.15), false, 1.0)
-		_text(Vector2(16, 81), ACTIVES[P.active].icon, 14, Color("#eaf0ff") if aready else Color("#5a6385"))
+		_ci.draw_rect(Rect2(12, 62, 26, 26), C_7fd4ff if aready else Color(1, 1, 1, 0.15), false, 1.0)
+		_text(Vector2(16, 81), ACTIVES[P.active].icon, 14, C_eaf0ff if aready else C_5a6385)
 		if not aready:
 			var cdf := float(P.active_cd) / maxf(1.0, P.active_max)
 			_ci.draw_rect(Rect2(12, 62, 26, 26.0 * cdf), Color(0, 0, 0, 0.55))   # затемнение сверху по кулдауну
-		_text(Vector2(41, 76), "E", 10, Color("#8d97bd"))
+		_text(Vector2(41, 76), "E", 10, C_8d97bd)
 
 	# реликвии забега — ряд иконок (рамка по редкости)
 	if relics.size() > 0:
@@ -5912,7 +6056,7 @@ func _draw_hud() -> void:
 			var brc := _rar_color(_rar(rid))
 			_ci.draw_rect(Rect2(rx, 92, 18, 18), Color(0.12, 0.10, 0.18, 0.7))
 			_ci.draw_rect(Rect2(rx, 92, 18, 18), brc, false, 1.0)
-			_text(Vector2(rx + 3, 106), RELICS[rid].icon, 13, Color("#ffe9b0"))
+			_text(Vector2(rx + 3, 106), RELICS[rid].icon, 13, C_ffe9b0)
 			rx += 22.0
 		# бейджи активных синергий-наборов (Атака/Защита/Поддержка)
 		var by := 114.0
@@ -5922,7 +6066,7 @@ func _draw_hud() -> void:
 			if tier <= 0:
 				continue
 			var code: String = { "off": "Атк", "def": "Защ", "util": "Под" }[cat]
-			var bcol: Color = { "off": Color("#ff8f6b"), "def": Color("#7fd4ff"), "util": Color("#ffd86b") }[cat]
+			var bcol: Color = { "off": C_ff8f6b, "def": C_7fd4ff, "util": C_ffd86b }[cat]
 			var lbl := T(code) + ("+" if tier >= 2 else "")
 			var bw := 30.0 if tier >= 2 else 26.0
 			_ci.draw_rect(Rect2(bx, by, bw, 14), Color(bcol.r, bcol.g, bcol.b, 0.2))
@@ -5944,7 +6088,7 @@ func _draw_hud() -> void:
 		title = T("Уровень %d · %s") % [lvl, T(boss_name) if boss_name != "" else T("БОСС")]
 	if difficulty > 0:
 		title += "  ·  %s" % T(_diff_name(difficulty))
-	_text(Vector2(VW / 2.0, 24), title, 14, Color("#dfe5ff"), true)
+	_text(Vector2(VW / 2.0, 24), title, 14, C_dfe5ff, true)
 
 	# полоса здоровья босса
 	if boss_alive:
@@ -5958,23 +6102,23 @@ func _draw_hud() -> void:
 			var bx := VW / 2.0 - bw / 2.0
 			_ci.draw_rect(Rect2(bx - 3, VH - 86, bw + 6, 22), Color(0, 0, 0, 0.55))
 			var bfrac := clampf(float(boss.hp) / boss.maxhp, 0, 1)
-			_ci.draw_rect(Rect2(bx, VH - 83, bw * bfrac, 16), Color("#ff4db0"))
-			_text(Vector2(VW / 2.0, VH - 70), boss_name if boss_name != "" else "БОСС", 12, Color("#ffe9b0"), true)
-			_draw_offscreen_arrow(Vector2(boss.x + boss.w / 2.0, boss.y + boss.h / 2.0), Color("#ff4db0"))
+			_ci.draw_rect(Rect2(bx, VH - 83, bw * bfrac, 16), C_ff4db0)
+			_text(Vector2(VW / 2.0, VH - 70), boss_name if boss_name != "" else "БОСС", 12, C_ffe9b0, true)
+			_draw_offscreen_arrow(Vector2(boss.x + boss.w / 2.0, boss.y + boss.h / 2.0), C_ff4db0)
 	else:
 		# указатель на портал, если он за краем экрана
-		_draw_offscreen_arrow(Vector2(level.exit_px.x, level.exit_px.y + TILE / 2.0), Color("#9be8ff"))
+		_draw_offscreen_arrow(Vector2(level.exit_px.x, level.exit_px.y + TILE / 2.0), C_9be8ff)
 
 	# очки
 	var score_str := str(score)
 	var ssz := font.get_string_size(score_str, HORIZONTAL_ALIGNMENT_LEFT, -1, 16)
-	_text(Vector2(VW - 16 - ssz.x, 26), score_str, 16, Color("#ffd86b"))
+	_text(Vector2(VW - 16 - ssz.x, 26), score_str, 16, C_ffd86b)
 	var sub := T("● %d · убийств: %d · сид: %s") % [coins, kills, seed_label]
 	var subsz := font.get_string_size(sub, HORIZONTAL_ALIGNMENT_LEFT, -1, 11)
-	_text(Vector2(VW - 16 - subsz.x, 44), sub, 11, Color("#8d97bd"))
+	_text(Vector2(VW - 16 - subsz.x, 44), sub, 11, C_8d97bd)
 
 	# часы забега под заголовком
-	_text(Vector2(VW / 2.0, 40), _fmt_time(run_ticks), 11, Color("#6f7aa3"), true)
+	_text(Vector2(VW / 2.0, 40), _fmt_time(run_ticks), 11, C_6f7aa3, true)
 
 	_draw_minimap()
 
@@ -5984,9 +6128,9 @@ func _draw_hud() -> void:
 	_ci.draw_rect(Rect2(12, VH - 46, 210, 34), Color(0, 0, 0, 0.45))
 	_ci.draw_rect(Rect2(22, VH - 32, 18, 6), _col(w.color))
 	var ammo_str := "∞" if not is_finite(slot.ammo) else str(int(slot.ammo))
-	var acol := Color("#eaf0ff")
+	var acol := C_eaf0ff
 	if low_ammo_t > 0 or (is_finite(slot.ammo) and slot.ammo <= 5):
-		acol = Color("#ff5e57")
+		acol = C_ff5e57
 	_text(Vector2(50, VH - 22), "%s · %s" % [T(w.name), ammo_str], 13, acol)
 	for i in range(P.weapons.size()):
 		var sx := 232 + i * 26
@@ -5998,7 +6142,7 @@ func _draw_hud() -> void:
 				_ci.draw_rect(Rect2(sx - ex - 1, VH - 43 - ex, 24 + ex * 2.0, 24 + ex * 2.0), Color(1, 1, 1, 0.5 * gp), false, 1.5)
 		else:
 			_ci.draw_rect(Rect2(sx, VH - 42, 22, 22), Color(1, 1, 1, 0.15))
-		_text(Vector2(sx + 7, VH - 26), str(i + 1), 12, Color("#2a1c04") if i == P.wi else Color("#cfd6f5"))
+		_text(Vector2(sx + 7, VH - 26), str(i + 1), 12, C_2a1c04 if i == P.wi else C_cfd6f5)
 
 	# пульс при низком здоровье
 	if state == "play":
@@ -6068,7 +6212,7 @@ func _draw_tutorial() -> void:
 	var pulse := 0.6 + 0.4 * sin(tick * 0.12)
 	_ci.draw_rect(Rect2(sx - tw / 2.0, sy - 16.0, tw, 20.0), Color(0.05, 0.06, 0.12, 0.8))
 	_ci.draw_rect(Rect2(sx - tw / 2.0, sy - 16.0, tw, 20.0), Color(1, 0.85, 0.42, 0.5 * pulse), false, 1.0)
-	_text(Vector2(sx, sy - 2.0), hint, 13, Color("#ffe9b0"), true)
+	_text(Vector2(sx, sy - 2.0), hint, 13, C_ffe9b0, true)
 
 func _draw_toasts() -> void:
 	var ty := 100.0
@@ -6103,20 +6247,20 @@ func _draw_minimap() -> void:
 		_ci.draw_rect(Rect2(ox + i, oy + py, 1, mh - py), Color(col_ground.r, col_ground.g, col_ground.b, 0.75))
 	# портал
 	var ex: Vector2 = level.exit_px
-	_ci.draw_rect(Rect2(ox + ex.x * sx - 1, oy + ex.y * sy - 2, 3, 4), Color("#9be8ff"))
+	_ci.draw_rect(Rect2(ox + ex.x * sx - 1, oy + ex.y * sy - 2, 3, 4), C_9be8ff)
 	# враги
 	for en in enemies:
 		if en.dead:
 			continue
-		var ec := Color("#ff6b5e")
+		var ec := C_ff6b5e
 		if en.get("boss", false):
-			ec = Color("#ff4db0")
+			ec = C_ff4db0
 		elif en.type == "flyer":
-			ec = Color("#5fb0e8")
+			ec = C_5fb0e8
 		var sz := 3.0 if en.get("boss", false) else 2.0
 		_ci.draw_rect(Rect2(ox + (en.x + en.w / 2.0) * sx - sz / 2, oy + (en.y + en.h / 2.0) * sy - sz / 2, sz, sz), ec)
 	# игрок
-	_ci.draw_rect(Rect2(ox + (P.x + P.w / 2.0) * sx - 1.5, oy + (P.y + P.h / 2.0) * sy - 1.5, 3, 3), Color("#3ec6a8"))
+	_ci.draw_rect(Rect2(ox + (P.x + P.w / 2.0) * sx - 1.5, oy + (P.y + P.h / 2.0) * sy - 1.5, 3, 3), C_3ec6a8)
 
 func _draw_offscreen_arrow(world_pos: Vector2, color: Color) -> void:
 	var sp := world_pos - cam
@@ -6139,7 +6283,7 @@ func _btn(rect: Rect2, label: String, key: String, primary := true) -> void:
 	var active: bool = hover or idx == _nav_sel   # под курсором или выбран навигацией
 	var bg: Color
 	if primary:
-		bg = Color("#ffd86b") if active else Color("#ffc24d")
+		bg = C_ffd86b if active else C_ffc24d
 	else:
 		bg = Color(1, 1, 1, 0.22) if active else Color(1, 1, 1, 0.10)
 	_ci.draw_rect(Rect2(rect.position + Vector2(0, 3), rect.size), Color(0, 0, 0, 0.35))   # тень-подложка
@@ -6149,7 +6293,7 @@ func _btn(rect: Rect2, label: String, key: String, primary := true) -> void:
 	_ci.draw_rect(Rect2(rect.position + Vector2(0, rect.size.y - 2), Vector2(rect.size.x, 2)), Color(0, 0, 0, 0.18))
 	if active:   # рамка-подсветка
 		_ci.draw_rect(rect, Color(1, 0.96, 0.74, 0.9), false, 2.0)
-	var tc := Color("#2a1c04") if primary else (Color("#ffffff") if active else Color("#cfd6f5"))
+	var tc := C_2a1c04 if primary else (C_ffffff if active else C_cfd6f5)
 	var lift := 1.0 if active else 0.0
 	_text(Vector2(rect.position.x + rect.size.x / 2.0, rect.position.y + rect.size.y / 2.0 + 6 - lift), label, 16, tc, true)
 	_ui_rects[key] = rect
@@ -6252,15 +6396,15 @@ func _draw_overlays() -> void:
 			if light_tex:   # мягкое пульсирующее свечение за заголовком
 				var tp := 0.5 + 0.5 * sin(tick * 0.03)
 				_ci.draw_texture_rect(light_tex, Rect2(cx - 260, 62, 520, 110), false, Color(1.0, 0.82, 0.35, 0.10 + 0.06 * tp))
-			_text(Vector2(cx, 132), "GUNFALL", 66, Color("#ffce5a"), true)
-			_text(Vector2(cx, 170), "Платформер-рогалик: каждый забег — новая карта", 15, Color("#aab3d6"), true)
+			_text(Vector2(cx, 132), "GUNFALL", 66, C_ffce5a, true)
+			_text(Vector2(cx, 170), "Платформер-рогалик: каждый забег — новая карта", 15, C_aab3d6, true)
 			# выбор сложности (Ascension)
 			_btn(Rect2(cx - 150, 192, 30, 28), "◄", "diff_dn", false)
-			var dcol := Color("#ff8f8f") if difficulty >= 2 else Color("#eaf0ff")
+			var dcol := C_ff8f8f if difficulty >= 2 else C_eaf0ff
 			_text(Vector2(cx, 211), T("Сложность: %s") % T(_diff_name(difficulty)), 16, dcol, true)
 			_btn(Rect2(cx + 120, 192, 30, 28), "►", "diff_up", false)
 			if max_difficulty < 3:
-				_text(Vector2(cx, 232), "(побеждай боссов, чтобы открыть сложнее)", 11, Color("#6f7aa3"), true)
+				_text(Vector2(cx, 232), "(побеждай боссов, чтобы открыть сложнее)", 11, C_6f7aa3, true)
 			if _has_save:
 				_btn(Rect2(cx - 186, 246, 180, 42), "Продолжить", "continue")
 				_btn(Rect2(cx + 6, 246, 180, 42), "Новый забег", "play", false)
@@ -6274,11 +6418,11 @@ func _draw_overlays() -> void:
 			_btn(Rect2(cx + 6, 364, 180, 30), T("Мастерская  ◉ %d") % meta_cores, "meta", false)
 			_btn(Rect2(cx - 90, 396, 180, 30), T("Коллекция  %d/%d") % [_unlocks_count(), UNLOCK_DEFS.size()], "collection", false)
 			var bl := T("Рекорд: %d очков") % best if best > 0 else T("Удачного первого забега!")
-			_text(Vector2(cx, 448), bl, 12, Color("#6f7aa3"), true)
-			_text(Vector2(cx, 466), "Enter / клик — старт · ↑↓ — выбор", 11, Color("#6f7aa3"), true)
+			_text(Vector2(cx, 448), bl, 12, C_6f7aa3, true)
+			_text(Vector2(cx, 466), "Enter / клик — старт · ↑↓ — выбор", 11, C_6f7aa3, true)
 		"classes":
-			_text(Vector2(cx, 54), "Классы", 34, Color("#ffe9b0"), true)
-			_text(Vector2(cx, 86), T("Ядра: ◉ %d   (клик — выбрать / открыть)") % meta_cores, 14, Color("#9be8ff"), true)
+			_text(Vector2(cx, 54), "Классы", 34, C_ffe9b0, true)
+			_text(Vector2(cx, 86), T("Ядра: ◉ %d   (клик — выбрать / открыть)") % meta_cores, 14, C_9be8ff, true)
 			var ky := 112.0
 			for i in range(CLASSES.size()):
 				var c: Dictionary = CLASSES[i]
@@ -6288,16 +6432,16 @@ func _draw_overlays() -> void:
 				_ci.draw_rect(rect, Color(0.16, 0.22, 0.14, 0.55) if chosen else (Color(1, 1, 1, 0.05) if owned else Color(0, 0, 0, 0.25)))
 				_ci.draw_rect(rect, Color(0.49, 0.95, 0.55, 0.8) if chosen else (Color(1, 0.85, 0.42, 0.5) if owned else Color(1, 1, 1, 0.12)), false, 1.5)
 				_ui_rects["class_%d" % i] = rect
-				_text(Vector2(rect.position.x + 16, ky + 24), "%s  %s" % [c.icon, T(c.name)], 17, Color("#ffe9b0") if owned else Color("#8d97bd"))
-				_draw_wrapped(c.desc, rect.position.x + 150, ky + 13, 250, 12, Color("#aab3d6") if owned else Color("#6f7aa3"))
+				_text(Vector2(rect.position.x + 16, ky + 24), "%s  %s" % [c.icon, T(c.name)], 17, C_ffe9b0 if owned else C_8d97bd)
+				_draw_wrapped(c.desc, rect.position.x + 150, ky + 13, 250, 12, C_aab3d6 if owned else C_6f7aa3)
 				var tag := (T("Выбран") if chosen else T("Выбрать")) if owned else (T("◉ %d — открыть") % c.cost)
-				var tcol: Color = Color("#7df2a5") if chosen else (Color("#ffd86b") if owned else (Color("#ffd86b") if meta_cores >= int(c.cost) else Color("#ff6b5e")))
+				var tcol: Color = C_7df2a5 if chosen else (C_ffd86b if owned else (C_ffd86b if meta_cores >= int(c.cost) else C_ff6b5e))
 				var tw := font.get_string_size(tag, HORIZONTAL_ALIGNMENT_LEFT, -1, 13).x   # выравнивание тега по правому краю карты
 				_ci.draw_string(font, Vector2(rect.position.x + 566 - tw, ky + 31), tag, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, tcol)
 				ky += 56.0
 			_btn(Rect2(cx - 90, ky + 4, 180, 38), "← Назад", "menu", false)
 		"help":
-			_text(Vector2(cx, 56), "Управление", 34, Color("#ffe9b0"), true)
+			_text(Vector2(cx, 56), "Управление", 34, C_ffe9b0, true)
 			var binds := [
 				["Бег", "A / D  или  ← / →"],
 				["Прыжок", "W / ↑ / Пробел"],
@@ -6315,14 +6459,14 @@ func _draw_overlays() -> void:
 			var hy := 100.0
 			for b in binds:
 				var lwx := font.get_string_size(T(b[0]), HORIZONTAL_ALIGNMENT_LEFT, -1, 15).x
-				_text(Vector2(cx - 20 - lwx, hy), b[0], 15, Color("#aab3d6"))
-				_text(Vector2(cx + 20, hy), b[1], 15, Color("#eaf0ff"))
+				_text(Vector2(cx - 20 - lwx, hy), b[0], 15, C_aab3d6)
+				_text(Vector2(cx + 20, hy), b[1], 15, C_eaf0ff)
 				hy += 28.0
-			_text(Vector2(cx, hy + 4), "Геймпад: стики — движение/прицел, A — прыжок, RT/RB — огонь, LT/B — рывок, Y — ульта, LB — оружие", 12, Color("#6f7aa3"), true)
+			_text(Vector2(cx, hy + 4), "Геймпад: стики — движение/прицел, A — прыжок, RT/RB — огонь, LT/B — рывок, Y — ульта, LB — оружие", 12, C_6f7aa3, true)
 			_btn(Rect2(cx - 90, hy + 26, 180, 40), "← Назад", "menu", false)
 		"achievements":
-			_text(Vector2(cx, 44), "Достижения", 30, Color("#ffe9b0"), true)
-			_text(Vector2(cx, 72), T("Открыто %d из %d") % [unlocked.size(), ACHIEVEMENTS.size()], 14, Color("#9be8ff"), true)
+			_text(Vector2(cx, 44), "Достижения", 30, C_ffe9b0, true)
+			_text(Vector2(cx, 72), T("Открыто %d из %d") % [unlocked.size(), ACHIEVEMENTS.size()], 14, C_9be8ff, true)
 			var per_col := int(ceil(ACHIEVEMENTS.size() / 2.0))
 			for ai in range(ACHIEVEMENTS.size()):
 				var a: Dictionary = ACHIEVEMENTS[ai]
@@ -6330,32 +6474,32 @@ func _draw_overlays() -> void:
 				var col_x := (cx - 300.0) if ai < per_col else (cx + 8.0)
 				var row := ai % per_col
 				var ry := 92.0 + row * 32.0
-				_text(Vector2(col_x, ry + 11), "✓" if got else "🔒", 13, Color("#7df2a5") if got else Color("#6f7aa3"))
-				_text(Vector2(col_x + 20, ry + 9), a.name, 13, Color("#eaf0ff") if got else Color("#8d97bd"))
-				_text(Vector2(col_x + 20, ry + 23), a.desc, 9, Color("#aab3d6") if got else Color("#5a6385"))
+				_text(Vector2(col_x, ry + 11), "✓" if got else "🔒", 13, C_7df2a5 if got else C_6f7aa3)
+				_text(Vector2(col_x + 20, ry + 9), a.name, 13, C_eaf0ff if got else C_8d97bd)
+				_text(Vector2(col_x + 20, ry + 23), a.desc, 9, C_aab3d6 if got else C_5a6385)
 			_btn(Rect2(cx - 90, 488, 180, 34), "← Назад", "menu", false)
 		"collection":
-			_text(Vector2(cx, 50), "Коллекция", 32, Color("#ffe9b0"), true)
-			_text(Vector2(cx, 80), T("Открыто %d из %d") % [_unlocks_count(), UNLOCK_DEFS.size()], 14, Color("#9be8ff"), true)
-			_text(Vector2(cx, 98), "Открывай оружие и реликвии, играя", 11, Color("#6f7aa3"), true)
+			_text(Vector2(cx, 50), "Коллекция", 32, C_ffe9b0, true)
+			_text(Vector2(cx, 80), T("Открыто %d из %d") % [_unlocks_count(), UNLOCK_DEFS.size()], 14, C_9be8ff, true)
+			_text(Vector2(cx, 98), "Открывай оружие и реликвии, играя", 11, C_6f7aa3, true)
 			_draw_collection_col(cx - 280, 124, "Оружие", "weapon")
 			_draw_collection_col(cx + 20, 124, "Реликвии", "relic")
 			_btn(Rect2(cx - 90, 452, 180, 36), "← Назад", "menu", false)
 		"shrine":
 			var sdef: Dictionary = SHRINES.get(pending_shrine.get("type", ""), {})
-			_text(Vector2(cx, 150), "%s  %s" % [sdef.get("icon", "✦"), T(sdef.get("title", "Алтарь"))], 30, Color("#ffe9b0"), true)
-			_draw_wrapped(sdef.get("offer", ""), cx - 230, 200, 460, 16, Color("#cfd6f5"))
+			_text(Vector2(cx, 150), "%s  %s" % [sdef.get("icon", "✦"), T(sdef.get("title", "Алтарь"))], 30, C_ffe9b0, true)
+			_draw_wrapped(sdef.get("offer", ""), cx - 230, 200, 460, 16, C_cfd6f5)
 			_btn(Rect2(cx - 190, 300, 180, 48), "Принять", "shrine_accept")
 			_btn(Rect2(cx + 10, 300, 180, 48), "Отказаться", "shrine_decline", false)
-			_text(Vector2(cx, 372), "Решение можно принять только раз", 11, Color("#6f7aa3"), true)
+			_text(Vector2(cx, 372), "Решение можно принять только раз", 11, C_6f7aa3, true)
 		"pause":
-			_text(Vector2(cx, 170), "Пауза", 40, Color("#eaf0ff"), true)
+			_text(Vector2(cx, 170), "Пауза", 40, C_eaf0ff, true)
 			_btn(Rect2(cx - 90, 214, 180, 46), "Продолжить", "resume")
 			_btn(Rect2(cx - 90, 270, 180, 40), "Настройки", "settings", false)
 			_btn(Rect2(cx - 90, 320, 180, 40), "В меню", "quit", false)
-			_text(Vector2(cx, 384), "Геймпад поддерживается · F11 — полноэкран", 12, Color("#6f7aa3"), true)
+			_text(Vector2(cx, 384), "Геймпад поддерживается · F11 — полноэкран", 12, C_6f7aa3, true)
 		"settings":
-			_text(Vector2(cx, 60), "Настройки", 34, Color("#ffe9b0"), true)
+			_text(Vector2(cx, 60), "Настройки", 34, C_ffe9b0, true)
 			_vol_row(110, "Громкость (общая)", volume, "vol_master")
 			_vol_row(158, "Музыка", music_vol, "vol_music")
 			_vol_row(206, "Звуки", sfx_vol, "vol_sfx")
@@ -6370,11 +6514,11 @@ func _draw_overlays() -> void:
 			_btn(Rect2(cx - 168, 410, 336, 32), T("Язык: %s") % ("Русский" if lang == "ru" else "English"), "toggle_lang", false)
 			_btn(Rect2(cx - 90, 448, 180, 34), "← Назад", "settings_back", false)
 		"dead":
-			_text(Vector2(cx, 120), "Вы погибли", 44, Color("#ff6b5e"), true)
+			_text(Vector2(cx, 120), "Вы погибли", 44, C_ff6b5e, true)
 			var is_record := score >= best and score > 0
 			if is_record:
-				_text(Vector2(cx, 156), "★ НОВЫЙ РЕКОРД ★", 16, Color("#ffd86b"), true)
-			_text(Vector2(cx, 196), T("Очки: %d") % score, 22, Color("#ffd86b"), true)
+				_text(Vector2(cx, 156), "★ НОВЫЙ РЕКОРД ★", 16, C_ffd86b, true)
+			_text(Vector2(cx, 196), T("Очки: %d") % score, 22, C_ffd86b, true)
 			# таблица статистики забега
 			var rows := [
 				["Уровень", "%d" % lvl],
@@ -6389,15 +6533,15 @@ func _draw_overlays() -> void:
 			for row in rows:
 				var lbl: String = row[0]
 				var lw := font.get_string_size(T(lbl), HORIZONTAL_ALIGNMENT_LEFT, -1, 14).x
-				_text(Vector2(cx - 14 - lw, ry), lbl, 14, Color("#8d97bd"))
-				_text(Vector2(cx + 14, ry), row[1], 14, Color("#dfe5ff"))
+				_text(Vector2(cx - 14 - lw, ry), lbl, 14, C_8d97bd)
+				_text(Vector2(cx + 14, ry), row[1], 14, C_dfe5ff)
 				ry += 22
-			_text(Vector2(cx, ry + 6), T("Заработано ◉ %d   (всего ◉ %d → Мастерская)") % [run_cores, meta_cores], 14, Color("#9be8ff"), true)
+			_text(Vector2(cx, ry + 6), T("Заработано ◉ %d   (всего ◉ %d → Мастерская)") % [run_cores, meta_cores], 14, C_9be8ff, true)
 			_btn(Rect2(cx - 190, 420, 180, 50), "Новый забег", "retry")
 			_btn(Rect2(cx + 10, 420, 180, 50), "В меню", "menu", false)
 		"upgrade":
-			_text(Vector2(cx, 110), "Уровень пройден!", 36, Color("#eaf0ff"), true)
-			_text(Vector2(cx, 150), "Выберите улучшение (1 / 2 / 3 или клик):", 16, Color("#aab3d6"), true)
+			_text(Vector2(cx, 110), "Уровень пройден!", 36, C_eaf0ff, true)
+			_text(Vector2(cx, 150), "Выберите улучшение (1 / 2 / 3 или клик):", 16, C_aab3d6, true)
 			var cw := 230.0
 			var gap := 24.0
 			var total := offer.size() * cw + (offer.size() - 1) * gap
@@ -6412,13 +6556,13 @@ func _draw_overlays() -> void:
 				_ui_rects["card%d" % i] = rect
 				var ccx := rect.position.x + cw / 2.0
 				_text(Vector2(ccx, rect.position.y + 24), _rar_name(rt), 12, rcol, true)
-				_text(Vector2(ccx, rect.position.y + 66), u.icon, 44, Color("#ffe9b0"), true)
+				_text(Vector2(ccx, rect.position.y + 66), u.icon, 44, C_ffe9b0, true)
 				_text(Vector2(ccx, rect.position.y + 100), u.name, 18, rcol, true)
-				_draw_wrapped(u.desc, rect.position.x + 16, rect.position.y + 124, cw - 32, 14, Color("#aab3d6"))
-				_text(Vector2(ccx, rect.position.y + 202), "[%d]" % (i + 1), 14, Color("#8d97bd"), true)
+				_draw_wrapped(u.desc, rect.position.x + 16, rect.position.y + 124, cw - 32, 14, C_aab3d6)
+				_text(Vector2(ccx, rect.position.y + 202), "[%d]" % (i + 1), 14, C_8d97bd, true)
 		"shop":
-			_text(Vector2(cx, 80), "Магазин", 36, Color("#ffe9b0"), true)
-			_text(Vector2(cx, 116), T("Монеты: ● %d   (цифры или клик — купить)") % coins, 16, Color("#ffd86b"), true)
+			_text(Vector2(cx, 80), "Магазин", 36, C_ffe9b0, true)
+			_text(Vector2(cx, 116), T("Монеты: ● %d   (цифры или клик — купить)") % coins, 16, C_ffd86b, true)
 			var n := shop_items.size()
 			var gap := 14.0
 			var cw: float = minf(165.0, (VW - 40.0 - (n - 1) * gap) / n)   # сжимаем под число товаров
@@ -6448,15 +6592,15 @@ func _draw_overlays() -> void:
 				_text(Vector2(ccx, rect.position.y + 90), it.name, 17, Color(ncol.r, ncol.g, ncol.b, fade), true)
 				_draw_wrapped(it.desc, rect.position.x + 12, rect.position.y + 114, cw - 24, 13, Color(0.67, 0.70, 0.84, fade))
 				if it.sold:
-					_text(Vector2(ccx, rect.position.y + 196), "куплено", 14, Color("#7df2a5"), true)
+					_text(Vector2(ccx, rect.position.y + 196), "куплено", 14, C_7df2a5, true)
 				else:
-					var pc := Color("#ffd86b") if affordable else Color("#ff6b5e")
+					var pc := C_ffd86b if affordable else C_ff6b5e
 					_text(Vector2(ccx, rect.position.y + 196), "● %d" % it.price, 16, pc, true)
-				_text(Vector2(ccx, rect.position.y + 218), "[%d]" % (i + 1), 13, Color("#8d97bd"), true)
+				_text(Vector2(ccx, rect.position.y + 218), "[%d]" % (i + 1), 13, C_8d97bd, true)
 			_btn(Rect2(cx - 110, 396, 220, 48), "Дальше →", "shop_continue")
 		"meta":
-			_text(Vector2(cx, 64), "Мастерская", 34, Color("#ffe9b0"), true)
-			_text(Vector2(cx, 96), T("Ядра: ◉ %d   (клик — купить улучшение)") % meta_cores, 15, Color("#9be8ff"), true)
+			_text(Vector2(cx, 64), "Мастерская", 34, C_ffe9b0, true)
+			_text(Vector2(cx, 96), T("Ядра: ◉ %d   (клик — купить улучшение)") % meta_cores, 15, C_9be8ff, true)
 			var my := 126.0
 			for mid in META.keys():
 				var m: Dictionary = META[mid]
@@ -6468,29 +6612,29 @@ func _draw_overlays() -> void:
 				_ci.draw_rect(rect, Color(1, 0.85, 0.42, 0.5) if afford else Color(1, 1, 1, 0.12), false, 1.5)
 				if mcost >= 0:
 					_ui_rects["mbuy_" + mid] = rect
-				_text(Vector2(rect.position.x + 14, my + 27), "%s  %s" % [m.icon, T(m.name)], 16, Color("#ffe9b0"))
-				_text(Vector2(rect.position.x + 180, my + 26), m.desc, 12, Color("#aab3d6"))
+				_text(Vector2(rect.position.x + 14, my + 27), "%s  %s" % [m.icon, T(m.name)], 16, C_ffe9b0)
+				_text(Vector2(rect.position.x + 180, my + 26), m.desc, 12, C_aab3d6)
 				for pi in range(int(m.max)):   # пипсы уровней
-					_ci.draw_rect(Rect2(rect.position.x + 452 + pi * 14, my + 15, 10, 10), Color("#ffd86b") if pi < mlv else Color(1, 1, 1, 0.15))
+					_ci.draw_rect(Rect2(rect.position.x + 452 + pi * 14, my + 15, 10, 10), C_ffd86b if pi < mlv else Color(1, 1, 1, 0.15))
 				var cstr := T("МАКС") if mcost < 0 else ("◉ %d" % mcost)
-				_text(Vector2(rect.position.x + 522, my + 27), cstr, 14, Color("#7df2a5") if mcost < 0 else (Color("#ffd86b") if afford else Color("#ff6b5e")))
+				_text(Vector2(rect.position.x + 522, my + 27), cstr, 14, C_7df2a5 if mcost < 0 else (C_ffd86b if afford else C_ff6b5e))
 				my += 48.0
 			_btn(Rect2(cx - 90, my + 8, 180, 40), "← Назад", "menu", false)
 
 func _vol_row(y: float, label: String, value: float, prefix: String) -> void:
 	var cx := VW / 2.0
-	_text(Vector2(cx - 240, y + 19), label, 15, Color("#cfd6f5"))
+	_text(Vector2(cx - 240, y + 19), label, 15, C_cfd6f5)
 	_btn(Rect2(cx - 30, y, 30, 28), "−", prefix + "_dn", false)
 	var bw := 150.0
 	var bx := cx + 12.0
 	_ci.draw_rect(Rect2(bx, y + 8, bw, 12), Color(0, 0, 0, 0.5))
-	_ci.draw_rect(Rect2(bx + 1, y + 9, (bw - 2) * value, 10), Color("#ffc24d"))
+	_ci.draw_rect(Rect2(bx + 1, y + 9, (bw - 2) * value, 10), C_ffc24d)
 	_btn(Rect2(bx + bw + 8, y, 30, 28), "+", prefix + "_up", false)
-	_text(Vector2(bx + bw + 48, y + 19), "%d%%" % int(round(value * 100)), 13, Color("#cfd6f5"))
+	_text(Vector2(bx + bw + 48, y + 19), "%d%%" % int(round(value * 100)), 13, C_cfd6f5)
 
 func _draw_collection_col(x: float, y: float, header: String, kind: String) -> void:
 	# колонка экрана «Коллекция»: запираемые предметы данного типа с прогрессом
-	_text(Vector2(x, y), header, 15, Color("#ffd86b"))
+	_text(Vector2(x, y), header, 15, C_ffd86b)
 	var ry := y + 24.0
 	for d in UNLOCK_DEFS:
 		if d.kind != kind:
@@ -6499,14 +6643,14 @@ func _draw_collection_col(x: float, y: float, header: String, kind: String) -> v
 		var nm: String = data.get("name", d.id)
 		var icon: String = data.get("icon", "•")
 		if unlocks.has(d.id):
-			var ncol: Color = _rar_color(_rar(d.id)) if kind == "relic" else Color("#eaf0ff")
-			_text(Vector2(x, ry + 11), "✓", 13, Color("#7df2a5"))
+			var ncol: Color = _rar_color(_rar(d.id)) if kind == "relic" else C_eaf0ff
+			_text(Vector2(x, ry + 11), "✓", 13, C_7df2a5)
 			_text(Vector2(x + 20, ry + 11), "%s %s" % [icon, T(nm)], 14, ncol)
 		else:
-			_text(Vector2(x, ry + 9), "🔒", 13, Color("#6f7aa3"))
-			_text(Vector2(x + 20, ry + 6), nm, 13, Color("#9aa3c8"))
+			_text(Vector2(x, ry + 9), "🔒", 13, C_6f7aa3)
+			_text(Vector2(x + 20, ry + 6), nm, 13, C_9aa3c8)
 			var cur: int = mini(int(prog.get(d.stat, 0)), int(d.need))
-			_text(Vector2(x + 20, ry + 21), "%s: %d/%d" % [_unlock_desc(d), cur, int(d.need)], 10, Color("#7a85aa"))
+			_text(Vector2(x + 20, ry + 21), "%s: %d/%d" % [_unlock_desc(d), cur, int(d.need)], 10, C_7a85aa)
 		ry += 32.0
 
 func _draw_wrapped(s: String, x: float, y: float, w: float, size: int, color: Color) -> void:
