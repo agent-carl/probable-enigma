@@ -2345,11 +2345,11 @@ func hurt_enemy(en: Dictionary, dmg: int, crit: bool, silent := false) -> void:
 				explode(en.x + en.w / 2.0, en.y + en.h / 2.0, float(en.get("radius", 70.0)), int(en.dmg), "e")
 				_detonating = false
 			for _c in range(rng.randi_range(2, 4)):
-				pickups.append({ "kind": "coin", "x": ecx - 6, "y": en.y, "w": 12, "h": 12, "vy": -3.0 - rng.randf() * 2.0, "t": 0.0 })
+				_drop_pickup("coin", ecx, en.y, { "vy": -3.0 - rng.randf() * 2.0 })
 			if rng.randf() < 0.5:
-				pickups.append({ "kind": "med", "x": ecx - 11, "y": en.y, "w": 22, "h": 18, "vy": -3.0, "t": 0.0, "heal": 20 })
+				_drop_pickup("med", ecx, en.y, { "heal": 20 })
 			else:
-				pickups.append({ "kind": "shield", "x": ecx - 10, "y": en.y, "w": 20, "h": 20, "vy": -3.0, "t": 0.0, "shield": 20.0 })
+				_drop_pickup("shield", ecx, en.y, { "shield": 20.0 })
 
 func _spawn_shards(en: Dictionary) -> void:
 	# делящийся враг распадается на два быстрых осколка
@@ -2419,11 +2419,11 @@ func damage_crate(tx: int, ty: int, dmg: int) -> void:
 		# из ящика выпадает лут
 		var rv := rng.randf()
 		if rv < 0.4:
-			pickups.append({ "kind": "coin", "x": px - 6, "y": py - 6, "w": 12, "h": 12, "vy": -3.0, "t": 0.0 })
+			_drop_pickup("coin", px, py - 6)
 		elif rv < 0.7:
-			pickups.append({ "kind": "ammo", "x": px - 11, "y": py - 9, "w": 22, "h": 18, "vy": -2.5, "t": 0.0 })
+			_drop_pickup("ammo", px, py - 9, { "vy": -2.5 })
 		elif rv < 0.85:
-			pickups.append({ "kind": "med", "x": px - 11, "y": py - 9, "w": 22, "h": 18, "vy": -2.5, "t": 0.0, "heal": 20 })
+			_drop_pickup("med", px, py - 9, { "vy": -2.5, "heal": 20 })
 
 func combo_mult() -> float:
 	# x1.0 при серии 0–2, далее растёт до x4.0
@@ -2510,18 +2510,28 @@ func ride_moving_platforms() -> void:
 			P.ride_id = i
 			break
 
+func _drop_pickup(kind: String, cx: float, y: float, extra := {}) -> void:
+	# фабрика подбираемых предметов: размеры по типу, x-центрирование, доп. поля через extra
+	var sizes := { "coin": Vector2(12, 12), "med": Vector2(22, 18), "ammo": Vector2(22, 18),
+		"shield": Vector2(20, 20), "weapon": Vector2(22, 18) }
+	var sz: Vector2 = sizes.get(kind, Vector2(20, 20))
+	var pk := { "kind": kind, "x": cx - sz.x / 2.0, "y": y, "w": sz.x, "h": sz.y, "vy": -3.0, "t": 0.0 }
+	for k in extra:
+		pk[k] = extra[k]
+	pickups.append(pk)
+
 func drop_loot(en: Dictionary) -> void:
 	var rv := rng.randf()
-	var cx: float = en.x + en.w / 2.0 - 11
+	var cx: float = en.x + en.w / 2.0
 	var cy: float = en.y
 	if rv < 0.30:
-		pickups.append({ "kind": "coin", "x": cx + 4, "y": cy, "w": 12, "h": 12, "vy": -3.0, "t": 0.0 })
+		_drop_pickup("coin", cx, cy)
 	elif rv < 0.38:
-		pickups.append({ "kind": "med", "x": cx, "y": cy, "w": 22, "h": 18, "vy": -3.0, "t": 0.0, "heal": 15 })
+		_drop_pickup("med", cx, cy, { "heal": 15 })
 	elif rv < 0.46:
-		pickups.append({ "kind": "ammo", "x": cx, "y": cy, "w": 22, "h": 18, "vy": -3.0, "t": 0.0 })
+		_drop_pickup("ammo", cx, cy)
 	elif rv < 0.50:
-		pickups.append({ "kind": "shield", "x": cx, "y": cy, "w": 20, "h": 20, "vy": -3.0, "t": 0.0, "shield": 20.0 })
+		_drop_pickup("shield", cx, cy, { "shield": 20.0 })
 
 # ============================== Оружие ==============================
 
@@ -3585,19 +3595,17 @@ func open_chest(ch: Dictionary) -> void:
 	for i in range(n):
 		var ang := -PI / 2.0 + (rng.randf() - 0.5) * 1.6
 		var spd := 2.2 + rng.randf() * 2.2
-		pickups.append({ "kind": "coin", "x": cx - 6, "y": cy - 8, "w": 12, "h": 12,
-			"vy": sin(ang) * spd - 2.0, "vx": cos(ang) * spd, "t": rng.randf() * 6.0 })
+		_drop_pickup("coin", cx, cy - 8, { "vy": sin(ang) * spd - 2.0, "vx": cos(ang) * spd, "t": rng.randf() * 6.0 })
 	var roll := rng.randf()
 	if roll < 0.34:
-		pickups.append({ "kind": "shield", "x": cx - 10, "y": cy - 10, "w": 20, "h": 20, "vy": -3.4, "t": 0.0, "shield": 25.0 })
+		_drop_pickup("shield", cx, cy - 9, { "vy": -3.4, "shield": 25.0 })
 	elif roll < 0.68:
-		pickups.append({ "kind": "med", "x": cx - 11, "y": cy - 9, "w": 22, "h": 18, "vy": -3.4, "t": 0.0, "heal": 30 })
+		_drop_pickup("med", cx, cy - 9, { "vy": -3.4, "heal": 30 })
 	else:
-		pickups.append({ "kind": "ammo", "x": cx - 11, "y": cy - 9, "w": 22, "h": 18, "vy": -3.4, "t": 0.0 })
+		_drop_pickup("ammo", cx, cy - 9, { "vy": -3.4 })
 	if rng.randf() < 0.4:   # бонус: новый ствол
 		var wpool := unlocked_weapon_drops()
-		pickups.append({ "kind": "weapon", "x": cx - 11, "y": cy - 9, "w": 22, "h": 18, "vy": -3.8, "t": 0.0,
-			"weapon": wpool[rng.randi_range(0, wpool.size() - 1)] })
+		_drop_pickup("weapon", cx, cy - 9, { "vy": -3.8, "weapon": wpool[rng.randi_range(0, wpool.size() - 1)] })
 	_burst_particles(Vector2(cx, cy), Color(1.0, 0.85, 0.42), 22, 150.0, 0.6)
 	shockwaves.append({ "x": cx, "y": cy, "r": 4.0, "max_r": 40.0, "life": 12.0, "col": Color(1.0, 0.85, 0.42) })
 	flash = maxf(flash, 0.3)

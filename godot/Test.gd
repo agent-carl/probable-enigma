@@ -1653,6 +1653,24 @@ func _init() -> void:
 	game.level = {}
 	game.state = "menu"
 
+	# ---------- 59. UI: литеральные подписи кнопок помещаются в их ширину (RU/EN) ----------
+	# скрейпим исходник по вызовам _btn(Rect2(...), "литерал", ...) и меряем реальным шрифтом
+	game._load_fonts()
+	var btn_rex := RegEx.new()
+	btn_rex.compile("_btn\\(Rect2\\([^,]+,[^,]+,\\s*([0-9.]+)\\s*,[^)]+\\)\\s*,\\s*\"([^\"]+)\"")
+	var fsrc := FileAccess.get_file_as_string("res://Game.gd")
+	var checked := 0
+	for bm in btn_rex.search_all(fsrc):
+		var bw := float(bm.get_string(1))
+		var lbl := bm.get_string(2)
+		for lng in ["ru", "en"]:
+			game.lang = lng
+			var tw: float = game.font.get_string_size(game.T(lbl), HORIZONTAL_ALIGNMENT_LEFT, -1, 16).x
+			_ok(tw <= bw - 8.0, "btn '%s' fits %dpx [%s] (text %.0fpx)" % [lbl, int(bw), lng, tw])
+		checked += 1
+	_ok(checked >= 15, "button-fit scraper found enough buttons (%d)" % checked)
+	game.lang = "ru"
+
 	if failures == 0:
 		print("\nALL TESTS PASSED")
 	else:
