@@ -465,6 +465,10 @@ func _ready() -> void:
 				P.x = ch0.x - 40.0
 				P.y = ch0.y - 12.0
 				cam = Vector2(ch0.x - VW / 2.0, ch0.y - VH / 2.0)
+			if "--portal" in args and not level.is_empty():   # дебаг: к порталу для скриншота
+				P.x = level.exit_px.x - 70.0
+				P.y = level.exit_px.y - 10.0
+				cam = Vector2(level.exit_px.x - VW / 2.0, level.exit_px.y - VH / 2.0)
 			if "--shrine" in args:   # дебаг: алтарь рядом с игроком (оверлей при касании)
 				var st := args.find("--shrine")
 				var stype: String = args[st + 1] if (st >= 0 and st + 1 < args.size() and SHRINES.has(args[st + 1])) else "blood"
@@ -538,7 +542,7 @@ func _demo_step() -> void:
 	if demo_frame == 50 and "--shop" in OS.get_cmdline_args() and state == "play":
 		coins = 50
 		open_shop()
-	if state == "play" and ("--chest" in OS.get_cmdline_args() or "--world" in OS.get_cmdline_args()):
+	if state == "play" and ("--chest" in OS.get_cmdline_args() or "--world" in OS.get_cmdline_args() or "--portal" in OS.get_cmdline_args()):
 		input.move = 0   # дебаг-скриншот сундука: бот стоит на месте
 		input.jump_pressed = false
 		input.jump_held = false
@@ -2731,6 +2735,13 @@ func update_player() -> void:
 	var dir: int = input.move
 	if dir != 0:
 		tut.move = true
+	# пыль из-под ног при беге по земле (в тон породе биома)
+	if P.on_ground and absf(P.vx) > 3.0 and tick % 8 == 0:
+		var dcol: Color = th.get("ground", Color(0.5, 0.5, 0.5)).lightened(0.35)
+		parts.append({ "x": P.x + P.w / 2.0 - signf(P.vx) * 6.0, "y": P.y + P.h - 1.0,
+			"vx": -signf(P.vx) * (0.4 + rng.randf() * 0.8), "vy": -0.5 - rng.randf() * 0.7,
+			"life": 10.0 + rng.randf() * 8.0, "color": Color(dcol.r, dcol.g, dcol.b, 0.45),
+			"size": 1.4 + rng.randf() * 1.8, "grav": 0.04 })
 	var momentum := 1.25 if P.get("momentum_t", 0.0) > 0.0 else 1.0   # «Разгон» от убийств
 	var target: float = dir * 4.3 * st.spd_mul * (1.4 if adrenaline_active() else 1.0) * momentum
 	var accel := 0.8 if P.on_ground else 0.45
@@ -2762,6 +2773,8 @@ func update_player() -> void:
 			P.air_jumps -= 1
 			do_jump()
 			burst(P.x + P.w / 2.0, P.y + P.h, 6, C_cfe3ff)
+			# кольцо-опора двойного прыжка (читаемый «толчок от воздуха»)
+			shockwaves.append({ "x": P.x + P.w / 2.0, "y": P.y + P.h, "r": 3.0, "max_r": 20.0, "life": 9.0, "col": C_cfe3ff })
 	if not input.jump_held and P.vy < -4.5:
 		P.vy = -4.5
 	if P.drop > 0:
@@ -5025,14 +5038,29 @@ func _draw_movers() -> void:
 
 func _draw_portal() -> void:
 	var e: Vector2 = level.exit_px
-	var cxp: float = e.x
-	var cyp: float = e.y + TILE / 2.0
+	var c := Vector2(e.x, e.y + TILE / 2.0)
 	var pulse := 1.0 + sin(tick * 0.07) * 0.12
+	# мягкое гало
 	for i in range(5, 0, -1):
-		var rr := 9.0 * i * pulse
-		draw_circle(Vector2(cxp, cyp), rr, Color(0.47, 0.63, 1.0, 0.06))
-	draw_arc(Vector2(cxp, cyp), 20 * pulse, 0, TAU, 32, Color(1.6, 1.9, 2.2, 0.9), 3.0)
-	draw_arc(Vector2(cxp, cyp), 28 * pulse, 0, TAU, 32, Color(0.55, 0.74, 1.0, 0.5), 2.0)
+		draw_circle(c, 9.0 * i * pulse, Color(0.47, 0.63, 1.0, 0.06))
+	# вихрь: три вращающиеся спиральные дуги
+	var rot := tick * 0.06
+	for k in range(3):
+		var a0 := rot + k * TAU / 3.0
+		draw_arc(c, (15.0 + k * 5.0) * pulse, a0, a0 + 2.4, 14, Color(0.7, 0.85, 1.0, 0.55 - k * 0.13), 2.5)
+	# кольца, стягивающиеся к центру — эффект «всасывания»
+	for k in range(2):
+		var t := fmod(tick * 0.02 + k * 0.5, 1.0)
+		draw_arc(c, lerpf(32.0, 6.0, t) * pulse, 0, TAU, 24, Color(0.55, 0.74, 1.0, 0.30 * t), 1.5)
+	# орбитальные HDR-искры (сплюснутая орбита — псевдо-3D)
+	for k in range(4):
+		var oa := tick * 0.09 + k * TAU / 4.0
+		draw_circle(c + Vector2(cos(oa), sin(oa) * 0.8) * 24.0 * pulse, 1.8, Color(1.8, 2.0, 2.4, 0.9))
+	# яркое ядро + внешние кольца-обводы
+	draw_circle(c, 7.0 * pulse, Color(1.3, 1.6, 2.1, 0.8))
+	draw_circle(c, 3.5, Color(2.2, 2.4, 2.8, 0.95))
+	draw_arc(c, 20 * pulse, 0, TAU, 32, Color(1.6, 1.9, 2.2, 0.9), 3.0)
+	draw_arc(c, 28 * pulse, 0, TAU, 32, Color(0.55, 0.74, 1.0, 0.5), 2.0)
 
 func _draw_shrines() -> void:
 	for sh in level.get("shrines", []):
@@ -5475,11 +5503,13 @@ func _draw_bullets() -> void:
 			draw_line(from, Vector2(b.x, b.y), Color(2.4, 2.4, 2.6, 0.5), 5.0)
 			draw_line(from, Vector2(b.x, b.y), Color(col.r * 1.6, col.g * 1.6, col.b * 1.6, 1.0), 3.0)
 		else:
-			var from := Vector2(b.x - b.vx * 1.4, b.y - b.vy * 1.4)
-			# мягкое свечение + яркое ядро
-			draw_line(from, Vector2(b.x, b.y), Color(col.r, col.g, col.b, 0.25), (7.0 if b.crit else 5.0))
-			draw_line(from, Vector2(b.x, b.y), col, 3.5 if b.crit else 2.5)
-			draw_circle(Vector2(b.x, b.y), 1.6 if b.crit else 1.2, Color(2.6, 2.6, 2.6, 0.85) if b.crit else Color(1.4, 1.4, 1.4, 0.85))
+			var p0 := Vector2(b.x, b.y)
+			var v := Vector2(b.vx, b.vy)
+			# трёхсегментный шлейф: дальний хвост тает, ближний светится, ядро яркое
+			draw_line(p0 - v * 4.6, p0 - v * 1.8, Color(col.r, col.g, col.b, 0.10), 1.8)
+			draw_line(p0 - v * 2.6, p0, Color(col.r, col.g, col.b, 0.26), (7.0 if b.crit else 5.0))
+			draw_line(p0 - v * 1.4, p0, col, 3.5 if b.crit else 2.5)
+			draw_circle(p0, 1.6 if b.crit else 1.2, Color(2.6, 2.6, 2.6, 0.85) if b.crit else Color(1.4, 1.4, 1.4, 0.85))
 
 func _draw_particles() -> void:
 	for p in parts:
