@@ -1671,6 +1671,49 @@ func _init() -> void:
 	_ok(checked >= 15, "button-fit scraper found enough buttons (%d)" % checked)
 	game.lang = "ru"
 
+	# ---------- 60. Фузз: случайные действия + инварианты ----------
+	# случайный бот: движение/прыжки/стрельба/рывки/активы/магазин/алтари/смерти;
+	# на каждом шаге проверяются инварианты состояния
+	var fuzz_viol := 0
+	for fseed in [77, 424242]:
+		game.start_run(fseed, "fuzz")
+		var frng := RandomNumberGenerator.new()
+		frng.seed = fseed
+		for i in range(5000):
+			if game.state == "play":
+				game.input.move = [-1, 0, 1, 1][frng.randi_range(0, 3)]
+				game.input.jump_pressed = frng.randf() < 0.06
+				game.input.jump_held = frng.randf() < 0.5
+				game.input.down = frng.randf() < 0.02
+				game.input.aim = Vector2(game.P.x + frng.randf_range(-300, 300), game.P.y + frng.randf_range(-200, 200))
+				game.input.shoot_held = true
+				game.input.shoot_clicked = i % 5 == 0
+				game.input.dash = frng.randf() < 0.03
+				game.input.ult = game.ult >= game.ULT_MAX
+				game.input.switch_to = (frng.randi_range(0, game.P.weapons.size() - 1)) if frng.randf() < 0.01 else -1
+				if frng.randf() < 0.005:
+					game.use_active()
+			game.sim_step()
+			match game.state:
+				"upgrade": game.choose_upgrade(game.offer[frng.randi_range(0, game.offer.size() - 1)])
+				"shop":
+					if frng.randf() < 0.5 and game.shop_items.size() > 0:
+						game.buy_shop_item(frng.randi_range(0, game.shop_items.size() - 1))
+					game.shop_continue()
+				"shrine": game.resolve_shrine(frng.randf() < 0.7)
+				"dead": game.start_run(fseed + i, "fuzz2")
+			if game.state == "play":
+				if game.P.hp > game.P.maxhp + 0.01: fuzz_viol += 1
+				if game.coins < 0: fuzz_viol += 1
+				if not (is_finite(game.P.x) and is_finite(game.P.y)): fuzz_viol += 1
+				if game.P.shield > game.P.max_shield + 0.01: fuzz_viol += 1
+				if game.enemies.size() > 400: fuzz_viol += 1
+	_ok(fuzz_viol == 0, "fuzz: no invariant violations (%d)" % fuzz_viol)
+	game.level = {}
+	game.state = "menu"
+	game.lang = "ru"
+	game._save_settings()
+
 	if failures == 0:
 		print("\nALL TESTS PASSED")
 	else:
