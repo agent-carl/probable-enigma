@@ -31,7 +31,7 @@ jobs:
           path: |
             ~/godot
             ~/.local/share/godot/export_templates
-          key: godot-export-${{ env.GODOT_VERSION }}
+          key: godot-export-slim-${{ env.GODOT_VERSION }}
 
       - name: Set up Godot and export templates
         if: steps.cache.outputs.cache-hit != 'true'
@@ -43,7 +43,12 @@ jobs:
           chmod +x ~/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64
           curl -sL -o /tmp/tpl.tpz "$base/Godot_v${GODOT_VERSION}-stable_export_templates.tpz"
           mkdir -p "$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable"
-          unzip -o -q /tmp/tpl.tpz -d /tmp/tpl
+          # распаковываем и кэшируем только нужные шаблоны (Linux + Windows release,
+          # ~150 МБ вместо ~1.2 ГБ со всеми платформами)
+          unzip -o -q /tmp/tpl.tpz -d /tmp/tpl \
+            "templates/linux_release.x86_64" \
+            "templates/windows_release_x86_64.exe" \
+            "templates/windows_release_x86_64_console.exe"
           cp /tmp/tpl/templates/* "$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable/"
 
       - name: Import project
@@ -64,10 +69,12 @@ jobs:
         with:
           name: gunfall-linux
           path: build/linux/
+          retention-days: 14
       - uses: actions/upload-artifact@v4
         with:
           name: gunfall-windows
           path: build/windows/
+          retention-days: 14
 
       # Релиз: по тегу vX.Y.Z или по ручному запуску с указанной версией
       - name: Package release archives

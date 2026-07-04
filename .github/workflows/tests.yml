@@ -7,6 +7,9 @@ on:
       - ".github/workflows/tests.yml"
   workflow_dispatch:
 
+permissions:
+  contents: read   # тестам достаточно чтения
+
 jobs:
   headless-tests:
     runs-on: ubuntu-latest
