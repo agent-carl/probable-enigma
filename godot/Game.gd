@@ -1214,14 +1214,6 @@ func _col(hex: String) -> Color:
 		_col_cache[hex] = c
 	return c
 
-func _hash_seed(s: String) -> int:
-	var h := 2166136261
-	for i in range(s.length()):
-		h ^= s.unicode_at(i)
-		h = (h * 16777619) & 0xFFFFFFFF
-	return h & 0xFFFFFFFF
-
-# Безопасный доступ к ячейке строящейся сетки
 func _cell(grid: PackedByteArray, W: int, H: int, tx: int, ty: int) -> int:
 	if tx < 0 or tx >= W:
 		return T_SOLID
@@ -2217,8 +2209,8 @@ func random_unowned_relic() -> String:
 	var pool := []
 	var total := 0.0
 	for id in RELICS.keys():
-		if not relics.has(id) and is_unlocked(id):
-			pool.append(id)
+		if not relics.has(id) and (daily_run or is_unlocked(id)):
+			pool.append(id)   # в «сиде дня» пул полный — карта дня одинакова у всех
 			total += _rar_weight(_rar(id))
 	if pool.is_empty():
 		return ""
@@ -2240,7 +2232,10 @@ func is_unlocked(id: String) -> bool:
 	return unlocks.has(id) or not _is_lockable(id)
 
 func unlocked_weapon_drops() -> Array:
-	# пул случайного оружия только из открытого (всегда непустой)
+	# пул случайного оружия только из открытого (всегда непустой);
+	# в «сиде дня» пул полный — иначе дроп зависел бы от прогресса игрока
+	if daily_run:
+		return WEAPON_DROPS
 	var pool := []
 	for w in WEAPON_DROPS:
 		if is_unlocked(w):
@@ -2248,7 +2243,10 @@ func unlocked_weapon_drops() -> Array:
 	return pool if not pool.is_empty() else ["smg"]
 
 func check_unlocks() -> void:
-	# открываем контент, чьё условие по пожизненной статистике достигнуто
+	# открываем контент, чьё условие по пожизненной статистике достигнуто;
+	# всё открыто — выходим сразу (в unlocks только запираемые id)
+	if unlocks.size() >= UNLOCK_DEFS.size():
+		return
 	for d in UNLOCK_DEFS:
 		if unlocks.has(d.id):
 			continue
@@ -6490,14 +6488,6 @@ func _vol_row(y: float, label: String, value: float, prefix: String) -> void:
 	_btn(Rect2(bx + bw + 8, y, 30, 28), "+", prefix + "_up", false)
 	_text(Vector2(bx + bw + 48, y + 19), "%d%%" % int(round(value * 100)), 13, Color("#cfd6f5"))
 
-func _draw_volume(cx: float, y: float) -> void:
-	var bw := 160.0
-	var bx := cx - bw / 2.0
-	_text(Vector2(cx, y - 10), "Громкость  ( − / + )", 12, Color("#8d97bd"), true)
-	_ci.draw_rect(Rect2(bx, y, bw, 10), Color(0, 0, 0, 0.5))
-	_ci.draw_rect(Rect2(bx + 1, y + 1, (bw - 2) * volume, 8), Color("#ffc24d"))
-	_text(Vector2(cx, y + 28), "%d%%" % int(round(volume * 100)), 12, Color("#cfd6f5"), true)
-
 func _draw_collection_col(x: float, y: float, header: String, kind: String) -> void:
 	# колонка экрана «Коллекция»: запираемые предметы данного типа с прогрессом
 	_text(Vector2(x, y), header, 15, Color("#ffd86b"))
@@ -6597,9 +6587,16 @@ func _stop_music() -> void:
 func _cfg_path() -> String:
 	return "user://gunfall.cfg"
 
+const SAVE_VERSION := 1   # версия формата user://gunfall.cfg (для миграций)
+
 func _load_settings() -> void:
 	var cfg := ConfigFile.new()
 	if cfg.load(_cfg_path()) == OK:
+		var sv := int(cfg.get_value("meta_info", "version", 1))   # без поля = формат v1
+		if sv > SAVE_VERSION:
+			push_warning("Сейв новее игры (v%d > v%d) — читаем, что сможем" % [sv, SAVE_VERSION])
+		elif sv < SAVE_VERSION:
+			_migrate_save(cfg, sv)   # задел: миграция старых форматов
 		best = int(cfg.get_value("progress", "best", 0))
 		meta_cores = int(cfg.get_value("progress", "cores", 0))
 		max_difficulty = clampi(int(cfg.get_value("progress", "maxdiff", 0)), 0, 3)
@@ -6645,9 +6642,14 @@ func _load_settings() -> void:
 				best = f.get_32()
 				f.close()
 
+func _migrate_save(_cfg: ConfigFile, _from_version: int) -> void:
+	# миграция форматов сейва; пока форматов до v1 нет — заглушка на будущее
+	pass
+
 func _save_settings() -> void:
 	var cfg := ConfigFile.new()
 	cfg.load(_cfg_path())   # сохраняем существующие секции (напр. сейв забега)
+	cfg.set_value("meta_info", "version", SAVE_VERSION)
 	cfg.set_value("progress", "best", best)
 	cfg.set_value("progress", "cores", meta_cores)
 	cfg.set_value("progress", "maxdiff", max_difficulty)
@@ -6688,7 +6690,7 @@ func _save_run() -> void:
 		"seed": run_seed, "label": seed_label, "lvl": lvl, "score": score, "coins": coins,
 		"diff": difficulty, "class": class_sel, "daily": daily_run, "ult": ult,
 		"hp": P.hp, "maxhp": P.maxhp, "shield": P.shield, "max_shield": P.max_shield,
-		"stats": P.stats, "wi": P.wi, "active": P.get("active", ""),
+		"stats": P.stats, "wi": P.wi, "active": P.get("active", ""), "active_cd": int(P.get("active_cd", 0)),
 		"weapons": wl, "relics": relics.keys(),
 	}
 	var cfg := ConfigFile.new()
@@ -6740,6 +6742,7 @@ func continue_run() -> void:
 	P.wi = int(d.wi)
 	P.active = str(d.active)
 	P.active_max = int(ACTIVES[P.active].cd) if ACTIVES.has(P.active) else 0
+	P.active_cd = int(d.get("active_cd", 0))
 	P.weapons = []
 	for s in d.weapons:
 		P.weapons.append({ "id": s.id, "ammo": (INF if int(s.ammo) < 0 else int(s.ammo)) })

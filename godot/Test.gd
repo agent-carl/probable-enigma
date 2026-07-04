@@ -1624,6 +1624,35 @@ func _init() -> void:
 	_ok(game.fog_bands.size() > 0, "fog bands built")
 	game.level = {}
 
+	# ---------- 58. Надёжность: версия сейва, active_cd, дейли-пул ----------
+	game._save_settings()
+	var vcfg := ConfigFile.new()
+	vcfg.load(game._cfg_path())
+	_ok(int(vcfg.get_value("meta_info", "version", -1)) == game.SAVE_VERSION, "save file carries format version")
+	# active_cd переживает сейв/загрузку забега
+	game.start_run(555, "cd")
+	game.give_active("bomb")
+	game.P.active_cd = 123
+	game._save_run()
+	game.P.active_cd = 0
+	game.continue_run()
+	_ok(int(game.P.active_cd) == 123, "continue restores active cooldown (%d)" % int(game.P.active_cd))
+	game._clear_run_save()
+	# дейли: пул оружия/реликвий полный независимо от разблокировок
+	game.unlocks = {}
+	game.daily_run = true
+	_ok(game.unlocked_weapon_drops().size() == game.WEAPON_DROPS.size(), "daily uses full weapon pool")
+	game.relics = {}
+	var saw_locked := false
+	for _i in range(300):
+		if game.random_unowned_relic() == "bulwark":   # заперта вне дейли
+			saw_locked = true
+	_ok(saw_locked, "daily relic pool includes locked relics")
+	game.daily_run = false
+	_ok(not game.unlocked_weapon_drops().has("railgun"), "non-daily pool still gated")
+	game.level = {}
+	game.state = "menu"
+
 	if failures == 0:
 		print("\nALL TESTS PASSED")
 	else:
