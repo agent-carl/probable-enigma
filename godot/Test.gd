@@ -1714,6 +1714,70 @@ func _init() -> void:
 	game.lang = "ru"
 	game._save_settings()
 
+	# ---------- 61. Новый контент: тотем, лазер, алтари, хроно, удача, мимик ----------
+	# тотем баффает соседей хастом
+	var tWS2 := 24
+	var tgrid2 := PackedByteArray(); tgrid2.resize(tWS2 * 12)
+	for tx in range(tWS2): tgrid2[10 * tWS2 + tx] = 1
+	game.level = { "W": tWS2, "H": 12, "grid": tgrid2, "px_w": tWS2 * 32, "px_h": 12 * 32, "crate_hp": {} }
+	game.cam = Vector2.ZERO
+	game.P = game.make_player(); game.P.x = 600.0; game.P.y = 9 * 32 - 30
+	var tot: Dictionary = game._spawn_enemy("totem", 200.0, 9 * 32 - 34)
+	var ally: Dictionary = game._spawn_enemy("walker", 240.0, 9 * 32 - 28)
+	game.enemies = [tot, ally]
+	for i in range(40):
+		game.tick += 1
+		game.update_enemies()
+	_ok(int(ally.get("haste", 0)) > 0, "totem hastes nearby ally")
+	_ok(ally.spd > ally.base_spd, "hasted ally moves faster")
+	# лазер: фазы и урон
+	var lz := { "type": "laser", "x": game.P.x + game.P.w / 2.0, "y1": 0.0, "y2": 320.0, "phase": 0 }
+	game.hazards = [lz]
+	_ok(game._laser_on({ "phase": (180 - (game.tick % 180)) % 180 }) == 0, "laser off-phase")
+	var lz_hp0: float = game.P.hp
+	game.P.inv = 0
+	game.state = "play"
+	var hurt_by_laser := false
+	for i in range(200):
+		game.tick += 1
+		game.update_hazards()
+		if game.P.hp < lz_hp0: hurt_by_laser = true; break
+	_ok(hurt_by_laser, "active laser damages player standing in beam")
+	game.hazards = []
+	# алтари: жадность и хронос
+	game.P = game.make_player()
+	game.pending_shrine = { "x": 0.0, "y": 0.0, "w": 1.0, "h": 1.0, "type": "greed", "used": false }
+	game.resolve_shrine(true)
+	_ok(int(game.P.stats.coin_bonus) == 1 and game.P.stats.armor_mul > 1.0, "greed altar applies")
+	game.pending_shrine = { "x": 0.0, "y": 0.0, "w": 1.0, "h": 1.0, "type": "chrono", "used": false }
+	var mh0: int = int(game.P.maxhp)
+	game.resolve_shrine(true)
+	_ok(game.P.stats.dash_cd_mul < 1.0 and float(game.P.stats.active_cd_mul) < 1.0 and int(game.P.maxhp) == mh0 - 10, "chrono altar applies")
+	# хроно-актив уважает active_cd_mul
+	game.give_active("slowmo")
+	game.P.active_cd = 0
+	game.use_active()
+	_ok(game.P.active_cd < game.P.active_max, "active cooldown reduced by chrono")
+	# удача: множитель дропа растёт
+	game.P = game.make_player()
+	game.apply_upgrade_stats({ "id": "luck" })
+	_ok(game.P.stats.drop_mul > 1.0, "luck upgrade raises drop_mul")
+	# мимик: на 4+ уровне срабатывает и зовёт волну
+	game.lvl = 5
+	game.enemies = []
+	game.pickups = []
+	var mimic_seen := false
+	for i in range(200):
+		var mch := { "x": 300.0, "y": 260.0, "w": 26.0, "h": 18.0, "opened": false }
+		game.open_chest(mch)
+		if game.enemies.size() > 0: mimic_seen = true; break
+	_ok(mimic_seen, "mimic chest eventually triggers ambush")
+	game.enemies = []
+	game.pickups = []
+	game.hazards = []
+	game.level = {}
+	game.state = "menu"
+
 	if failures == 0:
 		print("\nALL TESTS PASSED")
 	else:

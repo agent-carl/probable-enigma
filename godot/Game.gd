@@ -1228,6 +1228,33 @@ func generate_level(seed_val: int, level_num: int) -> Dictionary:
 				"x": hcx, "y": hcy, "spin": r.randf() * TAU,
 			})
 
+	# --- лазерные ворота: вертикальный луч с телеграфом (с 4-го уровня) ---
+	if level_num >= 4:
+		var lg_max := mini(1 + int((level_num - 2) / 4.0), 2)
+		var lg_tries := 0
+		var lg_placed := 0
+		while lg_placed < lg_max and lg_tries < 40:
+			lg_tries += 1
+			var lx := _rr(r, 18, W - 18)
+			if spike_cols.has(lx) or lava_cols.has(lx):
+				continue
+			var gy2: int = ground_y[lx]
+			var top_y := gy2 - _rr(r, 5, 7)
+			if top_y < 3:
+				continue
+			var clear2 := true
+			for ty in range(top_y, gy2):
+				if _cell(grid, W, H, lx, ty) != T_EMPTY:
+					clear2 = false
+					break
+			if not clear2:
+				continue
+			hazards.append({
+				"type": "laser", "x": lx * TILE + TILE / 2.0, "y1": float(top_y * TILE),
+				"y2": float(gy2 * TILE), "phase": r.randi_range(0, 179),
+			})
+			lg_placed += 1
+
 	# --- враги --- (масштаб по уровню и выбранной сложности Ascension)
 	var diff_hp := 1.0 + 0.35 * difficulty
 	var diff_crowd := 1.0 + 0.18 * difficulty
@@ -1284,6 +1311,7 @@ func generate_level(seed_val: int, level_num: int) -> Dictionary:
 		"charger": int((mini(1 + int((level_num - 2) / 2.0), 4) if level_num >= 3 else 0) * crowd),
 		"healer": int((mini(int((level_num - 3) / 2.0), 3) if level_num >= 4 else 0) * crowd),
 		"orbiter": int((mini(int((level_num - 4) / 2.0), 3) if level_num >= 5 else 0) * crowd),
+		"totem": int((mini(int((level_num - 4) / 3.0), 2) if level_num >= 6 else 0) * crowd),
 	}
 	for type in counts.keys():
 		for _i in range(counts[type]):
@@ -1570,6 +1598,7 @@ func make_player() -> Dictionary:
 		"weapons": [{ "id": "pistol", "ammo": INF }], "wi": 0,
 		"stats": {
 			"dmg_mul": 1.0, "cd_mul": 1.0, "spd_mul": 1.0, "jumps": 1, "lifesteal": 0,
+		"drop_mul": 1.0, "coin_bonus": 0, "active_cd_mul": 1.0,
 			"armor_mul": 1.0, "crit": 0.0, "jump_mul": 1.0,
 			"shield_regen": 0.0, "dash_cd_mul": 1.0, "blast_mul": 1.0, "magnet_range": 90.0, "berserk": 0.0,
 			"burn_chance": 0.0, "chill_chance": 0.0,
@@ -1779,6 +1808,7 @@ func apply_upgrade_stats(u: Dictionary) -> void:
 		"berserk": st.berserk += 0.5
 		"incend": st.burn_chance = min(0.9, st.burn_chance + 0.35)
 		"cryo": st.chill_chance = min(0.9, st.chill_chance + 0.35)
+		"luck": st.drop_mul *= 1.5
 
 func has_relic(id: String) -> bool:
 	return relics.has(id)
@@ -2193,12 +2223,17 @@ func use_active() -> void:
 						en.vx += signf(ev.x) * 6.0
 						en.vy -= 3.0
 						hurt_enemy(en, 12, false)
+		"slowmo":
+			_start_slowmo(0.45, 2.2)
+			shockwaves.append({ "x": cx, "y": cy, "r": 8.0, "max_r": 220.0, "life": 20.0, "col": C_9be8ff })
+			flash = maxf(flash, 0.2)
+			flash_color = C_9be8ff
 		"turret":
 			if turrets.size() >= 2:
 				turrets.pop_front()   # не больше двух турелей одновременно
 			turrets.append({ "x": cx, "y": cy, "life": 420.0, "cd": 0, "ang": 0.0 })
 			burst(cx, cy, 12, C_ffd86b)
-	P.active_cd = P.active_max
+	P.active_cd = int(P.active_max * float(P.stats.get("active_cd_mul", 1.0)))   # «Алтарь Хроноса»
 	play_sfx("portal")
 
 func activate_ult() -> void:
@@ -2304,6 +2339,7 @@ func hurt_enemy(en: Dictionary, dmg: int, crit: bool, silent := false) -> void:
 		if has_relic("midas"):
 			coins += 1
 		coins += _synergy_util_coins()   # набор «Поддержка»: доп. монеты
+		coins += int(P.stats.get("coin_bonus", 0))   # «Алтарь жадности»
 		if has_relic("momentum"):
 			P.momentum_t = 90.0   # ~1.5 с разгона
 		if has_relic("splinter") and not en.get("boss", false) and not _detonating:
@@ -2483,8 +2519,23 @@ func update_moving_platforms() -> void:
 		mp.x = nx
 		mp.y = ny
 
+func _laser_on(hz: Dictionary) -> int:
+	# фаза лазера: 0 = выкл, 1 = телеграф (мигает), 2 = активен
+	var t := (tick + int(hz.phase)) % 180
+	if t < 90:
+		return 0
+	elif t < 120:
+		return 1
+	return 2
+
 func update_hazards() -> void:
 	for hz in hazards:
+		if hz.get("type", "") == "laser":
+			if _laser_on(hz) == 2 and P.inv <= 0 and state == "play":
+				# сегмент луча против AABB игрока
+				if P.x < hz.x + 3.0 and P.x + P.w > hz.x - 3.0 and P.y + P.h > hz.y1 and P.y < hz.y2:
+					hurt_player(16, 1 if P.x + P.w / 2.0 > hz.x else -1, Vector2(hz.x, P.y))
+			continue
 		hz.phase += hz.speed
 		hz.spin += 0.3
 		hz.x = hz.cx + sin(hz.phase) * hz.ax
@@ -2497,6 +2548,8 @@ func check_hazards() -> void:
 	var pc := Vector2(P.x + P.w / 2.0, P.y + P.h / 2.0)
 	var pr: float = max(P.w, P.h) / 2.0
 	for hz in hazards:
+		if hz.get("type", "") == "laser":
+			continue   # урон лазера считается в update_hazards (сегмент, свои фазы)
 		if Vector2(hz.x, hz.y).distance_to(pc) <= hz.r + pr:
 			hurt_player(18, 1 if pc.x > hz.x else -1, Vector2(hz.x, hz.y))
 			break
@@ -2535,7 +2588,7 @@ func _drop_pickup(kind: String, cx: float, y: float, extra := {}) -> void:
 	pickups.append(pk)
 
 func drop_loot(en: Dictionary) -> void:
-	var rv := rng.randf()
+	var rv := rng.randf() / maxf(0.01, P.stats.get("drop_mul", 1.0))   # «Удача» повышает шансы
 	var cx: float = en.x + en.w / 2.0
 	var cy: float = en.y
 	if rv < 0.30:
@@ -2946,6 +2999,11 @@ func update_enemies() -> void:
 				hurt_enemy(en, 4, false, true)
 				if en.dead:
 					continue
+		# аура тотема: ускорение (перебивается заморозкой — chill приоритетнее)
+		if int(en.get("haste", 0)) > 0:
+			en.haste -= 1
+			if int(en.get("chill", 0)) <= 0:
+				en.spd = en.get("base_spd", en.spd) * 1.3
 		# элита-«регенератор» медленно восстанавливает здоровье
 		if en.get("mod", "") == "regen" and en.hp < en.maxhp and int(en.get("burn", 0)) <= 0 and tick % 24 == 0:
 			en.hp = mini(int(en.maxhp), int(en.hp) + maxi(1, int(en.maxhp * 0.02)))
@@ -3064,6 +3122,21 @@ func update_enemies() -> void:
 			if en.vy == 0 and pvy != 0:
 				en.vy = -pvy * 0.5
 			en.dir = 1 if pcx > ecx else -1
+		elif en.type == "totem":
+			en.vy = min(en.vy + GRAV, MAX_FALL)
+			en.vx = 0.0
+			collide_entity(en)
+			en.phase += 0.05
+			if tick % 30 == 0:   # пульс ауры: хаст всем ближним врагам
+				var buffed := 0
+				for e2 in enemies:
+					if e2 == en or e2.dead or e2.get("boss", false) or e2.type == "totem":
+						continue
+					if Vector2(e2.x - en.x, e2.y - en.y).length() < 170.0:
+						e2["haste"] = 60
+						buffed += 1
+				if buffed > 0:
+					burst(en.x + en.w / 2.0, en.y + 4, 4, C_ffb14d)
 		elif en.type == "orbiter":
 			# кружит вокруг игрока на заданном радиусе и бьёт прицельными болтами
 			en.phase += 0.05
@@ -3583,6 +3656,16 @@ func resolve_shrine(accept: bool) -> void:
 				P.stats.dmg_mul *= 1.25
 				add_text(cx, P.y - 10, T("Ярость! +25% урона"), C_ffb14d)
 				_summon_wave(3 + lvl / 2)
+			"greed":
+				P.stats.coin_bonus = int(P.stats.get("coin_bonus", 0)) + 1
+				P.stats.armor_mul *= 1.15
+				add_text(cx, P.y - 10, T("Жадность!"), C_ffd86b)
+			"chrono":
+				P.stats.dash_cd_mul *= 0.75
+				P.stats.active_cd_mul = float(P.stats.get("active_cd_mul", 1.0)) * 0.75
+				P.maxhp = maxi(30, int(P.maxhp) - 10)
+				P.hp = minf(P.hp, P.maxhp)
+				add_text(cx, P.y - 10, T("Ускорение!"), C_9be8ff)
 			"spring":
 				P.maxhp = maxi(30, int(P.maxhp * 0.9))
 				P.hp = P.maxhp
@@ -3611,6 +3694,19 @@ func open_chest(ch: Dictionary) -> void:
 	ch.opened = true
 	prog.chests = int(prog.get("chests", 0)) + 1   # пожизненный счётчик сундуков
 	check_unlocks()
+	# мимик: вместо предмета — засада, но монет вдвое больше (риск исследования)
+	if lvl >= 4 and rng.randf() < 0.12:
+		var mx: float = ch.x + ch.w / 2.0
+		toasts.append({ "text": T("Это был мимик!"), "life": 200.0, "col": C_ff6b5e })
+		for i in range(14 + rng.randi_range(0, 8)):
+			var mang := -PI / 2.0 + (rng.randf() - 0.5) * 1.8
+			var mspd := 2.2 + rng.randf() * 2.6
+			_drop_pickup("coin", mx, ch.y - 8, { "vy": sin(mang) * mspd - 2.0, "vx": cos(mang) * mspd, "t": rng.randf() * 6.0 })
+		_summon_wave(3)
+		shake = max(shake, 7.0)
+		burst(mx, ch.y, 20, C_ff6b5e)
+		play_sfx("hurt")
+		return
 	var cx: float = ch.x + ch.w / 2.0
 	var cy: float = ch.y + ch.h / 2.0
 	# фонтан монет + гарантированный полезный предмет + шанс на оружие
@@ -5011,6 +5107,25 @@ func _draw_decor() -> void:
 
 func _draw_hazards() -> void:
 	for hz in hazards:
+		if hz.get("type", "") == "laser":
+			var lx: float = hz.x
+			if lx < _cam_draw.x - 40.0 or lx > _cam_draw.x + VW + 40.0:
+				continue
+			var st := _laser_on(hz)
+			# эмиттеры сверху и снизу
+			draw_rect(Rect2(lx - 5, hz.y1 - 4, 10, 6), C_2b2f44)
+			draw_rect(Rect2(lx - 5, hz.y2 - 2, 10, 6), C_2b2f44)
+			var ecol := Color(1.0, 0.35, 0.3, 0.9) if st == 2 else Color(0.5, 0.2, 0.2, 0.8)
+			draw_circle(Vector2(lx, hz.y1), 2.5, ecol)
+			draw_circle(Vector2(lx, hz.y2 + 2), 2.5, ecol)
+			if st == 2:
+				# активный луч: широкое свечение + яркое ядро (HDR под bloom)
+				draw_line(Vector2(lx, hz.y1), Vector2(lx, hz.y2), Color(1.0, 0.25, 0.2, 0.30), 7.0)
+				draw_line(Vector2(lx, hz.y1), Vector2(lx, hz.y2), Color(2.2, 0.7, 0.5, 0.95), 2.5)
+			elif st == 1 and tick % 10 < 5:
+				# телеграф: тонкий мигающий пунктир-прицел
+				draw_line(Vector2(lx, hz.y1), Vector2(lx, hz.y2), Color(1.0, 0.4, 0.3, 0.35), 1.0)
+			continue
 		var c := Vector2(hz.x, hz.y)
 		# зубчатое лезвие
 		var teeth := 10
@@ -5254,6 +5369,16 @@ func _draw_enemies() -> void:
 			draw_colored_polygon(PackedVector2Array([
 				Vector2(en.x + en.w - 2, ec.y), Vector2(en.x + en.w + 7, ec.y - 6 + flap), Vector2(en.x + en.w - 4, ec.y + 4)]), wing)
 			draw_rect(Rect2(ec.x + en.dir * 4 - 2, ec.y - 3, 4, 4), C_10243a)
+		elif en.type == "totem":
+			var tc := Vector2(en.x + en.w / 2.0, en.y + en.h / 2.0)
+			var tpul := 0.5 + 0.5 * sin(tick * 0.1 + en.phase)
+			draw_circle(tc, 170.0 * 0.22 + tpul * 5.0, Color(1.0, 0.69, 0.30, 0.10))   # намёк на радиус ауры
+			draw_rect(Rect2(en.x + 4, en.y, en.w - 8, en.h), Color.WHITE if flash else C_7a5a3a)
+			draw_rect(Rect2(en.x + 2, en.y, en.w - 4, 6), C_9c7a4a)                     # капитель
+			for ri in range(3):                                                          # светящиеся руны
+				var ry2: float = en.y + 9 + ri * 8
+				draw_rect(Rect2(tc.x - 3, ry2, 6, 4), Color(1.4, 0.9, 0.4, 0.5 + 0.5 * tpul))
+			draw_circle(Vector2(tc.x, en.y + 4), 3.0, Color(1.6, 1.1, 0.5, 0.9))
 		elif en.type == "orbiter":
 			var ec := Vector2(en.x + en.w / 2.0, en.y + en.h / 2.0)
 			var aura := 0.5 + 0.5 * sin(tick * 0.12 + en.phase)
