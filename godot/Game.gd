@@ -403,6 +403,7 @@ func _ready() -> void:
 		_setup_audio()
 	else:
 		audio_enabled = false
+	_init_steam()
 	set_process_unhandled_input(true)
 	if "--englight" in OS.get_cmdline_args():
 		engine_light = true
@@ -481,6 +482,8 @@ func _physics_process(_delta: float) -> void:
 	if test_mode:
 		return
 	_flush_settings_tick()
+	if _steam:
+		_steam.run_callbacks()
 	if demo:
 		_demo_step()
 		return
@@ -6298,6 +6301,10 @@ func _cfg_path() -> String:
 	return "user://gunfall.cfg"
 
 const GAME_VERSION := "1.0.0"   # версия игры (метка в меню, для баг-репортов)
+# Steam AppID: 480 — тестовый SpaceWar; замените на свой AppID из Steamworks.
+# Интеграция активируется сама, если установлен GodotSteam (GDExtension) —
+# без него все вызовы тихо пропускаются (динамический синглтон, парсинг не ломается).
+const STEAM_APP_ID := 480
 const SAVE_VERSION := 1   # версия формата user://gunfall.cfg (для миграций)
 
 func _load_settings() -> void:
@@ -6473,6 +6480,20 @@ func _ach_name(id: String) -> String:
 			return a.name
 	return id
 
+var _steam: Object = null   # синглтон GodotSteam (null, если расширение не установлено)
+
+func _init_steam() -> void:
+	# мягкая интеграция Steam: работает только при установленном GodotSteam
+	if test_mode or not Engine.has_singleton("Steam"):
+		return
+	_steam = Engine.get_singleton("Steam")
+	var res: Dictionary = _steam.steamInitEx(true, STEAM_APP_ID)
+	if int(res.get("status", 1)) != 0:
+		push_warning("Steam init: %s" % str(res))
+		_steam = null
+	else:
+		print("Steam OK: %s" % str(_steam.getPersonaName()))
+
 func unlock(id: String) -> void:
 	if unlocked.has(id):
 		return
@@ -6480,6 +6501,9 @@ func unlock(id: String) -> void:
 	toasts.append({ "text": T("Достижение: ") + T(_ach_name(id)), "life": 200.0 })
 	play_sfx("portal")
 	_save_settings()
+	if _steam and _steam.loggedOn():   # зеркалим в Steam (API Name = ACH_<ID>)
+		_steam.setAchievement("ACH_" + id.to_upper())
+		_steam.storeStats()
 
 func check_achievements() -> void:
 	if kills >= 1:

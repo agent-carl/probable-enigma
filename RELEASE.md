@@ -1,7 +1,7 @@
 # Выпуск GUNFALL — чек-лист релиза
 
 Состояние кода: **релиз-кандидат v1.0.0**. Логика покрыта headless-тестами
-(59 секций), UI проверен автотестом на переполнения (RU/EN), производительность
+(60 секций, включая фузз), UI проверен автотестом на переполнения (RU/EN), производительность
 ~1.4 мс/кадр при 180+ врагах.
 
 ## 1. Билды (уже автоматизировано)
@@ -29,21 +29,14 @@ Developer ID-сертификатом и пройти нотаризацию (`x
    (https://godotsteam.com), положить `addons/godotsteam` в проект,
    в корень проекта — `steam_appid.txt` с вашим AppID (только для отладки,
    в релизный билд не класть).
-3. **Инициализация** — единственная точка входа в коде:
-   в `Game.gd::_ready()` добавить:
-   ```gdscript
-   if Engine.has_singleton("Steam"):
-       Steam.steamInitEx(true, ВАШ_APPID)
-   ```
-4. **Ачивки Steam**: все достижения проходят через одну функцию
-   `Game.gd::unlock(id)` — добавить туда одну строку:
-   ```gdscript
-   if Engine.has_singleton("Steam") and Steam.loggedOn():
-       Steam.setAchievement("ACH_" + id.to_upper())
-       Steam.storeStats()
-   ```
-   В Steamworks завести ачивки с API Name = `ACH_<ID>` по списку из
-   `Data.gd::ACHIEVEMENTS` (23 шт.: FIRST_BLOOD, COMBO_MASTER, ...).
+3. **Интеграция уже в коде** (`Game.gd`): инициализация (`_init_steam`),
+   `run_callbacks()` каждый кадр и зеркалирование ачивок из `unlock()` —
+   всё активируется само при наличии GodotSteam, без него тихо
+   пропускается. Осталось одно: заменить `STEAM_APP_ID` (сейчас 480 —
+   тестовый SpaceWar) на ваш AppID.
+4. **Ачивки Steam**: в Steamworks завести ачивки с API Name = `ACH_<ID>`
+   (заглавными) по списку из `Data.gd::ACHIEVEMENTS` — 23 шт.:
+   ACH_FIRST_BLOOD, ACH_COMBO_MASTER, ... Код шлёт их автоматически.
 5. **Облачные сейвы**: в Steamworks включить Steam Cloud для
    `gunfall.cfg` (авто-облако по пути Godot `user://`) — кода не требует.
 6. **Старые GPU**: игра проверена и на GL Compatibility; при жалобах на
