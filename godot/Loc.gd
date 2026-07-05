@@ -345,4 +345,10 @@ const EN := {
 	"Удача": "Luck",
 	"Враги на 50% чаще роняют лут": "Enemies drop loot 50% more often",
 	"Это был мимик!": "It was a mimic!",
+	"Кровавая луна": "Blood Moon",
+	"Враги быстрее и злее, но +1 монета за убийство": "Enemies are faster and meaner, but +1 coin per kill",
+	"Мгла": "The Mist",
+	"Видимость ниже, но очки ×1.3": "Lower visibility, but score ×1.3",
+	"Рой": "The Swarm",
+	"Врагов заметно больше, но они слабее": "Noticeably more enemies, but they are weaker",
 }

@@ -23,6 +23,7 @@ const T_SPRING := 7  # пружина-батут: подбрасывает иг�
 
 # Таблицы контента вынесены в Data.gd; алиасы сохраняют все обращения как раньше.
 const GameData = preload("res://Data.gd")
+const LEVEL_MODS = GameData.LEVEL_MODS
 const THEMES = GameData.THEMES
 const TERRAIN = GameData.TERRAIN
 const WEAPONS = GameData.WEAPONS
@@ -466,6 +467,10 @@ func _ready() -> void:
 				P.x = ch0.x - 40.0
 				P.y = ch0.y - 12.0
 				cam = Vector2(ch0.x - VW / 2.0, ch0.y - VH / 2.0)
+			var mi := args.find("--mod")
+			if mi >= 0 and mi + 1 < args.size() and not level.is_empty() and LEVEL_MODS.has(args[mi + 1]):
+				level.mod = args[mi + 1]   # дебаг: форсировать модификатор уровня
+				_build_background((run_seed ^ ((lvl * 2654435761) & 0xFFFFFFFF)) & 0xFFFFFFFF)
 			if "--portal" in args and not level.is_empty():   # дебаг: к порталу для скриншота
 				P.x = level.exit_px.x - 70.0
 				P.y = level.exit_px.y - 10.0
@@ -1299,7 +1304,13 @@ func generate_level(seed_val: int, level_num: int) -> Dictionary:
 		})
 
 	var is_boss_level := level_num % 5 == 0
+	# модификатор уровня: редкое событие, меняющее правила (не на боссах)
+	var lmod := ""
+	if not is_boss_level and level_num >= 3 and r.randf() < 0.22:
+		lmod = ["bloodmoon", "fog", "swarm"][r.randi_range(0, 2)]
 	var crowd := (0.5 if is_boss_level else 1.0) * diff_crowd   # на боссах меньше рядовых
+	if lmod == "swarm":
+		crowd *= 1.45   # «Рой»: толпа больше, но хилее (hp ниже постфактум)
 	var counts := {
 		"walker": int(mini(4 + level_num, 12) * crowd),
 		"shooter": int(mini(1 + int(level_num * 0.8), 8) * crowd),
@@ -1312,6 +1323,7 @@ func generate_level(seed_val: int, level_num: int) -> Dictionary:
 		"healer": int((mini(int((level_num - 3) / 2.0), 3) if level_num >= 4 else 0) * crowd),
 		"orbiter": int((mini(int((level_num - 4) / 2.0), 3) if level_num >= 5 else 0) * crowd),
 		"totem": int((mini(int((level_num - 4) / 3.0), 2) if level_num >= 6 else 0) * crowd),
+		"shieldbearer": int((mini(int((level_num - 3) / 2.0), 3) if level_num >= 5 else 0) * crowd),
 	}
 	for type in counts.keys():
 		for _i in range(counts[type]):
@@ -1419,6 +1431,18 @@ func generate_level(seed_val: int, level_num: int) -> Dictionary:
 	for i in range(enemy_list.size()):
 		enemy_list[i]["eid"] = i
 
+	# применяем модификатор уровня к статам врагов
+	if lmod == "bloodmoon":
+		for en in enemy_list:
+			if not en.get("boss", false):
+				en.spd *= 1.2
+				en.dmg += 3
+	elif lmod == "swarm":
+		for en in enemy_list:
+			if not en.get("boss", false):
+				en.hp = maxi(6, int(en.hp * 0.72))
+				en.maxhp = en.hp
+
 	# элитные враги с модификаторами (не боссы/осколки)
 	var elite_chance := clampf(0.06 + 0.022 * level_num, 0.0, 0.34)
 	var elite_mods := ["swift", "armored", "volatile", "regen"]
@@ -1454,7 +1478,7 @@ func generate_level(seed_val: int, level_num: int) -> Dictionary:
 		"spawn": Vector2(2 * TILE + 6, ground_y[2] * TILE - 31),
 		"exit_px": exit_px, "enemies": enemy_list, "pickups": pickup_list,
 		"has_boss": is_boss_level, "crate_hp": crate_hp, "movers": movers, "hazards": hazards,
-		"lava_cells": lava_cells, "chests": chests, "shrines": shrines, "decor": decor_list,
+		"lava_cells": lava_cells, "chests": chests, "shrines": shrines, "decor": decor_list, "mod": lmod,
 	}
 
 # ============================== Доступ к карте (рантайм) ==============================
@@ -1720,6 +1744,10 @@ func start_level() -> void:
 	_build_background(level_seed)
 	_play_music((lvl - 1) % THEMES.size(), boss_alive)
 	_warm_music(lvl % THEMES.size(), (lvl + 1) % 5 == 0)   # трек следующего уровня — заранее в фоне
+	var smod: String = level.get("mod", "")
+	if smod != "" and LEVEL_MODS.has(smod):
+		var md: Dictionary = LEVEL_MODS[smod]
+		toasts.append({ "text": "%s %s — %s" % [md.icon, T(md.name), T(md.desc)], "life": 300.0, "col": C_ff6b5e if smod == "bloodmoon" else C_9be8ff })
 	if not test_mode:
 		_save_run()   # автосейв забега на старте уровня (для «Продолжить»)
 
@@ -2330,6 +2358,8 @@ func hurt_enemy(en: Dictionary, dmg: int, crit: bool, silent := false) -> void:
 			flash_color = C_ffd86b
 		max_combo = max(max_combo, combo)
 		var mult := combo_mult()
+		if level.get("mod", "") == "fog":
+			mult *= 1.3   # «Мгла»: очки дороже
 		var gained: int = int(round(en.score * mult))
 		score += gained
 		if P.stats.lifesteal > 0:
@@ -2340,6 +2370,8 @@ func hurt_enemy(en: Dictionary, dmg: int, crit: bool, silent := false) -> void:
 			coins += 1
 		coins += _synergy_util_coins()   # набор «Поддержка»: доп. монеты
 		coins += int(P.stats.get("coin_bonus", 0))   # «Алтарь жадности»
+		if level.get("mod", "") == "bloodmoon":
+			coins += 1   # «Кровавая луна»: щедрый дроп
 		if has_relic("momentum"):
 			P.momentum_t = 90.0   # ~1.5 с разгона
 		if has_relic("splinter") and not en.get("boss", false) and not _detonating:
@@ -3122,6 +3154,16 @@ func update_enemies() -> void:
 			if en.vy == 0 and pvy != 0:
 				en.vy = -pvy * 0.5
 			en.dir = 1 if pcx > ecx else -1
+		elif en.type == "shieldbearer":
+			en.vy = min(en.vy + GRAV, MAX_FALL)
+			en.dir = 1 if pcx > ecx else -1   # щит всегда развёрнут к игроку
+			var sees_sb: bool = dist < 320 and line_of_sight(ecx, ecy, pcx, pcy)
+			en.vx = en.dir * en.spd * (1.4 if sees_sb else 0.6)
+			collide_entity(en)
+			if en.on_ground:   # не шагаем в яму
+				var ax2: float = en.x + en.w + 2 if en.dir > 0 else en.x - 2
+				if not is_blocking(tile_at(int(floor(ax2 / TILE)), int(floor((en.y + en.h + 4) / TILE)))):
+					en.vx = 0.0
 		elif en.type == "totem":
 			en.vy = min(en.vy + GRAV, MAX_FALL)
 			en.vx = 0.0
@@ -3474,19 +3516,25 @@ func update_bullets() -> void:
 					if en.dead:
 						continue
 					if b.x > en.x - 2 and b.x < en.x + en.w + 2 and b.y > en.y - 2 and b.y < en.y + en.h + 2:
+						# «Щитоносец»: пуля в лоб гасится щитом (обходи сзади или взрывай)
+						var sb_block: bool = en.type == "shieldbearer" and signf(b.vx) != 0.0 and int(signf(b.vx)) == -int(en.dir)
 						if is_gren:
 							shots_hit += 1  # прямое попадание гранатой
 							hit = true  # граната подрывается, урон от взрыва
 							break
+						var bdmg: int = b.dmg
+						if sb_block:
+							bdmg = maxi(1, int(b.dmg * 0.2))
+							spark(b.x, b.y, b.vx, b.vy, 4)   # искры рикошета от щита
 						if is_pierce:
 							if not (en.eid in b.hit_ids):
-								hurt_enemy(en, b.dmg, b.crit)
+								hurt_enemy(en, bdmg, b.crit)
 								_roll_bullet_status(en)
 								b.hit_ids.append(en.eid)
 								shots_hit += 1
 							# рельса проходит насквозь — не останавливаемся
 						else:
-							hurt_enemy(en, b.dmg, b.crit)
+							hurt_enemy(en, bdmg, b.crit)
 							_roll_bullet_status(en)
 							shots_hit += 1
 							hit = true
@@ -3846,13 +3894,20 @@ func _build_background(seed_val: int) -> void:
 		"ring": (lvl - 1) % THEMES.size() in [5, 6],   # кольцо у бездны/кузницы
 		"craters": craters,
 	}
+	# визуальные акценты модификатора уровня
+	var bmod: String = level.get("mod", "")
+	if bmod == "bloodmoon":
+		moon.col = Color(0.95, 0.30, 0.28)   # кроваво-красный диск
+		moon.r *= 1.25
 	# дымка у горизонта: мягкие дрейфующие полосы над холмами
 	fog_bands = []
-	for i in range(5):
+	var fog_n := 10 if bmod == "fog" else 5
+	var fog_a := 0.13 if bmod == "fog" else 0.05
+	for i in range(fog_n):
 		fog_bands.append({
-			"x": r.randf() * VW, "y": VH * (0.52 + 0.09 * i) + r.randf() * 18.0,
+			"x": r.randf() * VW, "y": VH * (0.30 if bmod == "fog" else 0.52) + VH * 0.09 * i * (0.7 if bmod == "fog" else 1.0) + r.randf() * 18.0,
 			"w": 360.0 + r.randf() * 300.0, "h": 60.0 + r.randf() * 40.0,
-			"a": 0.05 + r.randf() * 0.05, "spd": (0.06 + r.randf() * 0.10) * (1 if i % 2 == 0 else -1),
+			"a": fog_a + r.randf() * 0.05, "spd": (0.06 + r.randf() * 0.10) * (1 if i % 2 == 0 else -1),
 		})
 	hill_farther = _make_hills(r, 250, 16)
 	hill_far = _make_hills(r, 330, 26)
@@ -5369,6 +5424,16 @@ func _draw_enemies() -> void:
 			draw_colored_polygon(PackedVector2Array([
 				Vector2(en.x + en.w - 2, ec.y), Vector2(en.x + en.w + 7, ec.y - 6 + flap), Vector2(en.x + en.w - 4, ec.y + 4)]), wing)
 			draw_rect(Rect2(ec.x + en.dir * 4 - 2, ec.y - 3, 4, 4), C_10243a)
+		elif en.type == "shieldbearer":
+			var sc2 := Vector2(en.x + en.w / 2.0, en.y + en.h / 2.0)
+			draw_rect(Rect2(en.x + 4, en.y + 4, en.w - 8, en.h - 4), Color.WHITE if flash else C_5a6478)   # корпус
+			draw_rect(Rect2(en.x + 6, en.y + 8, en.w - 12, 5), C_2a3040)                                   # визор
+			# ростовой щит на стороне игрока
+			var shx: float = en.x + en.w - 4 if en.dir > 0 else en.x - 4
+			draw_rect(Rect2(shx, en.y - 2, 8, en.h + 4), Color.WHITE if flash else C_9aa3c8)
+			draw_rect(Rect2(shx + (2 if en.dir > 0 else 4), en.y + 2, 2, en.h - 4), C_2b2f44)              # ребро щита
+			for rv2 in range(3):                                                                            # заклёпки
+				draw_circle(Vector2(shx + 4, en.y + 5 + rv2 * 11), 1.3, C_2b2f44)
 		elif en.type == "totem":
 			var tc := Vector2(en.x + en.w / 2.0, en.y + en.h / 2.0)
 			var tpul := 0.5 + 0.5 * sin(tick * 0.1 + en.phase)
@@ -5755,6 +5820,9 @@ func _draw_hud() -> void:
 		title = T("Уровень %d · %s") % [lvl, T(boss_name) if boss_name != "" else T("БОСС")]
 	if difficulty > 0:
 		title += "  ·  %s" % T(_diff_name(difficulty))
+	var hmod: String = level.get("mod", "")
+	if hmod != "" and LEVEL_MODS.has(hmod):
+		title += "  ·  %s %s" % [LEVEL_MODS[hmod].icon, T(LEVEL_MODS[hmod].name)]
 	_text(Vector2(VW / 2.0, 24), title, 14, C_dfe5ff, true)
 
 	# полоса здоровья босса

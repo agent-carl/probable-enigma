@@ -1778,6 +1778,48 @@ func _init() -> void:
 	game.level = {}
 	game.state = "menu"
 
+	# ---------- 62. Модификаторы уровня и щитоносец ----------
+	# моды выпадают на 3+ небоссовых уровнях
+	var mods_seen := {}
+	for s in range(1, 60):
+		for lv in [3, 4, 6, 7]:
+			var Lm = game.generate_level(s * 17 + lv, lv)
+			if Lm.mod != "":
+				mods_seen[Lm.mod] = true
+	_ok(mods_seen.size() >= 3, "all level mods occur (%s)" % str(mods_seen.keys()))
+	# кровавая луна ускоряет врагов; рой — больше и слабее
+	var found_bm := false
+	for s in range(1, 200):
+		var Lbm = game.generate_level(s * 13 + 4, 4)
+		if Lbm.mod == "bloodmoon":
+			found_bm = true
+			var ok_spd := true
+			for en in Lbm.enemies:
+				if en.type == "walker" and not en.get("elite", false) and absf(en.spd - 1.1 * 1.2) > 0.25:
+					ok_spd = false
+			_ok(ok_spd, "bloodmoon walkers are faster")
+			break
+	_ok(found_bm, "bloodmoon reachable")
+	# щитоносец: фронтальная пуля гасится, тыловая — нет
+	var sWS3 := 24
+	var sg3 := PackedByteArray(); sg3.resize(sWS3 * 12)
+	for tx in range(sWS3): sg3[10 * sWS3 + tx] = 1
+	game.level = { "W": sWS3, "H": 12, "grid": sg3, "px_w": sWS3 * 32, "px_h": 12 * 32, "crate_hp": {} }
+	game.state = "play"
+	game.P = game.make_player(); game.P.x = 60.0; game.P.y = 9 * 32 - 30
+	var sb: Dictionary = game._spawn_enemy("shieldbearer", 300.0, 9 * 32 - 33)
+	sb.hp = 1000; sb.maxhp = 1000; sb.dir = -1   # щит влево, к игроку
+	game.enemies = [sb]
+	game.bullets = [{ "x": sb.x - 6, "y": sb.y + 10, "vx": 8.0, "vy": 0.0, "dmg": 50, "crit": false, "from": "p", "life": 30, "color": Color.WHITE }]
+	game.update_bullets()
+	var front_dmg: int = 1000 - int(sb.hp)
+	sb.hp = 1000
+	game.bullets = [{ "x": sb.x + sb.w + 6, "y": sb.y + 10, "vx": -8.0, "vy": 0.0, "dmg": 50, "crit": false, "from": "p", "life": 30, "color": Color.WHITE }]
+	game.update_bullets()
+	var back_dmg: int = 1000 - int(sb.hp)
+	_ok(front_dmg < back_dmg and front_dmg <= 15, "shield blocks frontal (%d) vs rear (%d)" % [front_dmg, back_dmg])
+	game.enemies = []; game.bullets = []; game.level = {}; game.state = "menu"
+
 	if failures == 0:
 		print("\nALL TESTS PASSED")
 	else:

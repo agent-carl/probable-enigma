@@ -110,6 +110,14 @@ const RELIC_CAT := {
 	"midas": "util", "adrenaline": "util", "overcharge": "util", "frost": "util",
 }
 
+# Модификаторы уровня: редкие события, меняющие правила всего уровня.
+# Выпадают с 3-го уровня (не на боссах), баннер при входе + свой визуал.
+const LEVEL_MODS := {
+	"bloodmoon": { "icon": "🌑", "name": "Кровавая луна", "desc": "Враги быстрее и злее, но +1 монета за убийство" },
+	"fog":       { "icon": "🌫", "name": "Мгла",          "desc": "Видимость ниже, но очки ×1.3" },
+	"swarm":     { "icon": "🐝", "name": "Рой",           "desc": "Врагов заметно больше, но они слабее" },
+}
+
 # Активные предметы (слот, клавиша E): мгновенные/area-способности с кулдауном
 const ACTIVES := {
 	"bomb":   { "icon": "💣", "name": "Бомба", "desc": "Взрыв по области у прицела", "cd": 300 },
@@ -210,6 +218,7 @@ const ENEMY_BASE := {
 	"healer":  { "w": 24, "h": 24, "hp": 36, "spd": 1.5, "dmg": 6, "score": 45, "cd": 150, "fly": true },
 	"orbiter": { "w": 24, "h": 24, "hp": 46, "spd": 2.0, "dmg": 11, "score": 38, "cd": 95, "fly": true, "orbit": 150 },
 	"totem":   { "w": 22, "h": 34, "hp": 70, "spd": 0.0, "dmg": 6, "score": 50, "cd": 0, "fly": false },
+	"shieldbearer": { "w": 30, "h": 32, "hp": 60, "spd": 0.8, "dmg": 14, "score": 42, "cd": 0, "fly": false },
 	"shard":   { "w": 14, "h": 16, "hp": 10, "spd": 2.4, "dmg": 8, "score": 5, "cd": 0, "fly": false },
 	"boss":    { "w": 70, "h": 74, "hp": 900, "spd": 0.9, "dmg": 18, "score": 300, "cd": 70, "fly": false },
 }
