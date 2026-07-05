@@ -1063,9 +1063,16 @@ func generate_level(seed_val: int, level_num: int) -> Dictionary:
 		_setc(grid, W, H, cxc, cyc, T_CRATE)
 		crate_hp[cyc * W + cxc] = 24
 
+	# модификатор уровня: редкое событие, меняющее правила (не на боссах);
+	# выбирается до сундуков/врагов — влияет и на то, и на другое
+	var is_boss_level := level_num % 5 == 0
+	var lmod := ""
+	if not is_boss_level and level_num >= 3 and r.randf() < 0.22:
+		lmod = ["bloodmoon", "fog", "swarm", "goldrush"][r.randi_range(0, 3)]
+
 	# --- сундуки с сокровищами: награда за исследование карты (1–2 на уровень) ---
 	var chests := []
-	var chest_goal := 1 + (1 if r.randf() < 0.55 else 0)
+	var chest_goal := 1 + (1 if r.randf() < 0.55 else 0) + (2 if lmod == "goldrush" else 0)
 	var chest_tries := 0
 	while chests.size() < chest_goal and chest_tries < 40:
 		chest_tries += 1
@@ -1303,11 +1310,6 @@ func generate_level(seed_val: int, level_num: int) -> Dictionary:
 			"charge": 0, "aimx": 0.0, "aimy": 0.0,
 		})
 
-	var is_boss_level := level_num % 5 == 0
-	# модификатор уровня: редкое событие, меняющее правила (не на боссах)
-	var lmod := ""
-	if not is_boss_level and level_num >= 3 and r.randf() < 0.22:
-		lmod = ["bloodmoon", "fog", "swarm"][r.randi_range(0, 2)]
 	var crowd := (0.5 if is_boss_level else 1.0) * diff_crowd   # на боссах меньше рядовых
 	if lmod == "swarm":
 		crowd *= 1.45   # «Рой»: толпа больше, но хилее (hp ниже постфактум)
@@ -1324,6 +1326,7 @@ func generate_level(seed_val: int, level_num: int) -> Dictionary:
 		"orbiter": int((mini(int((level_num - 4) / 2.0), 3) if level_num >= 5 else 0) * crowd),
 		"totem": int((mini(int((level_num - 4) / 3.0), 2) if level_num >= 6 else 0) * crowd),
 		"shieldbearer": int((mini(int((level_num - 3) / 2.0), 3) if level_num >= 5 else 0) * crowd),
+		"bomber": int((mini(int((level_num - 4) / 2.0), 3) if level_num >= 5 else 0) * crowd),
 	}
 	for type in counts.keys():
 		for _i in range(counts[type]):
@@ -1416,6 +1419,10 @@ func generate_level(seed_val: int, level_num: int) -> Dictionary:
 		var s = spot.call()
 		if s != null:
 			add_pick.call("shield", s, { "shield": 20.0, "w": 20, "h": 20 })
+	if r.randf() < 0.5:
+		var sp2 = spot.call()
+		if sp2 != null:
+			add_pick.call("potion", sp2, { "pot": ["rage", "haste", "stone"][_rr(r, 0, 2)], "w": 14, "h": 18 })
 	# на боссовых уровнях — дополнительные аптечки и патроны
 	if is_boss_level:
 		for _i in range(2):
@@ -1441,6 +1448,11 @@ func generate_level(seed_val: int, level_num: int) -> Dictionary:
 		for en in enemy_list:
 			if not en.get("boss", false):
 				en.hp = maxi(6, int(en.hp * 0.72))
+				en.maxhp = en.hp
+	elif lmod == "goldrush":
+		for en in enemy_list:
+			if not en.get("boss", false):
+				en.hp = int(en.hp * 1.15)
 				en.maxhp = en.hp
 
 	# элитные враги с модификаторами (не боссы/осколки)
@@ -1619,6 +1631,7 @@ func make_player() -> Dictionary:
 		"active": "bomb", "active_cd": 0, "active_max": ACTIVES["bomb"].cd,
 		"shield": 0.0, "max_shield": 0.0, "ride_id": -1,
 		"momentum_t": 0.0, "vengeance": false,
+		"pot_rage_t": 0.0, "pot_haste_t": 0.0, "pot_stone_t": 0.0,
 		"weapons": [{ "id": "pistol", "ammo": INF }], "wi": 0,
 		"stats": {
 			"dmg_mul": 1.0, "cd_mul": 1.0, "spd_mul": 1.0, "jumps": 1, "lifesteal": 0,
@@ -2138,7 +2151,8 @@ func level_clear() -> void:
 func hurt_player(dmg: float, from_dir: float, src := Vector2.INF) -> void:
 	if P.inv > 0 or state != "play":
 		return
-	var real: int = max(1, roundi(dmg * P.stats.armor_mul * _synergy_def()))   # набор «Защита» снижает урон
+	var stone_mul := 0.5 if P.get("pot_stone_t", 0.0) > 0.0 else 1.0   # «Каменная кожа»
+	var real: int = max(1, roundi(dmg * P.stats.armor_mul * _synergy_def() * stone_mul))   # «Защита»/зелье снижают урон
 	P.inv = 55
 	if has_relic("vengeance"):
 		P.vengeance = true   # следующее попадание усилено
@@ -2370,8 +2384,8 @@ func hurt_enemy(en: Dictionary, dmg: int, crit: bool, silent := false) -> void:
 			coins += 1
 		coins += _synergy_util_coins()   # набор «Поддержка»: доп. монеты
 		coins += int(P.stats.get("coin_bonus", 0))   # «Алтарь жадности»
-		if level.get("mod", "") == "bloodmoon":
-			coins += 1   # «Кровавая луна»: щедрый дроп
+		if level.get("mod", "") in ["bloodmoon", "goldrush"]:
+			coins += 1   # «Кровавая луна»/«Лихорадка»: щедрый дроп
 		if has_relic("momentum"):
 			P.momentum_t = 90.0   # ~1.5 с разгона
 		if has_relic("splinter") and not en.get("boss", false) and not _detonating:
@@ -2695,7 +2709,8 @@ func try_shoot() -> void:
 	for _i in range(w.pellets):
 		var a: float = angle + (rng.randf() - 0.5) * 2.0 * w.spread
 		var crit: bool = rng.randf() < P.stats.crit
-		var dmg: int = max(1, roundi(w.dmg * P.stats.dmg_mul * berserk_bonus * (2.0 if crit else 1.0)))
+		var rage_mul := 1.35 if P.get("pot_rage_t", 0.0) > 0.0 else 1.0   # «Зелье ярости»
+		var dmg: int = max(1, roundi(w.dmg * P.stats.dmg_mul * berserk_bonus * rage_mul * (2.0 if crit else 1.0)))
 		var b := {
 			"x": cx + cos(a) * 16, "y": cy + sin(a) * 16,
 			"vx": cos(a) * w.spd, "vy": sin(a) * w.spd,
@@ -2831,6 +2846,8 @@ func update_player() -> void:
 			"life": 10.0 + rng.randf() * 8.0, "color": Color(dcol.r, dcol.g, dcol.b, 0.45),
 			"size": 1.4 + rng.randf() * 1.8, "grav": 0.04 })
 	var momentum := 1.25 if P.get("momentum_t", 0.0) > 0.0 else 1.0   # «Разгон» от убийств
+	if P.get("pot_haste_t", 0.0) > 0.0:
+		momentum *= 1.25   # «Зелье скорости»
 	var target: float = dir * 4.3 * st.spd_mul * (1.4 if adrenaline_active() else 1.0) * momentum
 	var accel := 0.8 if P.on_ground else 0.45
 	P.vx += clampf(target - P.vx, -accel, accel)
@@ -2939,6 +2956,9 @@ func update_player() -> void:
 
 	if P.get("momentum_t", 0.0) > 0.0:
 		P.momentum_t -= 1.0
+	for pt in ["pot_rage_t", "pot_haste_t", "pot_stone_t"]:
+		if P.get(pt, 0.0) > 0.0:
+			P[pt] -= 1.0
 	if P.inv > 0:
 		P.inv -= 1
 	if P.cd > 0:
@@ -3154,6 +3174,22 @@ func update_enemies() -> void:
 			if en.vy == 0 and pvy != 0:
 				en.vy = -pvy * 0.5
 			en.dir = 1 if pcx > ecx else -1
+		elif en.type == "bomber":
+			en.phase += 0.05
+			en.dir = 1 if pcx > ecx else -1
+			var hover_yb := clampf(pcy - 165.0, 2.0 * TILE, level.px_h - 6.0 * TILE)
+			en.vx += clampf(pcx - ecx, -1, 1) * 0.10
+			en.vy += clampf(hover_yb - ecy, -1, 1) * 0.14 + sin(en.phase * 1.8) * 0.05
+			var spb := Vector2(en.vx, en.vy).length()
+			if spb > en.spd:
+				en.vx *= en.spd / spb
+				en.vy *= en.spd / spb
+			collide_entity(en)
+			en.cd -= 1
+			if en.cd <= 0 and dist < 430.0 and absf(pcx - ecx) < 120.0:
+				en.cd = en.cd_max
+				_lob_mortar(ecx, ecy, pcx, en.dmg)   # бомба по дуге в точку игрока
+				burst(ecx, ecy + en.h / 2.0, 3, C_ffb14d)
 		elif en.type == "shieldbearer":
 			en.vy = min(en.vy + GRAV, MAX_FALL)
 			en.dir = 1 if pcx > ecx else -1   # щит всегда развёрнут к игроку
@@ -3600,6 +3636,12 @@ func update_pickups() -> void:
 				P.max_shield = max(P.max_shield, pk.shield)
 				P.shield = min(P.max_shield, P.shield + pk.shield)
 				add_text(P.x + P.w / 2.0, P.y - 10, T("+%d щит") % int(pk.shield), C_7fd4ff)
+			elif pk.kind == "potion":
+				var pot: String = pk.get("pot", "rage")
+				P["pot_%s_t" % pot] = 600.0   # ~10 секунд баффа
+				var pot_names := { "rage": "Зелье ярости!", "haste": "Зелье скорости!", "stone": "Каменная кожа!" }
+				var pot_cols := { "rage": C_ff8f6b, "haste": C_9be8ff, "stone": C_cfd6f5 }
+				add_text(P.x + P.w / 2.0, P.y - 10, T(pot_names[pot]), pot_cols[pot])
 			elif pk.kind == "coin":
 				score += 5
 				coins += 1
@@ -3899,6 +3941,9 @@ func _build_background(seed_val: int) -> void:
 	if bmod == "bloodmoon":
 		moon.col = Color(0.95, 0.30, 0.28)   # кроваво-красный диск
 		moon.r *= 1.25
+	elif bmod == "goldrush":
+		moon.col = Color(1.0, 0.84, 0.38)    # золотой диск
+		moon.r *= 1.1
 	# дымка у горизонта: мягкие дрейфующие полосы над холмами
 	fog_bands = []
 	var fog_n := 10 if bmod == "fog" else 5
@@ -5322,7 +5367,7 @@ func _draw_pickups() -> void:
 		var x: float = pk.x
 		var y: float = pk.y + bob
 		# свечение-ореол по типу предмета
-		var gcol: Color = { "weapon": C_ffd86b, "med": C_ff6b7a, "ammo": C_caa64a, "coin": C_ffd86b, "shield": C_7fd4ff }.get(pk.kind, C_ffffff)
+		var gcol: Color = { "weapon": C_ffd86b, "med": C_ff6b7a, "ammo": C_caa64a, "coin": C_ffd86b, "shield": C_7fd4ff, "potion": Color(0.8, 0.6, 1.0) }.get(pk.kind, C_ffffff)
 		_glow(Vector2(x + pk.w / 2.0, y + pk.h / 2.0), 16.0 + sin(pk.t * 3) * 2.0, gcol)
 		if pk.kind == "weapon":
 			var w: Dictionary = WEAPONS[pk.weapon]
@@ -5336,6 +5381,13 @@ func _draw_pickups() -> void:
 		elif pk.kind == "ammo":
 			draw_rect(Rect2(x, y, pk.w, pk.h), C_caa64a)
 			draw_rect(Rect2(x, y + 5, pk.w, 3), C_8a6f2c)
+		elif pk.kind == "potion":
+			var pcol2: Color = { "rage": Color(1.0, 0.42, 0.3), "haste": Color(0.45, 0.85, 1.0), "stone": Color(0.75, 0.78, 0.9) }.get(pk.get("pot", "rage"), C_ffffff)
+			draw_rect(Rect2(x + 4, y, pk.w - 8, 4), C_9aa3c8)                     # горлышко
+			draw_rect(Rect2(x + 5, y - 3, pk.w - 10, 3), C_5a6478)                # пробка
+			draw_rect(Rect2(x + 1, y + 4, pk.w - 2, pk.h - 4), Color(pcol2.r * 0.55, pcol2.g * 0.55, pcol2.b * 0.55))
+			draw_rect(Rect2(x + 2, y + 7, pk.w - 4, pk.h - 8), pcol2)             # жидкость
+			draw_rect(Rect2(x + 3, y + 8, 2, 3), Color(1, 1, 1, 0.6))             # блик
 		elif pk.kind == "coin":
 			# вращающаяся блестящая монета (ширина меняется → эффект спина)
 			var cc := Vector2(x + 6, y + 6)
@@ -5424,6 +5476,20 @@ func _draw_enemies() -> void:
 			draw_colored_polygon(PackedVector2Array([
 				Vector2(en.x + en.w - 2, ec.y), Vector2(en.x + en.w + 7, ec.y - 6 + flap), Vector2(en.x + en.w - 4, ec.y + 4)]), wing)
 			draw_rect(Rect2(ec.x + en.dir * 4 - 2, ec.y - 3, 4, 4), C_10243a)
+		elif en.type == "bomber":
+			var bc2 := Vector2(en.x + en.w / 2.0, en.y + en.h / 2.0)
+			var wob2 := sin(tick * 0.22 + en.phase) * 2.0
+			draw_circle(bc2 + Vector2(0, wob2 * 0.3), en.w / 2.0 + 2, Color(0.35, 0.22, 0.16, 0.35))   # тень корпуса
+			draw_rect(Rect2(en.x, en.y + 4 + wob2 * 0.3, en.w, en.h - 6), Color.WHITE if flash else C_7a5a3a)
+			draw_rect(Rect2(en.x + 3, en.y + 2 + wob2 * 0.3, en.w - 6, 5), C_9c7a4a)   # кабина-полоса
+			# пропеллеры по бокам
+			for pside in [-1, 1]:
+				var px2: float = bc2.x + pside * (en.w / 2.0 + 3)
+				draw_line(Vector2(px2, bc2.y - 6 + wob2 * 0.3), Vector2(px2, bc2.y + 6 + wob2 * 0.3), Color(0.8, 0.8, 0.85, 0.5 + 0.3 * sin(tick * 0.9 + pside)), 2.0)
+			# бомба под люком, когда почти готов сброс
+			if en.cd < 30:
+				draw_circle(Vector2(bc2.x, en.y + en.h + 3 + wob2 * 0.3), 3.5, Color.WHITE if flash else C_2a3040)
+				draw_rect(Rect2(bc2.x - 1, en.y + en.h - 1 + wob2 * 0.3, 2, 4), C_ffb14d)
 		elif en.type == "shieldbearer":
 			var sc2 := Vector2(en.x + en.w / 2.0, en.y + en.h / 2.0)
 			draw_rect(Rect2(en.x + 4, en.y + 4, en.w - 8, en.h - 4), Color.WHITE if flash else C_5a6478)   # корпус
@@ -5805,6 +5871,20 @@ func _draw_hud() -> void:
 			_ci.draw_rect(Rect2(bx, by, bw, 14), Color(bcol.r, bcol.g, bcol.b, 0.55), false, 1.0)
 			_text(Vector2(bx + 4, by + 11), lbl, 10, bcol)
 			bx += bw + 4.0
+
+	# бейджи активных зелий (с секундами)
+	var pby := 132.0
+	var pbx := 12.0
+	for pdef in [["pot_rage_t", "Яр", C_ff8f6b], ["pot_haste_t", "Ск", C_9be8ff], ["pot_stone_t", "Кж", C_cfd6f5]]:
+		var pt2: float = P.get(pdef[0], 0.0)
+		if pt2 <= 0.0:
+			continue
+		var plbl := "%s %d" % [T(pdef[1]), int(ceil(pt2 / 60.0))]
+		var pcol3: Color = pdef[2]
+		_ci.draw_rect(Rect2(pbx, pby, 36, 14), Color(pcol3.r, pcol3.g, pcol3.b, 0.2))
+		_ci.draw_rect(Rect2(pbx, pby, 36, 14), Color(pcol3.r, pcol3.g, pcol3.b, 0.55), false, 1.0)
+		_text(Vector2(pbx + 4, pby + 11), plbl, 10, pcol3)
+		pbx += 40.0
 
 	# серия убийств
 	if combo >= 3:

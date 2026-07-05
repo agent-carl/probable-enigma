@@ -1820,6 +1820,61 @@ func _init() -> void:
 	_ok(front_dmg < back_dmg and front_dmg <= 15, "shield blocks frontal (%d) vs rear (%d)" % [front_dmg, back_dmg])
 	game.enemies = []; game.bullets = []; game.level = {}; game.state = "menu"
 
+	# ---------- 63. Зелья, бомбардир, «Золотая лихорадка» ----------
+	# зелье применяется при подборе и даёт эффект
+	var pWS := 24
+	var pg4 := PackedByteArray(); pg4.resize(pWS * 12)
+	for tx in range(pWS): pg4[10 * pWS + tx] = 1
+	game.level = { "W": pWS, "H": 12, "grid": pg4, "px_w": pWS * 32, "px_h": 12 * 32, "crate_hp": {} }
+	game.state = "play"
+	game.P = game.make_player(); game.P.x = 100.0; game.P.y = 9 * 32 - 30
+	game.pickups = [{ "kind": "potion", "pot": "stone", "x": game.P.x, "y": game.P.y, "w": 14, "h": 18, "vy": 0.0, "t": 0.0 }]
+	game.update_pickups()
+	_ok(game.P.pot_stone_t > 0.0, "stone potion applies on pickup")
+	game.P.inv = 0
+	game.P.hp = 100.0; game.P.maxhp = 100.0
+	game.hurt_player(40, 0)
+	var stone_dmg: float = 100.0 - game.P.hp
+	game.P.pot_stone_t = 0.0
+	game.P.hp = 100.0; game.P.inv = 0
+	game.hurt_player(40, 0)
+	var plain_dmg: float = 100.0 - game.P.hp
+	_ok(stone_dmg < plain_dmg, "stoneskin halves damage (%d < %d)" % [int(stone_dmg), int(plain_dmg)])
+	# бомбардир сбрасывает навесную бомбу
+	game.P = game.make_player(); game.P.x = 300.0; game.P.y = 9 * 32 - 30
+	game.cam = Vector2.ZERO
+	var bmr: Dictionary = game._spawn_enemy("bomber", 300.0, 100.0)
+	bmr.cd = 0
+	game.enemies = [bmr]
+	game.bullets = []
+	var dropped := false
+	for i in range(200):
+		game.update_enemies()
+		for b in game.bullets:
+			if b.get("grenade", false) and b.from == "e":
+				dropped = true
+		if dropped: break
+	_ok(dropped, "bomber drops arcing bombs")
+	# золотая лихорадка: больше сундуков, враги крепче
+	var found_gr := false
+	for s in range(1, 250):
+		var Lg = game.generate_level(s * 19 + 4, 4)
+		if Lg.mod == "goldrush":
+			found_gr = true
+			_ok(Lg.chests.size() >= 3, "goldrush spawns extra chests (%d)" % Lg.chests.size())
+			break
+	_ok(found_gr, "goldrush reachable")
+	# монета за убийство при лихорадке
+	game.level = { "W": pWS, "H": 12, "grid": pg4, "px_w": pWS * 32, "px_h": 12 * 32, "crate_hp": {}, "mod": "goldrush" }
+	game.relics = {}
+	game.coins = 0
+	var vic: Dictionary = game._spawn_enemy("walker", 200.0, 200.0)
+	vic.hp = 1
+	game.enemies = [vic]
+	game.hurt_enemy(vic, 50, false, true)
+	_ok(game.coins >= 1, "goldrush grants kill coin (%d)" % game.coins)
+	game.enemies = []; game.bullets = []; game.pickups = []; game.level = {}; game.state = "menu"
+
 	if failures == 0:
 		print("\nALL TESTS PASSED")
 	else:

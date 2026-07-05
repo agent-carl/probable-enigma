@@ -351,4 +351,12 @@ const EN := {
 	"Видимость ниже, но очки ×1.3": "Lower visibility, but score ×1.3",
 	"Рой": "The Swarm",
 	"Врагов заметно больше, но они слабее": "Noticeably more enemies, but they are weaker",
+	"Золотая лихорадка": "Gold Rush",
+	"Больше сундуков и +1 монета за убийство, но враги крепче": "More chests and +1 coin per kill, but enemies are tougher",
+	"Зелье ярости!": "Rage Potion!",
+	"Зелье скорости!": "Haste Potion!",
+	"Каменная кожа!": "Stoneskin!",
+	"Яр": "RG",
+	"Ск": "HS",
+	"Кж": "ST",
 }
