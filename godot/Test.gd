@@ -96,6 +96,11 @@ func _init() -> void:
 	game.hurt_player(99999, 1)
 	_ok(game.state == "dead", "lethal -> dead")
 	_ok(game.P.hp == 0, "hp clamped 0")
+	# экран итогов проявляется анимацией: сброс в 0 на смерти, затем нарастание к 1
+	_ok(game._dead_anim == 0.0, "death summary anim resets to 0 on death")
+	for _fk in range(60):
+		game._update_fx()   # ~1 с кадров — каскад строк/счётчик доходит до конца
+	_ok(game._dead_anim >= 1.0, "death summary anim completes")
 	game.start_run(100, "100")
 	_ok(game.state == "play" and game.P.hp == game.P.maxhp, "restart resets")
 

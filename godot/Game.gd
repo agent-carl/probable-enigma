@@ -209,6 +209,7 @@ var boss_alive := false  # на уровне есть живой босс
 var boss_name := ""      # имя текущего босса
 var _eid_counter := 1000000  # счётчик id для врагов, созданных в рантайме
 var hitstop := 0         # короткая заморозка при крупных событиях
+var _dead_anim := 0.0    # прогресс появления экрана итогов (0..1)
 var volume := 0.8        # мастер-громкость (0..1), сохраняется
 var music_vol := 0.7     # громкость музыки (относительно мастера), сохраняется
 var sfx_vol := 0.9       # громкость звуков (относительно мастера), сохраняется
@@ -701,6 +702,15 @@ func _notification(what: int) -> void:
 		_save_settings()   # не потерять отложенные настройки при выходе
 
 func _unhandled_input(event: InputEvent) -> void:
+	# на экране итогов первое нажатие доигрывает анимацию появления, а не жмёт кнопку
+	if state == "dead" and _dead_anim < 1.0:
+		var is_press: bool = (event is InputEventKey and event.pressed and not event.echo) \
+			or (event is InputEventMouseButton and event.pressed) \
+			or (event is InputEventJoypadButton and event.pressed)
+		if is_press:
+			_dead_anim = 1.0
+			queue_redraw()
+			return
 	if event is InputEventKey and event.pressed and not event.echo:
 		match event.keycode:
 			KEY_ESCAPE, KEY_P:
@@ -1767,6 +1777,8 @@ func start_level() -> void:
 func _set_state(s: String) -> void:
 	state = s
 	_nav_sel = 0   # навигация начинается с первой кнопки нового экрана
+	if s == "dead":
+		_dead_anim = 0.0   # экран итогов проявляется анимацией с нуля
 	if not test_mode and (s == "menu" or s == "dead" or s == "play"):
 		Engine.time_scale = 1.0   # снимаем слоу-мо при смене состояния
 	if s == "menu":
@@ -2198,6 +2210,10 @@ func hurt_player(dmg: float, from_dir: float, src := Vector2.INF) -> void:
 
 func die() -> void:
 	burst(P.x + P.w / 2.0, P.y + P.h / 2.0, 30, C_ff6b5e)
+	shake = min(26.0, shake + 16.0)   # удар в момент гибели
+	_radial = maxf(_radial, 0.7)      # радиальный всплеск переходит на экран итогов
+	flash = maxf(flash, 0.35)
+	flash_color = C_ff6b5e
 	play_sfx("die")
 	prog.deaths = int(prog.get("deaths", 0)) + 1   # пожизненный счётчик смертей
 	prog.deep = maxi(int(prog.get("deep", 0)), lvl)
@@ -4610,6 +4626,9 @@ func _burst_particles(world_pos: Vector2, color: Color, amount: int, vel := 150.
 	get_tree().create_timer(life + 0.4).timeout.connect(p.queue_free)
 
 func _update_fx() -> void:
+	# экран итогов проявляется за ~0.75 с (счётчик очков + каскад строк)
+	if state == "dead" and _dead_anim < 1.0:
+		_dead_anim = minf(1.0, _dead_anim + 0.022)
 	# обновляем параметры искажения каждый кадр (источники → uniform-массивы)
 	if fx_mat == null:
 		return
@@ -6334,12 +6353,24 @@ func _draw_overlays() -> void:
 			_btn(Rect2(cx - 168, 410, 336, 32), T("Язык: %s") % ("Русский" if lang == "ru" else "English"), "toggle_lang", false)
 			_btn(Rect2(cx - 90, 448, 180, 34), "← Назад", "settings_back", false)
 		"dead":
-			_text(Vector2(cx, 120), "Вы погибли", 44, C_ff6b5e, true)
+			var da := _dead_anim
+			# заголовок — проявляется первым, слегка опускаясь на место
+			var ta := clampf(da / 0.12, 0.0, 1.0)
+			_text(Vector2(cx, 120 - (1.0 - ta) * 12.0), "Вы погибли", 44, Color(C_ff6b5e.r, C_ff6b5e.g, C_ff6b5e.b, ta), true)
+			# счётчик очков «накручивается» от 0 к финалу (0.10..0.45), цвет догорает до золота
+			var sp := clampf((da - 0.10) / 0.35, 0.0, 1.0)
+			var se := 1.0 - pow(1.0 - sp, 3.0)   # easeOutCubic
+			var shown := int(round(score * se))
+			var scol := C_dfe5ff.lerp(C_ffd86b, se)
+			scol.a = clampf((da - 0.10) / 0.08, 0.0, 1.0)
+			var ssize := 22 + int(round(3.0 * maxf(0.0, 1.0 - absf(da - 0.45) * 9.0)))   # лёгкий «удар» в конце подсчёта
+			_text(Vector2(cx, 196), T("Очки: %d") % shown, ssize, scol, true)
+			# бейдж рекорда — вспыхивает после подсчёта и мягко пульсирует
 			var is_record := score >= best and score > 0
-			if is_record:
-				_text(Vector2(cx, 156), "★ НОВЫЙ РЕКОРД ★", 16, C_ffd86b, true)
-			_text(Vector2(cx, 196), T("Очки: %d") % score, 22, C_ffd86b, true)
-			# таблица статистики забега
+			if is_record and da > 0.45:
+				var pulse := 0.65 + 0.35 * sin(tick * 0.12)
+				_text(Vector2(cx, 156), "★ НОВЫЙ РЕКОРД ★", 16, Color(C_ffd86b.r, C_ffd86b.g, C_ffd86b.b, pulse), true)
+			# таблица статистики забега — строки въезжают каскадом справа
 			var rows := [
 				["Уровень", "%d" % lvl],
 				["Убийств", "%d" % kills],
@@ -6350,15 +6381,22 @@ func _draw_overlays() -> void:
 				["Рекорд", "%d" % best],
 			]
 			var ry := 226.0
-			for row in rows:
-				var lbl: String = row[0]
-				var lw := font.get_string_size(T(lbl), HORIZONTAL_ALIGNMENT_LEFT, -1, 14).x
-				_text(Vector2(cx - 14 - lw, ry), lbl, 14, C_8d97bd)
-				_text(Vector2(cx + 14, ry), row[1], 14, C_dfe5ff)
+			for i in range(rows.size()):
+				var rp := clampf((da - (0.45 + i * 0.05)) / 0.12, 0.0, 1.0)
+				if rp > 0.0:
+					var re := 1.0 - pow(1.0 - rp, 3.0)
+					var rox := (1.0 - re) * 18.0   # въезд справа
+					var lbl: String = rows[i][0]
+					var lw := font.get_string_size(T(lbl), HORIZONTAL_ALIGNMENT_LEFT, -1, 14).x
+					_text(Vector2(cx - 14 - lw + rox, ry), lbl, 14, Color(C_8d97bd.r, C_8d97bd.g, C_8d97bd.b, re))
+					_text(Vector2(cx + 14 + rox, ry), rows[i][1], 14, Color(C_dfe5ff.r, C_dfe5ff.g, C_dfe5ff.b, re))
 				ry += 22
-			_text(Vector2(cx, ry + 6), T("Заработано ◉ %d   (всего ◉ %d → Мастерская)") % [run_cores, meta_cores], 14, C_9be8ff, true)
-			_btn(Rect2(cx - 190, 420, 180, 50), "Новый забег", "retry")
-			_btn(Rect2(cx + 10, 420, 180, 50), "В меню", "menu", false)
+			var ca := clampf((da - 0.85) / 0.12, 0.0, 1.0)
+			if ca > 0.0:
+				_text(Vector2(cx, ry + 6), T("Заработано ◉ %d   (всего ◉ %d → Мастерская)") % [run_cores, meta_cores], 14, Color(C_9be8ff.r, C_9be8ff.g, C_9be8ff.b, ca), true)
+			if da >= 1.0:   # кнопки появляются последними — тогда же становятся кликабельными
+				_btn(Rect2(cx - 190, 420, 180, 50), "Новый забег", "retry")
+				_btn(Rect2(cx + 10, 420, 180, 50), "В меню", "menu", false)
 		"upgrade":
 			_text(Vector2(cx, 110), "Уровень пройден!", 36, C_eaf0ff, true)
 			_text(Vector2(cx, 150), "Выберите улучшение (1 / 2 / 3 или клик):", 16, C_aab3d6, true)
