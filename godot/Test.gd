@@ -234,6 +234,8 @@ func _init() -> void:
 		game.hurt_enemy(e, 50, false)
 	_ok(game.combo == 4, "combo increments per kill (got %d)" % game.combo)
 	_ok(game.combo_mult() > 1.0, "combo multiplier rises above 1")
+	_ok(game.hitstop >= 2, "kill grants micro-hitstop (got %d)" % game.hitstop)
+	game.hitstop = 0   # не тащить заморозку в следующие секции
 
 	# ---------- 7. Рывок ----------
 	game.start_run(9, "9")

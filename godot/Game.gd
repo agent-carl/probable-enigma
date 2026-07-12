@@ -2368,7 +2368,7 @@ func hurt_enemy(en: Dictionary, dmg: int, crit: bool, silent := false) -> void:
 		P.shield = minf(P.max_shield, P.shield + maxf(1.0, dmg * 0.08))
 	ult = min(ULT_MAX, ult + dmg * (1.6 if has_relic("overcharge") else 1.0))  # урон заряжает ультимейт
 	if not silent:
-		add_text(en.x + en.w / 2.0, en.y - 4, str(dmg), C_ffd86b if crit else Color.WHITE)
+		add_text(en.x + en.w / 2.0, en.y - 4, str(dmg), C_ffd86b if crit else Color.WHITE, 17 if crit else 13)
 		burst(en.x + en.w / 2.0, en.y + en.h / 2.0, 7 if crit else 4, C_ffd1a8)
 		_hitmark = 12.0   # хит-маркер на прицеле
 		play_sfx("hit")
@@ -2414,10 +2414,15 @@ func hurt_enemy(en: Dictionary, dmg: int, crit: bool, silent := false) -> void:
 		if not en.get("boss", false):
 			shockwaves.append({ "x": en.x + en.w / 2.0, "y": en.y + en.h / 2.0, "r": 4.0, "max_r": en.w * 1.3, "life": 10.0, "col": C_ffd1a8 })
 			_burst_particles(Vector2(en.x + en.w / 2.0, en.y + en.h / 2.0), Color(1.0, 0.55, 0.45), 16, 130.0, 0.5)  # гибы
+			# микро-хитстоп: короче на обычном килле, чуть дольше на крите и майлстоуне серии
+			var stop := 3 if crit else 2
+			if combo >= 5 and combo % 5 == 0:
+				stop = 5
+			hitstop = maxi(hitstop, stop)
 		var label := "+%d" % gained
 		if mult > 1.0:
 			label += " x%.1f" % mult
-		add_text(en.x + en.w / 2.0, en.y - 14, label, C_9be8ff)
+		add_text(en.x + en.w / 2.0, en.y - 14, label, C_9be8ff, 15)
 		play_sfx("kill")
 		if en.get("boss", false):
 			boss_alive = false
@@ -2430,7 +2435,7 @@ func hurt_enemy(en: Dictionary, dmg: int, crit: bool, silent := false) -> void:
 			shockwaves.append({ "x": en.x + en.w / 2.0, "y": en.y + en.h / 2.0, "r": 12.0, "max_r": 160.0, "life": 26.0, "col": C_ffd86b })
 			flash = 0.7
 			flash_color = C_ffe9b0
-			add_text(en.x + en.w / 2.0, en.y - 30, T("БОСС ПОВЕРЖЕН! +500"), C_ffd86b)
+			add_text(en.x + en.w / 2.0, en.y - 30, T("БОСС ПОВЕРЖЕН! +500"), C_ffd86b, 19)
 			play_sfx("portal")
 			unlock("boss_slayer")
 			if difficulty >= 2:
@@ -2813,8 +2818,8 @@ func spark(x: float, y: float, vx: float, vy: float, n: int) -> void:
 			"size": 1.0 + rng.randf() * 1.8, "grav": 0.22,
 		})
 
-func add_text(x: float, y: float, s: String, color: Color) -> void:
-	texts.append({ "x": x, "y": y, "str": s, "color": color, "life": 55.0, "vy": -0.8 })
+func add_text(x: float, y: float, s: String, color: Color, size := 13) -> void:
+	texts.append({ "x": x, "y": y, "str": s, "color": color, "life": 55.0, "vy": -0.8, "size": size })
 
 # ============================== Шаг симуляции ==============================
 
@@ -5801,10 +5806,13 @@ func _draw_texts() -> void:
 		var a := clampf(t.life / 30.0, 0, 1)
 		var col: Color = t.color
 		col.a = a
-		var sz := font.get_string_size(t.str, HORIZONTAL_ALIGNMENT_LEFT, -1, 13)
+		# «поп» появления: первые ~8 кадров цифра крупнее и оседает к базовому размеру
+		var base: int = int(t.get("size", 13))
+		var fs: int = base + int(round(base * 0.45 * clampf((t.life - 47.0) / 8.0, 0.0, 1.0)))
+		var sz := font.get_string_size(t.str, HORIZONTAL_ALIGNMENT_LEFT, -1, fs)
 		var pos := Vector2(t.x - sz.x / 2.0, t.y)
-		draw_string(font, pos + Vector2(1, 1), t.str, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(0, 0, 0, a * 0.6))
-		draw_string(font, pos, t.str, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, col)
+		draw_string(font, pos + Vector2(1, 1), t.str, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(0, 0, 0, a * 0.6))
+		draw_string(font, pos, t.str, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, col)
 
 # ============================== HUD и оверлеи ==============================
 
