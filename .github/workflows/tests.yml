@@ -104,6 +104,18 @@ jobs:
           ls -la shots
           [ -n "$(ls shots)" ]   # хотя бы один кадр обязан отрендериться
 
+      - name: Log preview thumbnails
+        # уменьшенные base64-превью в лог: их можно смотреть через API логов,
+        # когда скачивание zip-артефакта недоступно (полный размер — в артефакте)
+        run: |
+          command -v convert > /dev/null || sudo apt-get install -y -qq imagemagick
+          for f in $(ls shots/*.png | head -6); do
+            convert "$f" -resize 420x -quality 55 /tmp/prev.jpg
+            echo "=== PREVIEW $(basename "$f") ==="
+            base64 -w0 /tmp/prev.jpg
+            echo
+          done
+
       - name: Upload screenshots
         uses: actions/upload-artifact@v4
         with:
